@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/widgets/simple_fade_animation.dart';
-import 'package:interbridge/presentation/widgets/customButtom.dart';
 
 class RequesterHomeView extends StatefulWidget {
   const RequesterHomeView({super.key});
@@ -24,259 +22,147 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
-                SimpleFadeAnimation(
-                  child: Container(
-                    padding: const EdgeInsets.all(AppSize.s16),
-                    decoration: BoxDecoration(
-                      color: ColorManager.primary2,
-                      borderRadius: BorderRadius.circular(AppSize.s12),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: AppSize.s24,
-                          backgroundColor: ColorManager.white,
-                          child: Icon(
-                            Icons.person,
-                            color: ColorManager.primary2,
-                            size: AppSize.s24,
-                          ),
+                // Simple header
+                Container(
+                  padding: const EdgeInsets.all(AppSize.s16),
+                  decoration: BoxDecoration(
+                    color: ColorManager.primary2,
+                    borderRadius: BorderRadius.circular(AppSize.s12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: AppSize.s24,
+                        backgroundColor: ColorManager.white,
+                        child: Icon(
+                          Icons.person,
+                          color: ColorManager.primary2,
+                          size: AppSize.s24,
                         ),
-                        const SizedBox(width: AppSize.s12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Welcome back!',
-                                style: TextStyle(
-                                  color: ColorManager.white,
-                                  fontSize: AppSize.s18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                      ),
+                      const SizedBox(width: AppSize.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Welcome back!',
+                              style: TextStyle(
+                                color: ColorManager.white,
+                                fontSize: AppSize.s18,
+                                fontWeight: FontWeight.bold,
                               ),
-                              const SizedBox(height: AppSize.s4),
-                              Text(
-                                'How can we help you today?',
-                                style: TextStyle(
-                                  color: ColorManager.white.withValues(
-                                    alpha: 0.8,
-                                  ),
-                                  fontSize: AppSize.s14,
+                            ),
+                            const SizedBox(height: AppSize.s4),
+                            Text(
+                              'How can we help you today?',
+                              style: TextStyle(
+                                color: ColorManager.white.withValues(
+                                  alpha: 0.8,
                                 ),
+                                fontSize: AppSize.s14,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: AppSize.s24),
 
                 // Quick Actions
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 200),
-                  child: Text(
-                    AppStrings.quickActions,
-                    style: TextStyle(
-                      fontSize: AppSize.s18,
-                      fontWeight: FontWeight.bold,
-                      color: ColorManager.textPrimary,
-                    ),
+                Text(
+                  AppStrings.quickActions,
+                  style: TextStyle(
+                    fontSize: AppSize.s18,
+                    fontWeight: FontWeight.bold,
+                    color: ColorManager.textPrimary,
                   ),
                 ),
                 const SizedBox(height: AppSize.s16),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 300),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildQuickActionCard(
-                          icon: Icons.emergency,
-                          title: AppStrings.emergencyRequest,
-                          color: Colors.red,
-                          onTap: () => _showRequestDialog(context, true),
-                        ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildQuickActionCard(
+                        icon: Icons.emergency,
+                        title: AppStrings.emergencyRequest,
+                        color: Colors.red,
                       ),
-                      const SizedBox(width: AppSize.s12),
-                      Expanded(
-                        child: _buildQuickActionCard(
-                          icon: Icons.schedule,
-                          title: AppStrings.scheduledRequest,
-                          color: Colors.blue,
-                          onTap: () => _showRequestDialog(context, false),
-                        ),
+                    ),
+                    const SizedBox(width: AppSize.s12),
+                    Expanded(
+                      child: _buildQuickActionCard(
+                        icon: Icons.schedule,
+                        title: AppStrings.scheduledRequest,
+                        color: Colors.blue,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: AppSize.s12),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 400),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildQuickActionCard(
-                          icon: Icons.description,
-                          title: AppStrings.documentTranslation,
-                          color: Colors.purple,
-                          onTap: () {},
-                        ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildQuickActionCard(
+                        icon: Icons.description,
+                        title: AppStrings.documentTranslation,
+                        color: Colors.purple,
                       ),
-                      const SizedBox(width: AppSize.s12),
-                      Expanded(
-                        child: _buildQuickActionCard(
-                          icon: Icons.search,
-                          title: AppStrings.findInterpreter,
-                          color: Colors.green,
-                          onTap: () {},
-                        ),
+                    ),
+                    const SizedBox(width: AppSize.s12),
+                    Expanded(
+                      child: _buildQuickActionCard(
+                        icon: Icons.search,
+                        title: AppStrings.findInterpreter,
+                        color: Colors.green,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: AppSize.s24),
 
                 // Active Requests
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 500),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        AppStrings.activeRequests,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      AppStrings.activeRequests,
+                      style: TextStyle(
+                        fontSize: AppSize.s18,
+                        fontWeight: FontWeight.bold,
+                        color: ColorManager.textPrimary,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {},
+                      child: Text(
+                        'View All',
                         style: TextStyle(
-                          fontSize: AppSize.s18,
-                          fontWeight: FontWeight.bold,
-                          color: ColorManager.textPrimary,
+                          color: ColorManager.primary2,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextButton(
-                        onPressed: () {},
-                        child: Text(
-                          'View All',
-                          style: TextStyle(
-                            color: ColorManager.primary2,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: AppSize.s16),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 600),
-                  child: _buildRequestCard(
-                    title: 'Medical Consultation',
-                    description: 'Urgent medical consultation needed',
-                    language: 'English - Arabic',
-                    status: 'In Progress',
-                    time: '2 hours ago',
-                    isUrgent: true,
-                  ),
+                _buildRequestCard(
+                  title: 'Medical Consultation',
+                  description: 'Urgent medical consultation needed',
+                  language: 'English - Arabic',
+                  status: 'In Progress',
+                  time: '2 hours ago',
+                  isUrgent: true,
                 ),
                 const SizedBox(height: AppSize.s12),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 700),
-                  child: _buildRequestCard(
-                    title: 'Legal Document Translation',
-                    description: 'Contract translation required',
-                    language: 'English - Spanish',
-                    status: 'Waiting for Interpreter',
-                    time: '1 day ago',
-                    isUrgent: false,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s24),
-
-                // Recent Activity
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 800),
-                  child: Text(
-                    AppStrings.recentActivity,
-                    style: TextStyle(
-                      fontSize: AppSize.s18,
-                      fontWeight: FontWeight.bold,
-                      color: ColorManager.textPrimary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSize.s16),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 900),
-                  child: _buildActivityCard(
-                    title: 'Request Completed',
-                    description: 'Medical consultation - 45 minutes',
-                    time: '2 hours ago',
-                    amount: '25.00',
-                  ),
-                ),
-                const SizedBox(height: AppSize.s12),
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 1000),
-                  child: _buildActivityCard(
-                    title: 'New Interpreter Available',
-                    description: 'Sarah M. is now available',
-                    time: '1 day ago',
-                    amount: null,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s24),
-
-                // Find Interpreter Section
-                SimpleFadeAnimation(
-                  delay: const Duration(milliseconds: 1100),
-                  child: Container(
-                    padding: const EdgeInsets.all(AppSize.s20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          ColorManager.primary2,
-                          ColorManager.primary2.withValues(alpha: 0.8),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(AppSize.s12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          AppStrings.findInterpreter,
-                          style: TextStyle(
-                            fontSize: AppSize.s20,
-                            fontWeight: FontWeight.bold,
-                            color: ColorManager.white,
-                          ),
-                        ),
-                        const SizedBox(height: AppSize.s8),
-                        Text(
-                          AppStrings.findInterpreterSubtitle,
-                          style: TextStyle(
-                            fontSize: AppSize.s14,
-                            color: ColorManager.white.withValues(alpha: 0.8),
-                          ),
-                        ),
-                        const SizedBox(height: AppSize.s16),
-                        CustomButton(
-                          onTap: () {},
-                          color: ColorManager.white,
-                          textStyle: TextStyle(
-                            fontSize: AppSize.s16,
-                            fontWeight: FontWeight.w600,
-                            color: ColorManager.primary2,
-                          ),
-                          text: 'Find Now',
-                          borderRadius: BorderRadius.circular(AppSize.s8),
-                          margin: EdgeInsets.zero,
-                        ),
-                      ],
-                    ),
-                  ),
+                _buildRequestCard(
+                  title: 'Legal Document Translation',
+                  description: 'Contract translation required',
+                  language: 'English - Spanish',
+                  status: 'Waiting for Interpreter',
+                  time: '1 day ago',
+                  isUrgent: false,
                 ),
               ],
             ),
@@ -290,41 +176,37 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
     required IconData icon,
     required String title,
     required Color color,
-    required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(AppSize.s16),
-        decoration: BoxDecoration(
-          color: ColorManager.backgroundCard,
-          borderRadius: BorderRadius.circular(AppSize.s12),
-          border: Border.all(
-            color: ColorManager.greyMedium.withValues(alpha: 0.3),
+    return Container(
+      padding: const EdgeInsets.all(AppSize.s16),
+      decoration: BoxDecoration(
+        color: ColorManager.backgroundCard,
+        borderRadius: BorderRadius.circular(AppSize.s12),
+        border: Border.all(
+          color: ColorManager.greyMedium.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppSize.s12),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppSize.s8),
+            ),
+            child: Icon(icon, color: color, size: AppSize.s24),
           ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSize.s12),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(AppSize.s8),
-              ),
-              child: Icon(icon, color: color, size: AppSize.s24),
+          const SizedBox(height: AppSize.s8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: AppSize.s12,
+              fontWeight: FontWeight.w600,
+              color: ColorManager.textPrimary,
             ),
-            const SizedBox(height: AppSize.s8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: AppSize.s12,
-                fontWeight: FontWeight.w600,
-                color: ColorManager.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -459,153 +341,10 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                   color: ColorManager.textSecondary,
                 ),
               ),
-              const Spacer(),
-              CustomButton(
-                onTap: () {},
-                color: ColorManager.primary2,
-                text: AppStrings.viewDetails,
-                textStyle: const TextStyle(fontSize: AppSize.s12),
-                borderRadius: BorderRadius.circular(AppSize.s6),
-                margin: EdgeInsets.zero,
-                width: null,
-                height: null,
-              ),
             ],
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildActivityCard({
-    required String title,
-    required String description,
-    required String time,
-    String? amount,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(AppSize.s16),
-      decoration: BoxDecoration(
-        color: ColorManager.backgroundCard,
-        borderRadius: BorderRadius.circular(AppSize.s12),
-        border: Border.all(
-          color: ColorManager.greyMedium.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(AppSize.s8),
-            decoration: BoxDecoration(
-              color: ColorManager.primary2.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppSize.s8),
-            ),
-            child: Icon(
-              Icons.check_circle,
-              color: ColorManager.primary2,
-              size: AppSize.s20,
-            ),
-          ),
-          const SizedBox(width: AppSize.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: AppSize.s14,
-                    fontWeight: FontWeight.w600,
-                    color: ColorManager.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s4),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: AppSize.s12,
-                    color: ColorManager.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s4),
-                Text(
-                  time,
-                  style: TextStyle(
-                    fontSize: AppSize.s10,
-                    color: ColorManager.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (amount != null)
-            Text(
-              '${AppStrings.currency}$amount',
-              style: TextStyle(
-                fontSize: AppSize.s14,
-                fontWeight: FontWeight.bold,
-                color: ColorManager.primary2,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showRequestDialog(BuildContext context, bool isEmergency) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              isEmergency
-                  ? AppStrings.emergencyRequest
-                  : AppStrings.scheduledRequest,
-              style: TextStyle(
-                fontSize: AppSize.s18,
-                fontWeight: FontWeight.bold,
-                color: ColorManager.textPrimary,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  isEmergency
-                      ? 'This request will be prioritized and matched with available interpreters immediately.'
-                      : 'Schedule your interpretation session for a later time.',
-                  style: TextStyle(
-                    fontSize: AppSize.s14,
-                    color: ColorManager.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s16),
-                CustomButton(
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    // Navigate to request form
-                  },
-                  color: ColorManager.primary2,
-                  text: 'Continue',
-                  textStyle: const TextStyle(
-                    fontSize: AppSize.s16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  borderRadius: BorderRadius.circular(AppSize.s8),
-                  margin: EdgeInsets.zero,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: ColorManager.textSecondary),
-                ),
-              ),
-            ],
-          ),
     );
   }
 }
