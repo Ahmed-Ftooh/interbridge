@@ -154,7 +154,9 @@ class _OnboardingViewState extends State<OnboardingView> {
                         ),
                         const SizedBox(width: AppSize.s8),
                         Text(
-                          AppStrings.getStarted,
+                          _currentPage != 2
+                              ? AppStrings.next
+                              : AppStrings.getStarted,
                           style: TextStyle(
                             fontSize: AppSize.s16,
                             fontWeight: FontWeight.bold,

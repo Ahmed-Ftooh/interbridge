@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
+import 'package:interbridge/presentation/widgets/custom_dialog.dart';
 
 class RequesterHomeView extends StatefulWidget {
   const RequesterHomeView({super.key});
@@ -11,6 +12,51 @@ class RequesterHomeView extends StatefulWidget {
 }
 
 class _RequesterHomeViewState extends State<RequesterHomeView> {
+  String? selectedSpecialization;
+  String? selectedUrgency;
+  bool isOnlineFilter = false;
+  bool isAvailableFilter = false;
+
+  // Language selection variables
+  String? selectedFromLanguage;
+  String? selectedToLanguage;
+
+  final List<String> languages = [
+    'English',
+    'Spanish',
+    'French',
+    'German',
+    'Italian',
+    'Portuguese',
+    'Russian',
+    'Chinese',
+    'Japanese',
+    'Korean',
+    'Arabic',
+    'Hindi',
+    'Turkish',
+    'Dutch',
+    'Swedish',
+    'Norwegian',
+    'Danish',
+    'Finnish',
+    'Polish',
+    'Czech',
+  ];
+
+  final List<String> specializations = [
+    'Medical',
+    'Legal',
+    'Business',
+    'Education',
+    'Mental Health',
+    'Emergency Response',
+    'Social Services',
+    'Documentation',
+  ];
+
+  final List<String> urgencyLevels = ['Low', 'Normal', 'Urgent'];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -22,148 +68,24 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Simple header
-                Container(
-                  padding: const EdgeInsets.all(AppSize.s16),
-                  decoration: BoxDecoration(
-                    color: ColorManager.primary2,
-                    borderRadius: BorderRadius.circular(AppSize.s12),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: AppSize.s24,
-                        backgroundColor: ColorManager.white,
-                        child: Icon(
-                          Icons.person,
-                          color: ColorManager.primary2,
-                          size: AppSize.s24,
-                        ),
-                      ),
-                      const SizedBox(width: AppSize.s12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Welcome back!',
-                              style: TextStyle(
-                                color: ColorManager.white,
-                                fontSize: AppSize.s18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: AppSize.s4),
-                            Text(
-                              'How can we help you today?',
-                              style: TextStyle(
-                                color: ColorManager.white.withValues(
-                                  alpha: 0.8,
-                                ),
-                                fontSize: AppSize.s14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                // Header
+                _buildHeader(),
                 const SizedBox(height: AppSize.s24),
 
-                // Quick Actions
-                Text(
-                  AppStrings.quickActions,
-                  style: TextStyle(
-                    fontSize: AppSize.s18,
-                    fontWeight: FontWeight.bold,
-                    color: ColorManager.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: AppSize.s16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildQuickActionCard(
-                        icon: Icons.emergency,
-                        title: AppStrings.emergencyRequest,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(width: AppSize.s12),
-                    Expanded(
-                      child: _buildQuickActionCard(
-                        icon: Icons.schedule,
-                        title: AppStrings.scheduledRequest,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSize.s12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildQuickActionCard(
-                        icon: Icons.description,
-                        title: AppStrings.documentTranslation,
-                        color: Colors.purple,
-                      ),
-                    ),
-                    const SizedBox(width: AppSize.s12),
-                    Expanded(
-                      child: _buildQuickActionCard(
-                        icon: Icons.search,
-                        title: AppStrings.findInterpreter,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
+                // Language Selection Section
+                _buildLanguageSelection(),
                 const SizedBox(height: AppSize.s24),
 
-                // Active Requests
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      AppStrings.activeRequests,
-                      style: TextStyle(
-                        fontSize: AppSize.s18,
-                        fontWeight: FontWeight.bold,
-                        color: ColorManager.textPrimary,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {},
-                      child: Text(
-                        'View All',
-                        style: TextStyle(
-                          color: ColorManager.primary2,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSize.s16),
-                _buildRequestCard(
-                  title: 'Medical Consultation',
-                  description: 'Urgent medical consultation needed',
-                  language: 'English - Arabic',
-                  status: 'In Progress',
-                  time: '2 hours ago',
-                  isUrgent: true,
-                ),
-                const SizedBox(height: AppSize.s12),
-                _buildRequestCard(
-                  title: 'Legal Document Translation',
-                  description: 'Contract translation required',
-                  language: 'English - Spanish',
-                  status: 'Waiting for Interpreter',
-                  time: '1 day ago',
-                  isUrgent: false,
-                ),
+                // Filters Section
+                _buildFiltersSection(),
+                const SizedBox(height: AppSize.s24),
+
+                // Action Buttons
+                _buildActionButtons(),
+                const SizedBox(height: AppSize.s24),
+
+                // Recent Activity
+                _buildRecentActivity(),
               ],
             ),
           ),
@@ -172,179 +94,573 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
     );
   }
 
-  Widget _buildQuickActionCard({
-    required IconData icon,
-    required String title,
-    required Color color,
-  }) {
+  Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.all(AppSize.s16),
+      padding: const EdgeInsets.all(AppSize.s20),
       decoration: BoxDecoration(
-        color: ColorManager.backgroundCard,
-        borderRadius: BorderRadius.circular(AppSize.s12),
-        border: Border.all(
-          color: ColorManager.greyMedium.withValues(alpha: 0.3),
-        ),
+        gradient: ColorManager.primaryGradient,
+        borderRadius: BorderRadius.circular(AppSize.s16),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(AppSize.s12),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(AppSize.s8),
+          CircleAvatar(
+            radius: AppSize.s28,
+            backgroundColor: ColorManager.white,
+            child: Icon(
+              Icons.person,
+              color: ColorManager.primary,
+              size: AppSize.s28,
             ),
-            child: Icon(icon, color: color, size: AppSize.s24),
           ),
-          const SizedBox(height: AppSize.s8),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: AppSize.s12,
-              fontWeight: FontWeight.w600,
-              color: ColorManager.textPrimary,
+          const SizedBox(width: AppSize.s16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppStrings.welcomeBackExclamation,
+                  style: TextStyle(
+                    color: ColorManager.white,
+                    fontSize: AppSize.s20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: AppSize.s4),
+                Text(
+                  'Ready to connect with interpreters?',
+                  style: TextStyle(
+                    color: ColorManager.white.withOpacity(0.9),
+                    fontSize: AppSize.s14,
+                  ),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRequestCard({
-    required String title,
-    required String description,
-    required String language,
-    required String status,
-    required String time,
-    required bool isUrgent,
-  }) {
-    Color statusColor;
-    switch (status.toLowerCase()) {
-      case 'in progress':
-        statusColor = Colors.blue;
-        break;
-      case 'waiting for interpreter':
-        statusColor = Colors.orange;
-        break;
-      case 'completed':
-        statusColor = Colors.green;
-        break;
-      default:
-        statusColor = Colors.grey;
-    }
+  Widget _buildLanguageSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Language Pair',
+          style: TextStyle(
+            fontSize: AppSize.s18,
+            fontWeight: FontWeight.bold,
+            color: ColorManager.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppSize.s16),
+        Column(
+          children: [
+            // From Language
+            GestureDetector(
+              onTap: () => _showLanguageBottomSheet(true),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSize.s16),
+                decoration: BoxDecoration(
+                  color: ColorManager.white,
+                  borderRadius: BorderRadius.circular(AppSize.s12),
+                  border: Border.all(color: ColorManager.greyMedium, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.language,
+                          size: AppSize.s16,
+                          color: ColorManager.primary,
+                        ),
+                        const SizedBox(width: AppSize.s8),
+                        Text(
+                          'From',
+                          style: TextStyle(
+                            fontSize: AppSize.s12,
+                            fontWeight: FontWeight.w500,
+                            color: ColorManager.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSize.s8),
+                    Text(
+                      selectedFromLanguage ?? 'Select language',
+                      style: TextStyle(
+                        fontSize: AppSize.s14,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            selectedFromLanguage != null
+                                ? ColorManager.textPrimary
+                                : ColorManager.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSize.s12),
+            // Arrow
+            Center(
+              child: Icon(
+                Icons.arrow_downward,
+                color: ColorManager.primary,
+                size: AppSize.s20,
+              ),
+            ),
+            const SizedBox(height: AppSize.s12),
+            // To Language
+            GestureDetector(
+              onTap: () => _showLanguageBottomSheet(false),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSize.s16),
+                decoration: BoxDecoration(
+                  color: ColorManager.white,
+                  borderRadius: BorderRadius.circular(AppSize.s12),
+                  border: Border.all(color: ColorManager.greyMedium, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.language,
+                          size: AppSize.s16,
+                          color: ColorManager.primary,
+                        ),
+                        const SizedBox(width: AppSize.s8),
+                        Text(
+                          'To',
+                          style: TextStyle(
+                            fontSize: AppSize.s12,
+                            fontWeight: FontWeight.w500,
+                            color: ColorManager.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSize.s8),
+                    Text(
+                      selectedToLanguage ?? 'Select language',
+                      style: TextStyle(
+                        fontSize: AppSize.s14,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            selectedToLanguage != null
+                                ? ColorManager.textPrimary
+                                : ColorManager.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
+  void _showLanguageBottomSheet(bool isFromLanguage) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.7,
+          decoration: BoxDecoration(
+            color: ColorManager.backgroundPrimary,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(AppSize.s20),
+              topRight: Radius.circular(AppSize.s20),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: AppSize.s12),
+                width: AppSize.s40,
+                height: AppSize.s4,
+                decoration: BoxDecoration(
+                  color: ColorManager.greyMedium,
+                  borderRadius: BorderRadius.circular(AppSize.s2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(AppSize.s20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Select ${isFromLanguage ? 'From' : 'To'} Language',
+                      style: TextStyle(
+                        fontSize: AppSize.s22,
+                        fontWeight: FontWeight.bold,
+                        color: ColorManager.textPrimary,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(
+                        Icons.close,
+                        color: ColorManager.textSecondary,
+                        size: AppSize.s24,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Language Grid
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSize.s20),
+                  child: GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: AppSize.s12,
+                          mainAxisSpacing: AppSize.s12,
+                          childAspectRatio: 2.5,
+                        ),
+                    itemCount: languages.length,
+                    itemBuilder: (context, index) {
+                      final language = languages[index];
+                      final isSelected =
+                          isFromLanguage
+                              ? selectedFromLanguage == language
+                              : selectedToLanguage == language;
+
+                      return GestureDetector(
+                        onTap: () {
+                          if (isFromLanguage) {
+                            setState(() {
+                              selectedFromLanguage = language;
+                            });
+                          } else {
+                            setState(() {
+                              selectedToLanguage = language;
+                            });
+                          }
+                          Navigator.of(context).pop();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSize.s16,
+                            vertical: AppSize.s12,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                isSelected
+                                    ? ColorManager.primary
+                                    : ColorManager.white,
+                            borderRadius: BorderRadius.circular(AppSize.s12),
+                            border: Border.all(
+                              color:
+                                  isSelected
+                                      ? ColorManager.primary
+                                      : ColorManager.greyMedium,
+                              width: isSelected ? 2 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: ColorManager.black.withOpacity(0.05),
+                                blurRadius: AppSize.s8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.language,
+                                color:
+                                    isSelected
+                                        ? ColorManager.white
+                                        : ColorManager.textSecondary,
+                                size: AppSize.s18,
+                              ),
+                              const SizedBox(width: AppSize.s8),
+                              Expanded(
+                                child: Text(
+                                  language,
+                                  style: TextStyle(
+                                    fontSize: AppSize.s14,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        isSelected
+                                            ? ColorManager.white
+                                            : ColorManager.textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSelectionChip({
+    required String language,
+    required String label,
+    required bool isSelected,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(AppSize.s16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSize.s12,
+        vertical: AppSize.s8,
+      ),
       decoration: BoxDecoration(
-        color: ColorManager.backgroundCard,
-        borderRadius: BorderRadius.circular(AppSize.s12),
+        color:
+            isSelected
+                ? ColorManager.primary.withOpacity(0.1)
+                : ColorManager.greyLight,
+        borderRadius: BorderRadius.circular(AppSize.s8),
         border: Border.all(
-          color: ColorManager.greyMedium.withValues(alpha: 0.3),
+          color: isSelected ? ColorManager.primary : ColorManager.greyMedium,
+          width: 1,
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: AppSize.s16,
-                    fontWeight: FontWeight.bold,
-                    color: ColorManager.textPrimary,
-                  ),
-                ),
-              ),
-              if (isUrgent)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSize.s8,
-                    vertical: AppSize.s4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppSize.s4),
-                  ),
-                  child: const Text(
-                    AppStrings.urgent,
-                    style: TextStyle(
-                      fontSize: AppSize.s10,
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSize.s8),
           Text(
-            description,
+            label,
             style: TextStyle(
-              fontSize: AppSize.s14,
+              fontSize: AppSize.s12,
+              fontWeight: FontWeight.w500,
               color: ColorManager.textSecondary,
             ),
           ),
-          const SizedBox(height: AppSize.s12),
-          Row(
-            children: [
-              Icon(
-                Icons.language,
-                size: AppSize.s16,
-                color: ColorManager.primary2,
-              ),
-              const SizedBox(width: AppSize.s4),
-              Text(
-                language,
-                style: TextStyle(
-                  fontSize: AppSize.s12,
-                  color: ColorManager.textSecondary,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSize.s8,
-                  vertical: AppSize.s4,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppSize.s4),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    fontSize: AppSize.s10,
-                    color: statusColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSize.s8),
-          Row(
-            children: [
-              Icon(
-                Icons.access_time,
-                size: AppSize.s16,
-                color: ColorManager.textSecondary,
-              ),
-              const SizedBox(width: AppSize.s4),
-              Text(
-                time,
-                style: TextStyle(
-                  fontSize: AppSize.s12,
-                  color: ColorManager.textSecondary,
-                ),
-              ),
-            ],
+          const SizedBox(height: AppSize.s4),
+          Text(
+            language,
+            style: TextStyle(
+              fontSize: AppSize.s14,
+              fontWeight: FontWeight.w600,
+              color:
+                  isSelected ? ColorManager.primary : ColorManager.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFiltersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Filters',
+          style: TextStyle(
+            fontSize: AppSize.s18,
+            fontWeight: FontWeight.bold,
+            color: ColorManager.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppSize.s16),
+
+        // Specialization Filter
+        _buildDropdownFilter(
+          title: 'Specialization',
+          value: selectedSpecialization,
+          hint: 'Select specialization',
+          items: specializations,
+          onChanged: (value) {
+            setState(() {
+              selectedSpecialization = value;
+            });
+          },
+        ),
+
+        // Status Filters
+      ],
+    );
+  }
+
+  Widget _buildDropdownFilter({
+    required String title,
+    required String? value,
+    required String hint,
+    required List<String> items,
+    required Function(String?) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: AppSize.s14,
+            fontWeight: FontWeight.w600,
+            color: ColorManager.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppSize.s8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: AppSize.s12),
+          decoration: BoxDecoration(
+            color: ColorManager.white,
+            borderRadius: BorderRadius.circular(AppSize.s12),
+            border: Border.all(color: ColorManager.greyMedium, width: 1),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: value,
+              hint: Text(
+                hint,
+                style: TextStyle(
+                  color: ColorManager.textSecondary,
+                  fontSize: AppSize.s14,
+                ),
+              ),
+              isExpanded: true,
+              icon: Icon(
+                Icons.keyboard_arrow_down,
+                color: ColorManager.textSecondary,
+              ),
+              items:
+                  items.map((String item) {
+                    return DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(
+                        item,
+                        style: TextStyle(
+                          color: ColorManager.textPrimary,
+                          fontSize: AppSize.s14,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        // Request Interpreter Button
+        SizedBox(
+          width: double.infinity,
+          height: AppSize.s55,
+          child: ElevatedButton(
+            onPressed: () {
+              // Handle request interpreter
+              _showRequestDialog();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ColorManager.primary,
+              foregroundColor: ColorManager.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSize.s16),
+              ),
+              elevation: 2,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.phone_in_talk, size: AppSize.s20),
+                SizedBox(width: AppSize.s8),
+                Text(
+                  'Request Interpreter',
+                  style: TextStyle(
+                    fontSize: AppSize.s16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSize.s16),
+      ],
+    );
+  }
+
+  Widget _buildRecentActivity() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Recent Activity',
+          style: TextStyle(
+            fontSize: AppSize.s18,
+            fontWeight: FontWeight.bold,
+            color: ColorManager.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppSize.s16),
+        Container(
+          padding: const EdgeInsets.all(AppSize.s20),
+          decoration: BoxDecoration(
+            color: ColorManager.white,
+            borderRadius: BorderRadius.circular(AppSize.s16),
+            border: Border.all(color: ColorManager.greyMedium.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.history,
+                size: AppSize.s50,
+                color: ColorManager.textSecondary,
+              ),
+              const SizedBox(height: AppSize.s12),
+              Text(
+                'No recent activity',
+                style: TextStyle(
+                  fontSize: AppSize.s16,
+                  fontWeight: FontWeight.w600,
+                  color: ColorManager.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSize.s8),
+              Text(
+                'Your recent interpreter requests will appear here',
+                style: TextStyle(
+                  fontSize: AppSize.s14,
+                  color: ColorManager.textLight,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showRequestDialog() {
+    showCustomDialog(
+      context: context,
+      title: 'Request Interpreter',
+      message: 'Request interpreter functionality will be implemented here.',
+      primaryButtonText: 'OK',
+      icon: Icons.phone_in_talk,
+      iconColor: ColorManager.primary,
     );
   }
 }

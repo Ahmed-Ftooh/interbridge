@@ -424,9 +424,9 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                         borderRadius: BorderRadius.circular(AppSize.s6),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       AppStrings.acceptJob,
-                      style: const TextStyle(fontSize: AppSize.s12),
+                      style: TextStyle(fontSize: AppSize.s12),
                     ),
                   ),
                   const SizedBox(width: AppSize.s8),

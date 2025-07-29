@@ -7,6 +7,7 @@ class AppStrings {
   static const String password = ' Password';
   static const String rememberMe = 'Remember Me';
   static const String search = 'Search';
+  static const String next = 'Next';
   static const String skip = 'Skip';
   static const String welcomeBack = 'Welcome Back';
   static const String needAnInterpreter = 'Need an Interpreter';
