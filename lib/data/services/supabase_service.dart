@@ -235,6 +235,28 @@ class SupabaseService {
         .eq('user_id', details.userId);
   }
 
+  /// Update interpreter details with voice sample and certificate URLs
+  Future<void> updateInterpreterDetailsWithUrls(
+    String userId, {
+    String? voiceSampleUrl,
+    String? certificateUrl,
+  }) async {
+    final updateData = <String, dynamic>{};
+    if (voiceSampleUrl != null) {
+      updateData['voice_sample_url'] = voiceSampleUrl;
+    }
+    if (certificateUrl != null) {
+      updateData['certificate_url'] = certificateUrl;
+    }
+
+    if (updateData.isNotEmpty) {
+      await _client
+          .from('interpreter_details')
+          .update(updateData)
+          .eq('user_id', userId);
+    }
+  }
+
   // --- SPECIALIZATION ---
   Future<List<Specialization>> getSpecializations() async {
     final List data = await _client.from('specializations').select();

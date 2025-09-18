@@ -6,9 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
-import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 
@@ -25,8 +23,7 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
   String? _filePath;
   late String _prompt;
   File? _certificateFile;
-  String? _certificateUrl;
-  bool _isAuthenticated = false;
+  String? _certificatePath;
   AppError? _error;
 
   static const List<String> _sentences = [
@@ -44,14 +41,6 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
   void initState() {
     super.initState();
     _prompt = _sentences[Random().nextInt(_sentences.length)];
-    _checkAuth();
-  }
-
-  void _checkAuth() {
-    final user = Supabase.instance.client.auth.currentUser;
-    setState(() {
-      _isAuthenticated = user != null;
-    });
   }
 
   Future<void> _toggleRecord() async {
@@ -106,54 +95,15 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
 
-    if (_filePath == null || _certificateUrl == null) return;
-    _uploadAndContinue(args);
-  }
-
-  Future<void> _uploadAndContinue(Map<String, dynamic> args) async {
-    try {
-      if (!mounted || _filePath == null || _certificateUrl == null) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-
-      final supabase = SupabaseService();
-      final publicUrl = await supabase.uploadVoiceSampleFromPath(
-        _filePath!,
-        prompt: _prompt,
-        sentenceType: 'professional_assessment',
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      args['voiceSampleUrl'] = publicUrl;
-      args['voicePrompt'] = _prompt;
-      args['certificateUrl'] = _certificateUrl;
-
-      Navigator.of(context).pushNamed(
-        Routes.interpreterFieldScreen,
-        arguments: {'type': 'skills', ...args},
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      setState(() {
-        _error = ErrorHandler.handleError(e, context: 'VoiceSampleUpload');
-      });
-    }
+    if (_filePath == null || _certificatePath == null) return;
+    // Pass local paths to registration; uploads happen after signup
+    args['voiceSamplePath'] = _filePath;
+    args['voicePrompt'] = _prompt;
+    args['certificatePath'] = _certificatePath;
+    Navigator.of(context).pushNamed(Routes.registerRoute, arguments: args);
   }
 
   Future<void> _pickCertificate() async {
-    if (!_isAuthenticated) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in before uploading.')),
-      );
-      return;
-    }
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -172,40 +122,7 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
     }
   }
 
-  Future<void> _uploadCertificate() async {
-    if (!_isAuthenticated) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in before uploading.')),
-      );
-      return;
-    }
-    if (_certificateFile == null) return;
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-      final url = await SupabaseService().uploadInterpreterCertificate(
-        _certificateFile!,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      setState(() {
-        _certificateUrl = url;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Certificate uploaded')));
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      setState(() {
-        _error = ErrorHandler.handleError(e, context: 'CertificateUpload');
-      });
-    }
-  }
+  // Uploading is deferred until after signup
 
   @override
   void dispose() {
@@ -307,7 +224,7 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Upload Certificate (required)',
+                      'Select Certificate (required)',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -320,9 +237,7 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
                           child: Text(
                             _certificateFile != null
                                 ? 'Selected: ${_certificateFile!.path.split('/').last}'
-                                : (_certificateUrl != null
-                                    ? 'Uploaded'
-                                    : 'No certificate selected'),
+                                : 'No certificate selected',
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
@@ -333,16 +248,9 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
                           label: const Text('Choose'),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed:
-                              _certificateFile != null
-                                  ? _uploadCertificate
-                                  : null,
-                          child: const Text('Upload'),
-                        ),
                       ],
                     ),
-                    if (_certificateUrl == null)
+                    if (_certificateFile == null)
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
@@ -359,10 +267,11 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed:
-                    _filePath != null &&
-                            _certificateUrl != null &&
-                            _isAuthenticated
-                        ? _continue
+                    _filePath != null && _certificateFile != null
+                        ? () {
+                          _certificatePath = _certificateFile!.path;
+                          _continue();
+                        }
                         : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ColorManager.primary,

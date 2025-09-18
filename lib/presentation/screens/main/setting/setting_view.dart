@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -15,12 +17,13 @@ class SettingView extends StatefulWidget {
 class _SettingViewState extends State<SettingView> {
   bool _notificationsEnabled = true;
   Map<String, bool> _permissionStatus = {};
-
   @override
   void initState() {
     super.initState();
     _loadPermissionStatus();
   }
+
+  final AppPreferences _appPreferences = instance<AppPreferences>();
 
   Future<void> _loadPermissionStatus() async {
     final status = await PermissionService.checkAllAppPermissions();
@@ -247,6 +250,8 @@ class _SettingViewState extends State<SettingView> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
+                  _appPreferences.logout();
+
                   _signOut();
                 },
                 style: ElevatedButton.styleFrom(

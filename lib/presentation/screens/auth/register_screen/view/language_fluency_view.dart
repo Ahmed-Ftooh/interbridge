@@ -10,6 +10,7 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view_model
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/languageFluencyBloc/language_fluency_event.dart'
     as fluency_event;
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/languageFluencyBloc/language_fluency_state.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 
 class LanguageFluencyScreen extends StatefulWidget {
   const LanguageFluencyScreen({super.key});
@@ -62,11 +63,9 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
     if (languagesData is List && languagesData.isNotEmpty) {
       if (languagesData.first is int) {
         // Convert language IDs to language names
-        selectedLanguages =
-            languagesData
-                .map((id) => _getLanguageName(id as int))
-                .where((name) => name.isNotEmpty)
-                .toList();
+        selectedLanguages = LanguageMappingUtility.convertIdsToNames(
+          languagesData.cast<int>(),
+        );
       } else {
         // Already language names
         selectedLanguages = languagesData.map((e) => e.toString()).toList();
@@ -96,7 +95,9 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
           // Convert fluency map to use language IDs as keys
           final Map<String, String?> fluencyWithIds = {};
           for (final languageName in state.selectedLanguages) {
-            final languageId = _getLanguageId(languageName);
+            final languageId = LanguageMappingUtility.getLanguageId(
+              languageName,
+            );
             if (languageId != 0 && state.fluencyMap.containsKey(languageName)) {
               fluencyWithIds[languageId.toString()] =
                   state.fluencyMap[languageName];
@@ -153,7 +154,9 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
           final List<int> languageIds = [];
           for (final languageName in state.selectedLanguages) {
             // Map language names to their IDs based on the database
-            final languageId = _getLanguageId(languageName);
+            final languageId = LanguageMappingUtility.getLanguageId(
+              languageName,
+            );
             if (languageId != 0) {
               languageIds.add(languageId);
             }
@@ -169,7 +172,7 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
           }
 
           Navigator.of(context).pushNamed(
-            Routes.voiceCheckScreen,
+            Routes.interpreterFieldScreen,
             arguments: {'type': 'skills', ...data},
           );
         }
@@ -792,267 +795,5 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
     _animationController.dispose();
     _slideController.dispose();
     super.dispose();
-  }
-
-  // Helper method to convert language names to IDs
-  int _getLanguageId(String languageName) {
-    // This mapping should match your database language IDs
-    // You can get this from your Supabase database or update as needed
-    final Map<String, int> languageIdMap = {
-      'Afrikaans': 1,
-      'Albanian': 2,
-      'Amharic': 3,
-      'Arabic': 4,
-      'Egyptian Arabic': 5,
-      'Moroccan Arabic': 6,
-      'Levantine Arabic': 7,
-      'Gulf Arabic': 8,
-      'Tunisian Arabic': 9,
-      'Sudanese Arabic': 10,
-      'Iraqi Arabic': 11,
-      'Algerian Arabic': 12,
-      'Armenian': 13,
-      'Assamese': 14,
-      'Azerbaijani': 15,
-      'Basque': 16,
-      'Belarusian': 17,
-      'Bengali': 18,
-      'Bosnian': 19,
-      'Bulgarian': 20,
-      'Burmese': 21,
-      'Catalan': 22,
-      'Cebuano': 23,
-      'Chichewa': 24,
-      'Chinese (Simplified)': 25,
-      'Chinese (Traditional)': 26,
-      'Corsican': 27,
-      'Croatian': 28,
-      'Czech': 29,
-      'Danish': 30,
-      'Dutch': 31,
-      'English': 32,
-      'Esperanto': 33,
-      'Estonian': 34,
-      'Farsi': 35,
-      'Filipino': 36,
-      'Finnish': 37,
-      'French': 38,
-      'Frisian': 39,
-      'Galician': 40,
-      'Georgian': 41,
-      'German': 42,
-      'Greek': 43,
-      'Gujarati': 44,
-      'Haitian Creole': 45,
-      'Hausa': 46,
-      'Hawaiian': 47,
-      'Hebrew': 48,
-      'Hindi': 49,
-      'Hmong': 50,
-      'Hungarian': 51,
-      'Icelandic': 52,
-      'Igbo': 53,
-      'Indonesian': 54,
-      'Irish': 55,
-      'Italian': 56,
-      'Japanese': 57,
-      'Javanese': 58,
-      'Kannada': 59,
-      'Kazakh': 60,
-      'Khmer': 61,
-      'Kinyarwanda': 62,
-      'Korean': 63,
-      'Kurdish (Kurmanji)': 64,
-      'Kyrgyz': 65,
-      'Lao': 66,
-      'Latin': 67,
-      'Latvian': 68,
-      'Lithuanian': 69,
-      'Luxembourgish': 70,
-      'Macedonian': 71,
-      'Malagasy': 72,
-      'Malay': 73,
-      'Malayalam': 74,
-      'Maltese': 75,
-      'Maori': 76,
-      'Marathi': 77,
-      'Mongolian': 78,
-      'Nepali': 79,
-      'Norwegian': 80,
-      'Nyanja': 81,
-      'Odia': 82,
-      'Pashto': 83,
-      'Persian': 84,
-      'Polish': 85,
-      'Portuguese': 86,
-      'Punjabi': 87,
-      'Romanian': 88,
-      'Russian': 89,
-      'Samoan': 90,
-      'Scots Gaelic': 91,
-      'Serbian': 92,
-      'Sesotho': 93,
-      'Shona': 94,
-      'Sindhi': 95,
-      'Sinhala': 96,
-      'Slovak': 97,
-      'Slovenian': 98,
-      'Somali': 99,
-      'Spanish': 100,
-      'Sundanese': 101,
-      'Swahili': 102,
-      'Swedish': 103,
-      'Tajik': 104,
-      'Tamil': 105,
-      'Tatar': 106,
-      'Telugu': 107,
-      'Thai': 108,
-      'Tigrinya': 109,
-      'Turkish': 110,
-      'Turkmen': 111,
-      'Ukrainian': 112,
-      'Urdu': 113,
-      'Uyghur': 114,
-      'Uzbek': 115,
-      'Vietnamese': 116,
-      'Welsh': 117,
-      'Western Frisian': 118,
-      'Xhosa': 119,
-      'Yiddish': 120,
-      'Yoruba': 121,
-      'Zulu': 122,
-    };
-
-    return languageIdMap[languageName] ?? 0;
-  }
-
-  // Helper method to convert language ID to language name
-  String _getLanguageName(int languageId) {
-    final Map<int, String> languageNameMap = {
-      1: 'Afrikaans',
-      2: 'Albanian',
-      3: 'Amharic',
-      4: 'Arabic',
-      5: 'Egyptian Arabic',
-      6: 'Moroccan Arabic',
-      7: 'Levantine Arabic',
-      8: 'Gulf Arabic',
-      9: 'Tunisian Arabic',
-      10: 'Sudanese Arabic',
-      11: 'Iraqi Arabic',
-      12: 'Algerian Arabic',
-      13: 'Armenian',
-      14: 'Assamese',
-      15: 'Azerbaijani',
-      16: 'Basque',
-      17: 'Belarusian',
-      18: 'Bengali',
-      19: 'Bosnian',
-      20: 'Bulgarian',
-      21: 'Burmese',
-      22: 'Catalan',
-      23: 'Cebuano',
-      24: 'Chichewa',
-      25: 'Chinese (Simplified)',
-      26: 'Chinese (Traditional)',
-      27: 'Corsican',
-      28: 'Croatian',
-      29: 'Czech',
-      30: 'Danish',
-      31: 'Dutch',
-      32: 'English',
-      33: 'Esperanto',
-      34: 'Estonian',
-      35: 'Farsi',
-      36: 'Filipino',
-      37: 'Finnish',
-      38: 'French',
-      39: 'Frisian',
-      40: 'Galician',
-      41: 'Georgian',
-      42: 'German',
-      43: 'Greek',
-      44: 'Gujarati',
-      45: 'Haitian Creole',
-      46: 'Hausa',
-      47: 'Hawaiian',
-      48: 'Hebrew',
-      49: 'Hindi',
-      50: 'Hmong',
-      51: 'Hungarian',
-      52: 'Icelandic',
-      53: 'Igbo',
-      54: 'Indonesian',
-      55: 'Irish',
-      56: 'Italian',
-      57: 'Japanese',
-      58: 'Javanese',
-      59: 'Kannada',
-      60: 'Kazakh',
-      61: 'Khmer',
-      62: 'Kinyarwanda',
-      63: 'Korean',
-      64: 'Kurdish (Kurmanji)',
-      65: 'Kyrgyz',
-      66: 'Lao',
-      67: 'Latin',
-      68: 'Latvian',
-      69: 'Lithuanian',
-      70: 'Luxembourgish',
-      71: 'Macedonian',
-      72: 'Malagasy',
-      73: 'Malay',
-      74: 'Malayalam',
-      75: 'Maltese',
-      76: 'Maori',
-      77: 'Marathi',
-      78: 'Mongolian',
-      79: 'Nepali',
-      80: 'Norwegian',
-      81: 'Nyanja',
-      82: 'Odia',
-      83: 'Pashto',
-      84: 'Persian',
-      85: 'Polish',
-      86: 'Portuguese',
-      87: 'Punjabi',
-      88: 'Romanian',
-      89: 'Russian',
-      90: 'Samoan',
-      91: 'Scots Gaelic',
-      92: 'Serbian',
-      93: 'Sesotho',
-      94: 'Shona',
-      95: 'Sindhi',
-      96: 'Sinhala',
-      97: 'Slovak',
-      98: 'Slovenian',
-      99: 'Somali',
-      100: 'Spanish',
-      101: 'Sundanese',
-      102: 'Swahili',
-      103: 'Swedish',
-      104: 'Tajik',
-      105: 'Tamil',
-      106: 'Tatar',
-      107: 'Telugu',
-      108: 'Thai',
-      109: 'Tigrinya',
-      110: 'Turkish',
-      111: 'Turkmen',
-      112: 'Ukrainian',
-      113: 'Urdu',
-      114: 'Uyghur',
-      115: 'Uzbek',
-      116: 'Vietnamese',
-      117: 'Welsh',
-      118: 'Western Frisian',
-      119: 'Xhosa',
-      120: 'Yiddish',
-      121: 'Yoruba',
-      122: 'Zulu',
-    };
-
-    return languageNameMap[languageId] ?? '';
   }
 }

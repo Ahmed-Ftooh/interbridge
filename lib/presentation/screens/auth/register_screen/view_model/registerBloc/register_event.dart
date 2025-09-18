@@ -15,6 +15,12 @@ class RegisterSubmitted extends RegisterEvent {
   final List<int> skillIds;
   final List<int> specializationIds;
   final String role;
+  final String? voiceSampleUrl;
+  final String? voicePrompt;
+  final String? certificateUrl;
+  // Local paths for deferred upload
+  final String? voiceSamplePath;
+  final String? certificatePath;
 
   RegisterSubmitted({
     required this.email,
@@ -26,6 +32,11 @@ class RegisterSubmitted extends RegisterEvent {
     required this.skillIds,
     required this.specializationIds,
     required this.role,
+    this.voiceSampleUrl,
+    this.voicePrompt,
+    this.certificateUrl,
+    this.voiceSamplePath,
+    this.certificatePath,
   });
 
   @override
@@ -39,6 +50,11 @@ class RegisterSubmitted extends RegisterEvent {
     skillIds,
     specializationIds,
     role,
+    voiceSampleUrl,
+    voicePrompt,
+    certificateUrl,
+    voiceSamplePath,
+    certificatePath,
   ];
 }
 

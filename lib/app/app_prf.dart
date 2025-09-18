@@ -24,4 +24,8 @@ class AppPreferences {
   Future<bool> isLoginViewed() async {
     return _sharedPreferences.getBool(LOGIN_VIEWD_KEY) ?? false;
   }
+
+  Future<void> logout() async {
+    _sharedPreferences.remove(LOGIN_VIEWD_KEY);
+  }
 }

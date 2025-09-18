@@ -207,12 +207,28 @@ class _ProfileViewState extends State<ProfileView> {
         return;
       }
 
+      // If a new image was picked, upload it first
+      String? newImageUrl;
+      if (_pickedImage != null) {
+        try {
+          final bytes = await File(_pickedImage!.path).readAsBytes();
+          final filename =
+              'profile_${userId}_${DateTime.now().millisecondsSinceEpoch}.${_pickedImage!.path.split('.').last}';
+          newImageUrl = await supabaseService.uploadProfileImage(
+            filename,
+            bytes,
+          );
+        } catch (e) {
+          _showSnackBar('Image upload failed: $e', isError: true);
+        }
+      }
+
       // Create updated profile
       final updatedProfile = UserProfile(
         id: userId,
         username: _usernameController.text.trim(),
         role: _selectedRole,
-        profileImage: _userProfile?.profileImage, // Keep existing for now
+        profileImage: newImageUrl ?? _userProfile?.profileImage,
         gender: _selectedGender,
         createdAt: _userProfile?.createdAt,
       );
@@ -225,6 +241,11 @@ class _ProfileViewState extends State<ProfileView> {
       }
 
       _showSnackBar('Profile updated successfully!');
+      if (newImageUrl != null) {
+        setState(() {
+          _pickedImage = null;
+        });
+      }
       await _loadUserProfile(); // Reload to get updated data
     } catch (e) {
       _showSnackBar('Error updating profile: $e', isError: true);

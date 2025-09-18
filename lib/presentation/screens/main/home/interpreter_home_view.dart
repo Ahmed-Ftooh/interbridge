@@ -20,18 +20,26 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
   bool isProcessingJob = false; // To show button loading state
   String? processingJobId; // Track which job is being accepted/declined
 
+  void _safeAddToJobsBloc(InterpreterJobEvent event) {
+    if (!mounted) return;
+    final bloc = context.read<InterpreterJobBloc>();
+    if (!bloc.isClosed) {
+      bloc.add(event);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        context.read<InterpreterJobBloc>().add(LoadAvailableJobs());
+        _safeAddToJobsBloc(LoadAvailableJobs());
       }
     });
   }
 
   Future<void> _refreshJobs() async {
-    context.read<InterpreterJobBloc>().add(RefreshJobs());
+    _safeAddToJobsBloc(RefreshJobs());
     // Optionally await bloc state change here if you want
     await Future.delayed(const Duration(milliseconds: 500));
   }
@@ -41,7 +49,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
       isProcessingJob = true;
       processingJobId = jobId;
     });
-    context.read<InterpreterJobBloc>().add(AcceptJob(jobId));
+    _safeAddToJobsBloc(AcceptJob(jobId));
   }
 
   void _onDeclineJob(String jobId) {
@@ -49,7 +57,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
       isProcessingJob = true;
       processingJobId = jobId;
     });
-    context.read<InterpreterJobBloc>().add(DeclineJob(jobId));
+    _safeAddToJobsBloc(DeclineJob(jobId));
   }
 
   @override
@@ -176,9 +184,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                           const SizedBox(height: AppSize.s16),
                           ElevatedButton(
                             onPressed: () {
-                              context.read<InterpreterJobBloc>().add(
-                                LoadAvailableJobs(),
-                              );
+                              _safeAddToJobsBloc(LoadAvailableJobs());
                             },
                             child: const Text('Retry'),
                           ),

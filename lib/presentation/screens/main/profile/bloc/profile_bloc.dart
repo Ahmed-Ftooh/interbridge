@@ -215,22 +215,25 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       // Upload image to Supabase storage
       final imageUrl = await _uploadImageToSupabase(event.imageFile);
 
-      emit(ImageUploaded(imageUrl));
-
-      // Update profile with new image URL
-      if (state is ProfileLoaded) {
-        final currentProfile = (state as ProfileLoaded).profile;
-        final updatedProfile = UserProfile(
-          id: currentProfile.id,
-          username: currentProfile.username,
-          role: currentProfile.role,
-          profileImage: imageUrl,
-          gender: currentProfile.gender,
-          createdAt: currentProfile.createdAt,
-        );
-
-        add(UpdateProfile(updatedProfile));
+      // Update profile with new image URL regardless of current state
+      final userId = _supabaseService.getCurrentUser()?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
       }
+
+      final currentProfile = await _supabaseService.getUserProfile(userId);
+      final updatedProfile = UserProfile(
+        id: userId,
+        username: currentProfile?.username,
+        role: currentProfile?.role,
+        profileImage: imageUrl,
+        gender: currentProfile?.gender,
+        createdAt: currentProfile?.createdAt,
+      );
+
+      // Emit uploaded state for UI feedback, then persist
+      emit(ImageUploaded(imageUrl));
+      add(UpdateProfile(updatedProfile));
     } catch (e) {
       emit(ImageError('Failed to upload image: $e'));
     }

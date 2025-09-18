@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'register_event.dart';
@@ -197,6 +198,33 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
           // Don't fail the entire registration for this
         }
 
+        // If local file paths were provided, upload them now post-auth
+        String? uploadedVoiceUrl;
+        String? uploadedCertUrl;
+        try {
+          if (event.voiceSamplePath != null &&
+              event.voiceSamplePath!.isNotEmpty) {
+            uploadedVoiceUrl = await supabase.uploadVoiceSampleFromPath(
+              event.voiceSamplePath!,
+              prompt: event.voicePrompt,
+              sentenceType: 'professional_assessment',
+            );
+            log('DEBUG: Voice sample uploaded post-auth');
+          }
+        } catch (e) {
+          log('DEBUG: Voice sample upload failed post-auth: $e');
+        }
+        try {
+          if (event.certificatePath != null &&
+              event.certificatePath!.isNotEmpty) {
+            uploadedCertUrl = await SupabaseService()
+                .uploadInterpreterCertificate(File(event.certificatePath!));
+            log('DEBUG: Certificate uploaded post-auth');
+          }
+        } catch (e) {
+          log('DEBUG: Certificate upload failed post-auth: $e');
+        }
+
         // Add languages with better error handling
         int successfulLanguages = 0;
         for (final langId in event.languages) {
@@ -270,6 +298,28 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         log(
           'DEBUG: Successfully added $successfulSpecializations specializations',
         );
+
+        // Handle voice sample and certificate data if provided or uploaded now
+        final voiceUrlToSave = uploadedVoiceUrl ?? event.voiceSampleUrl;
+        final certUrlToSave = uploadedCertUrl ?? event.certificateUrl;
+        if (voiceUrlToSave != null || certUrlToSave != null) {
+          try {
+            // Update interpreter details with voice sample and certificate URLs
+            await supabase.updateInterpreterDetailsWithUrls(
+              userId,
+              voiceSampleUrl: voiceUrlToSave,
+              certificateUrl: certUrlToSave,
+            );
+            log(
+              'DEBUG: Successfully updated interpreter details with voice sample and certificate',
+            );
+          } catch (e) {
+            log(
+              'DEBUG: Error updating interpreter details with voice sample and certificate: $e',
+            );
+            // Don't fail the entire registration for this
+          }
+        }
       }
 
       log('DEBUG: Registration completed successfully');

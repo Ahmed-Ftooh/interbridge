@@ -2,6 +2,8 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
 
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -52,6 +54,12 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late Map<String, String?> fluency;
   late List<int> skills;
   late List<int> specializations;
+  late String? voiceSampleUrl;
+  late String? voicePrompt;
+  late String? certificateUrl;
+  // Local paths for deferred upload
+  late String? voiceSamplePath;
+  late String? certificatePath;
 
   @override
   void initState() {
@@ -129,6 +137,13 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
       specializations = [];
     }
 
+    // Initialize voice check data
+    voiceSampleUrl = widget.data['voiceSampleUrl'];
+    voicePrompt = widget.data['voicePrompt'];
+    certificateUrl = widget.data['certificateUrl'];
+    voiceSamplePath = widget.data['voiceSamplePath'];
+    certificatePath = widget.data['certificatePath'];
+
     // Debug: Print the role being used
     log('DEBUG: Role being used: $role');
     log('DEBUG: Data received: ${widget.data}');
@@ -136,10 +151,15 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     log('DEBUG: Fluency: $fluency');
     log('DEBUG: Skills: $skills');
     log('DEBUG: Specializations: $specializations');
+    log('DEBUG: Voice Sample URL: $voiceSampleUrl');
+    log('DEBUG: Voice Prompt: $voicePrompt');
+    log('DEBUG: Certificate URL: $certificateUrl');
   }
 
   @override
   Widget build(BuildContext context) {
+    final AppPreferences _appPreferences = instance<AppPreferences>();
+
     return Scaffold(
       backgroundColor: ColorManager.backgroundPrimary,
       appBar: AppBar(
@@ -175,7 +195,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                 );
               }
               if (state is RegisterSuccess) {
-                FirebaseMessagingService().initialize();
+                _appPreferences.setLoginViewed();
+
                 Navigator.of(
                   context,
                 ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
@@ -431,13 +452,17 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     email: _emailController.text.trim(),
                                     password: _passwordController.text,
                                     username: _usernameController.text.trim(),
-                                    gender:
-                                        '', // always null/empty as per your requirement
+                                    gender: '',
                                     languages: languages,
                                     fluency: fluency,
                                     skillIds: skills,
                                     specializationIds: specializations,
                                     role: role,
+                                    voiceSampleUrl: voiceSampleUrl,
+                                    voicePrompt: voicePrompt,
+                                    certificateUrl: certificateUrl,
+                                    voiceSamplePath: voiceSamplePath,
+                                    certificatePath: certificatePath,
                                   ),
                                 );
                               }

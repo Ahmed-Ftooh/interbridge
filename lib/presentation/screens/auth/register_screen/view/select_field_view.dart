@@ -138,7 +138,11 @@ class _InterpreterFieldScreenState extends State<InterpreterFieldScreen>
             data['role'] = 'interpreter';
           }
 
-          Navigator.pushNamed(context, Routes.registerRoute, arguments: data);
+          Navigator.pushNamed(
+            context,
+            Routes.voiceCheckScreen,
+            arguments: data,
+          );
         }
       },
       builder: (context, state) {
