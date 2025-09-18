@@ -169,7 +169,7 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
           }
 
           Navigator.of(context).pushNamed(
-            Routes.interpreterFieldScreen,
+            Routes.voiceCheckScreen,
             arguments: {'type': 'skills', ...data},
           );
         }

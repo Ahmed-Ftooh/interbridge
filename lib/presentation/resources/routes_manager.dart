@@ -6,10 +6,13 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view/regis
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_field_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_language_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/language_fluency_view.dart';
+import 'package:interbridge/presentation/screens/auth/register_screen/view/voice_check_view.dart';
 import 'package:interbridge/presentation/screens/main/main_view.dart';
 import 'package:interbridge/presentation/screens/onboarding/view/onboarding_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_role_screen.dart';
 import 'package:interbridge/presentation/screens/splash/splash_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
+import 'package:interbridge/presentation/screens/main/request_waiting_view.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -22,7 +25,9 @@ class Routes {
   static const String selectRole = "/Role";
   static const String selectLanguage = "/selectLanguage";
   static const String languageFluencyScreen = "/languageFluencyScreen";
+  static const String voiceCheckScreen = "/voiceCheckScreen";
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
+  static const String requestWaiting = "/requestWaiting";
 }
 
 class RouteGenerator {
@@ -58,9 +63,37 @@ class RouteGenerator {
           builder: (_) => const LanguageFluencyScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
+
+      case Routes.voiceCheckScreen:
+        return MaterialPageRoute(
+          builder: (_) => const VoiceCheckScreen(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
+
       case Routes.mainRoute:
         return MaterialPageRoute(builder: (_) => const MainView());
-
+      case Routes.chatRoute:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return MaterialPageRoute(
+          builder:
+              (_) => ChatView(
+                requestId: args?['requestId'],
+                requesterId: args?['requesterId'],
+                interpreterId: args?['interpreterId'],
+              ),
+        );
+      case Routes.requestWaiting:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder:
+              (_) => RequestWaitingView(
+                fromLanguageId: args['fromLanguageId'],
+                toLanguageId: args['toLanguageId'],
+                specialization: args['specialization'],
+                urgency: args['urgency'],
+                description: args['description'],
+              ),
+        );
       default:
         return unDefinedRoute();
     }

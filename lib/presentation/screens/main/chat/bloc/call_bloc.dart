@@ -1,0 +1,268 @@
+import 'dart:async';
+import 'dart:developer';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/config.dart';
+import 'package:interbridge/data/services/call_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:interbridge/core/error_handler.dart';
+
+/// ===== Events =====
+abstract class CallEvent {}
+
+class StartCall extends CallEvent {
+  final String channelId; // e.g., your requestId
+  final int localUid; // stable int
+  StartCall({required this.channelId, required this.localUid});
+}
+
+class EndCall extends CallEvent {}
+
+class ToggleMute extends CallEvent {}
+
+class ToggleSpeaker extends CallEvent {}
+
+// internal events
+class _RemoteUserJoined extends CallEvent {
+  final int uid;
+  _RemoteUserJoined(this.uid);
+}
+
+class _RemoteUserLeft extends CallEvent {
+  final int uid;
+  _RemoteUserLeft(this.uid);
+}
+
+class _Tick extends CallEvent {
+  final Duration elapsed;
+  _Tick(this.elapsed);
+}
+
+/// ===== States =====
+abstract class CallState {}
+
+class CallIdle extends CallState {}
+
+class CallConnecting extends CallState {
+  final String channelId;
+  CallConnecting(this.channelId);
+}
+
+class CallError extends CallState {
+  final AppError error;
+  CallError(this.error);
+}
+
+class CallOngoing extends CallState {
+  final String channelId;
+  final int localUid;
+  final Set<int> remoteUids;
+  final bool muted;
+  final bool speakerOn;
+  final Duration elapsed;
+
+  CallOngoing({
+    required this.channelId,
+    required this.localUid,
+    required this.remoteUids,
+    required this.muted,
+    required this.speakerOn,
+    required this.elapsed,
+  });
+
+  CallOngoing copyWith({
+    Set<int>? remoteUids,
+    bool? muted,
+    bool? speakerOn,
+    Duration? elapsed,
+  }) {
+    return CallOngoing(
+      channelId: channelId,
+      localUid: localUid,
+      remoteUids: remoteUids ?? this.remoteUids,
+      muted: muted ?? this.muted,
+      speakerOn: speakerOn ?? this.speakerOn,
+      elapsed: elapsed ?? this.elapsed,
+    );
+  }
+}
+
+class CallEnded extends CallState {}
+
+/// ===== BLoC =====
+class CallBloc extends Bloc<CallEvent, CallState> {
+  final CallService service;
+
+  RtcEngine? _engine;
+  Timer? _timer;
+  DateTime? _startedAt;
+  bool _muted = false;
+  bool _speakerOn = true;
+  final Set<int> _remoteUids = {};
+
+  CallBloc({required this.service}) : super(CallIdle()) {
+    on<StartCall>(_onStartCall);
+    on<EndCall>(_onEndCall);
+    on<ToggleMute>(_onToggleMute);
+    on<ToggleSpeaker>(_onToggleSpeaker);
+    on<_RemoteUserJoined>(_onRemoteUserJoined);
+    on<_RemoteUserLeft>(_onRemoteUserLeft);
+    on<_Tick>(_onTick);
+  }
+
+  Future<void> _onStartCall(StartCall e, Emitter<CallState> emit) async {
+    try {
+      // 1) Check mic permission (should already be granted at login)
+      log('Checking microphone permission...');
+      final mic = await Permission.microphone.status;
+      if (!mic.isGranted) {
+        log(
+          'Microphone permission not granted. Please enable in app settings.',
+        );
+        emit(
+          CallError(
+            AppError(
+              message: 'Microphone permission required',
+              type: ErrorType.permission,
+              userAction:
+                  'Please enable microphone permission in app settings to make voice calls.',
+              isRetryable: false,
+            ),
+          ),
+        );
+        return;
+      }
+      log('Microphone permission granted');
+
+      emit(CallConnecting(e.channelId));
+
+      // 2) Init engine (once)
+      log('Initializing Agora RTC Engine...');
+      _engine ??= createAgoraRtcEngine();
+      await _engine!.initialize(RtcEngineContext(appId: agoraAppId));
+      log('Agora RTC Engine initialized successfully');
+
+      // 3) Handlers
+      _engine!.registerEventHandler(
+        RtcEngineEventHandler(
+          onJoinChannelSuccess: (connection, elapsed) {
+            _startedAt = DateTime.now();
+            _timer?.cancel();
+            _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+              if (_startedAt != null) {
+                final elapsed = DateTime.now().difference(_startedAt!);
+                add(_Tick(elapsed));
+              }
+            });
+
+            emit(
+              CallOngoing(
+                channelId: e.channelId,
+                localUid: e.localUid,
+                remoteUids: {..._remoteUids},
+                muted: _muted,
+                speakerOn: _speakerOn,
+                elapsed: Duration.zero,
+              ),
+            );
+          },
+          onUserJoined: (connection, remoteUid, elapsed) {
+            add(_RemoteUserJoined(remoteUid));
+          },
+          onUserOffline: (connection, remoteUid, reason) {
+            add(_RemoteUserLeft(remoteUid));
+          },
+        ),
+      );
+
+      // 4) Local audio settings
+      await _engine!.enableAudio();
+      await _engine!.muteLocalAudioStream(_muted);
+      await _engine!.setEnableSpeakerphone(_speakerOn);
+
+      // 5) Token from Supabase
+      final token = await service.fetchAgoraToken(
+        channelName: e.channelId,
+        uid: e.localUid,
+      );
+
+      // 6) Join channel
+      log('Joining Agora channel: ${e.channelId}');
+      await _engine!.joinChannel(
+        token: token,
+        channelId: e.channelId,
+        uid: e.localUid,
+        options: const ChannelMediaOptions(
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+        ),
+      );
+      log('Successfully joined Agora channel');
+    } catch (e) {
+      log('Error starting call: $e');
+      emit(CallError(ErrorHandler.handleError(e, context: 'StartCall')));
+    }
+  }
+
+  Future<void> _onEndCall(EndCall e, Emitter<CallState> emit) async {
+    _timer?.cancel();
+    _timer = null;
+    _startedAt = null;
+    _remoteUids.clear();
+    try {
+      await _engine?.leaveChannel();
+    } finally {
+      emit(CallEnded());
+    }
+  }
+
+  Future<void> _onToggleMute(ToggleMute e, Emitter<CallState> emit) async {
+    _muted = !_muted;
+    await _engine?.muteLocalAudioStream(_muted);
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(muted: _muted));
+    }
+  }
+
+  Future<void> _onToggleSpeaker(
+    ToggleSpeaker e,
+    Emitter<CallState> emit,
+  ) async {
+    _speakerOn = !_speakerOn;
+    await _engine?.setEnableSpeakerphone(_speakerOn);
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(speakerOn: _speakerOn));
+    }
+  }
+
+  void _onRemoteUserJoined(_RemoteUserJoined e, Emitter<CallState> emit) {
+    _remoteUids.add(e.uid);
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(remoteUids: {..._remoteUids}));
+    }
+  }
+
+  void _onRemoteUserLeft(_RemoteUserLeft e, Emitter<CallState> emit) {
+    _remoteUids.remove(e.uid);
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(remoteUids: {..._remoteUids}));
+    }
+  }
+
+  void _onTick(_Tick e, Emitter<CallState> emit) {
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(elapsed: e.elapsed));
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    _timer?.cancel();
+    _timer = null;
+    try {
+      await _engine?.leaveChannel();
+    } catch (_) {}
+    await _engine?.release();
+    _engine = null;
+    return super.close();
+  }
+}

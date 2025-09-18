@@ -4,13 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_view.dart';
 import 'package:interbridge/presentation/screens/main/home/interpreter_home_view.dart';
 import 'package:interbridge/presentation/screens/main/home/requester_home_view.dart';
-import 'package:interbridge/presentation/screens/main/notification/notification_view.dart';
+import 'package:interbridge/presentation/screens/main/profile/profile_view.dart';
 import 'package:interbridge/presentation/screens/main/setting/setting_view.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/data/models/user_profile.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
+import 'package:interbridge/app/di.dart';
+import 'package:interbridge/presentation/widgets/error_display_widget.dart';
+import 'package:interbridge/core/error_handler.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -22,13 +28,14 @@ class MainView extends StatefulWidget {
 class _MainViewState extends State<MainView> {
   UserProfile? userProfile;
   bool isLoading = true;
-  String? errorMessage;
-  final SupabaseService _supabaseService = SupabaseService();
+  AppError? error;
+  late final SupabaseService _supabaseService;
   int currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    _supabaseService = instance<SupabaseService>();
     _loadUserProfile();
   }
 
@@ -49,7 +56,7 @@ class _MainViewState extends State<MainView> {
           setState(() {
             userProfile = profile;
             isLoading = false;
-            errorMessage = null;
+            error = null;
           });
         }
       } else {
@@ -57,7 +64,12 @@ class _MainViewState extends State<MainView> {
         if (mounted) {
           setState(() {
             isLoading = false;
-            errorMessage = 'No user found. Please log in again.';
+            error = AppError(
+              message: 'No user found',
+              type: ErrorType.authentication,
+              userAction: 'Please log in again.',
+              isRetryable: false,
+            );
           });
         }
       }
@@ -66,7 +78,7 @@ class _MainViewState extends State<MainView> {
       if (mounted) {
         setState(() {
           isLoading = false;
-          errorMessage = 'Failed to load user profile: $e';
+          error = ErrorHandler.handleError(e, context: 'LoadUserProfile');
         });
       }
     }
@@ -86,43 +98,20 @@ class _MainViewState extends State<MainView> {
       );
     }
 
-    if (errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: ColorManager.error),
-            const SizedBox(height: 16),
-            Text(
-              'Error Loading Profile',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: ColorManager.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                errorMessage!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: ColorManager.textSecondary),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  isLoading = true;
-                  errorMessage = null;
-                });
-                _loadUserProfile();
-              },
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
+    if (error != null) {
+      return ErrorDisplayWidget(
+        error: error!,
+        onRetry:
+            error!.isRetryable
+                ? () {
+                  setState(() {
+                    isLoading = true;
+                    error = null;
+                  });
+                  _loadUserProfile();
+                }
+                : null,
+        title: 'Failed to load profile',
       );
     }
 
@@ -134,37 +123,23 @@ class _MainViewState extends State<MainView> {
     switch (currentIndex) {
       case 0:
         return isInterpreter
-            ? const InterpreterHomeView()
+            ? BlocProvider(
+              create: (context) => instance<InterpreterJobBloc>(),
+              child: const InterpreterHomeView(),
+            )
             : const RequesterHomeView();
       case 1:
-        return const ChatView();
+        return isInterpreter
+            ? const InterpreterDocumentView()
+            : const DocumentTranslationView();
       case 2:
-        return const NotificationView();
+        return const ProfileView();
       case 3:
         return const SettingView();
       default:
         return isInterpreter
             ? const InterpreterHomeView()
             : const RequesterHomeView();
-    }
-  }
-
-  String _getCurrentTitle() {
-    if (isLoading || errorMessage != null) {
-      return AppStrings.home;
-    }
-
-    switch (currentIndex) {
-      case 0:
-        return AppStrings.home;
-      case 1:
-        return AppStrings.chat;
-      case 2:
-        return AppStrings.notifications;
-      case 3:
-        return AppStrings.settings;
-      default:
-        return AppStrings.home;
     }
   }
 
@@ -175,12 +150,12 @@ class _MainViewState extends State<MainView> {
         label: AppStrings.home,
       ),
       BottomNavigationBarItem(
-        icon: Icon(Icons.chat, size: 30),
-        label: AppStrings.chat,
+        icon: Icon(Icons.description, size: 30),
+        label: AppStrings.documentTranslation,
       ),
       BottomNavigationBarItem(
-        icon: Icon(Icons.notifications, size: 30),
-        label: AppStrings.notifications,
+        icon: Icon(Icons.person, size: 30),
+        label: 'Profile',
       ),
       BottomNavigationBarItem(
         icon: Icon(Icons.settings, size: 30),
@@ -192,15 +167,6 @@ class _MainViewState extends State<MainView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _getCurrentTitle(),
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        backgroundColor: ColorManager.primary2,
-        foregroundColor: ColorManager.white,
-        elevation: 0,
-      ),
       body: _buildCurrentPage(),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

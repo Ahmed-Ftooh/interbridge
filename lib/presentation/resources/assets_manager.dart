@@ -16,4 +16,6 @@ class ImageAssets {
   static const String rightArrowIc = "${imagePath}right_arrow_ic.svg";
 }
 
-class JsonAssets {}
+class JsonAssets {
+  static const String loading = '$jsonPath/loading.json';
+}

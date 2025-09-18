@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/data/services/firebase_messaging_service.dart';
 
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -57,20 +58,27 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     super.initState();
     role = widget.data['role'] ?? 'requester';
 
-    // Safe type conversion for languages
+    // Safe type conversion for languages with better error handling
     try {
       final languagesData = widget.data['languages'];
       if (languagesData is List) {
-        // Convert to strings since bloc expects List<String>
-        languages = languagesData.map((e) => e.toString()).toList();
+        languages =
+            languagesData
+                .where((e) => e != null && e.toString().isNotEmpty)
+                .map((e) => e.toString())
+                .toList();
+      } else if (languagesData is String) {
+        // Handle case where languages might be passed as a single string
+        languages = [languagesData];
       } else {
         languages = [];
       }
     } catch (e) {
+      log('DEBUG: Error parsing languages: $e');
       languages = [];
     }
 
-    // Safe type conversion for fluency
+    // Safe type conversion for fluency with better error handling
     try {
       final fluencyData = widget.data['fluency'];
       if (fluencyData is Map) {
@@ -79,38 +87,45 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         fluency = {};
       }
     } catch (e) {
+      log('DEBUG: Error parsing fluency: $e');
       fluency = {};
     }
 
-    // Safe type conversion for skills
+    // Safe type conversion for skills with better error handling
     try {
       final skillsData = widget.data['skills'];
       if (skillsData is List) {
         skills =
             skillsData
-                .map((e) => int.tryParse(e.toString()) ?? 0)
-                .where((e) => e != 0)
+                .where((e) => e != null)
+                .map((e) => int.tryParse(e.toString()))
+                .where((e) => e != null && e > 0)
+                .cast<int>()
                 .toList();
       } else {
         skills = [];
       }
     } catch (e) {
+      log('DEBUG: Error parsing skills: $e');
       skills = [];
     }
 
-    // Safe type conversion for specializations
+    // Safe type conversion for specializations with better error handling
     try {
       final specializationsData = widget.data['specializations'];
       if (specializationsData is List) {
         specializations =
             specializationsData
-                .map((e) => int.tryParse(e.toString()) ?? 0)
-                .where((e) => e != 0)
+                .where((e) => e != null)
+                .map((e) => int.tryParse(e.toString()))
+                .where((e) => e != null && e > 0)
+                .cast<int>()
                 .toList();
       } else {
         specializations = [];
       }
     } catch (e) {
+      log('DEBUG: Error parsing specializations: $e');
       specializations = [];
     }
 
@@ -160,6 +175,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                 );
               }
               if (state is RegisterSuccess) {
+                FirebaseMessagingService().initialize();
                 Navigator.of(
                   context,
                 ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
@@ -318,32 +334,72 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                           const SizedBox(height: AppSize.s24),
                           CustomButton(
                             onTap: () {
+                              // Enhanced validation
                               if (!_agreedToPrivacy) {
                                 CustomSnackBar.show(
                                   context: context,
-                                  message: 'Please agree to the privacy policy',
+                                  message:
+                                      AppStrings.pleaseAgreeToPrivacyPolicy,
                                   type: SnackBarType.error,
                                 );
                                 return;
                               }
+
                               if (_passwordController.text !=
                                   _confirmPasswordController.text) {
                                 CustomSnackBar.show(
                                   context: context,
-                                  message: 'Passwords do not match',
+                                  message: AppStrings.passwordsDoNotMatch,
                                   type: SnackBarType.error,
                                 );
                                 return;
                               }
-                              if (_usernameController.text.isEmpty ||
-                                  _emailController.text.isEmpty ||
+
+                              if (_usernameController.text.trim().isEmpty ||
+                                  _emailController.text.trim().isEmpty ||
                                   _passwordController.text.isEmpty) {
                                 CustomSnackBar.show(
                                   context: context,
-                                  message: 'Please fill in all required fields',
+                                  message:
+                                      AppStrings.pleaseFillInAllRequiredFields,
                                   type: SnackBarType.error,
                                 );
                                 return;
+                              }
+
+                              // Additional validation for interpreters
+                              if (role == 'interpreter') {
+                                if (languages.isEmpty) {
+                                  CustomSnackBar.show(
+                                    context: context,
+                                    message:
+                                        AppStrings
+                                            .pleaseSelectAtLeastOneLanguage,
+                                    type: SnackBarType.error,
+                                  );
+                                  return;
+                                }
+
+                                if (skills.isEmpty) {
+                                  CustomSnackBar.show(
+                                    context: context,
+                                    message:
+                                        AppStrings.pleaseSelectAtLeastOneSkill,
+                                    type: SnackBarType.error,
+                                  );
+                                  return;
+                                }
+
+                                if (specializations.isEmpty) {
+                                  CustomSnackBar.show(
+                                    context: context,
+                                    message:
+                                        AppStrings
+                                            .pleaseSelectAtLeastOneSpecialization,
+                                    type: SnackBarType.error,
+                                  );
+                                  return;
+                                }
                               }
 
                               // Check if user is requester or interpreter
@@ -354,9 +410,9 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                 );
                                 context.read<RegisterBloc>().add(
                                   RequesterRegisterSubmitted(
-                                    email: _emailController.text,
+                                    email: _emailController.text.trim(),
                                     password: _passwordController.text,
-                                    username: _usernameController.text,
+                                    username: _usernameController.text.trim(),
                                   ),
                                 );
                               } else {
@@ -364,17 +420,20 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                 log(
                                   'DEBUG: Calling RegisterSubmitted with role: $role',
                                 );
+                                log('DEBUG: Languages being sent: $languages');
+                                log('DEBUG: Skills being sent: $skills');
+                                log(
+                                  'DEBUG: Specializations being sent: $specializations',
+                                );
+
                                 context.read<RegisterBloc>().add(
                                   RegisterSubmitted(
-                                    email: _emailController.text,
+                                    email: _emailController.text.trim(),
                                     password: _passwordController.text,
-                                    username: _usernameController.text,
+                                    username: _usernameController.text.trim(),
                                     gender:
                                         '', // always null/empty as per your requirement
-                                    languages:
-                                        languages
-                                            .map((e) => e.toString())
-                                            .toList(),
+                                    languages: languages,
                                     fluency: fluency,
                                     skillIds: skills,
                                     specializationIds: specializations,

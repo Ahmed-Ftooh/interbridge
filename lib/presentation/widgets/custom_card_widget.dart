@@ -7,9 +7,11 @@ class CustomCardWidget extends StatelessWidget {
     required this.subTitle,
     required this.icon,
   });
+
   final String title;
   final String subTitle;
   final IconData icon;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -17,7 +19,7 @@ class CustomCardWidget extends StatelessWidget {
       height: 50,
       child: Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-        color: Colors.grey[500],
+        color: Colors.grey,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [

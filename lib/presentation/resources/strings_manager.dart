@@ -44,6 +44,7 @@ class AppStrings {
   static const String noneOfTheAbove = 'None of the above';
   static const String home = 'Home';
   static const String chat = 'Chat';
+  static const String documentTranslation = 'Document Translation';
 
   static const String notifications = 'Notifications';
   static const String enterEmail = 'Enter your email address';
@@ -71,6 +72,12 @@ class AppStrings {
   static const String passwordsDoNotMatch = 'Passwords do not match';
   static const String pleaseAgreeToPrivacyPolicy =
       'Please agree to privacy policy';
+  static const String pleaseSelectAtLeastOneLanguage =
+      'Please select at least one language';
+  static const String pleaseSelectAtLeastOneSkill =
+      'Please select at least one skill';
+  static const String pleaseSelectAtLeastOneSpecialization =
+      'Please select at least one specialization';
   static const String userName = 'User Name';
   static const String privacyPolicy = 'Privacy Policy';
   static const String termsOfService = 'Terms of Service';
@@ -162,7 +169,7 @@ class AppStrings {
   static const String quickActions = 'Quick Actions';
   static const String emergencyRequest = 'Emergency Request';
   static const String scheduledRequest = 'Scheduled Request';
-  static const String documentTranslation = 'Document Translation';
+
   static const String voiceCall = 'Voice Call';
   static const String videoCall = 'Video Call';
   static const String textChat = 'Text Chat';

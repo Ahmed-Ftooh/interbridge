@@ -1,8 +1,13 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_dialog.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/data/models/language.dart';
 
 class RequesterHomeView extends StatefulWidget {
   const RequesterHomeView({super.key});
@@ -18,31 +23,10 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
   bool isAvailableFilter = false;
 
   // Language selection variables
-  String? selectedFromLanguage;
-  String? selectedToLanguage;
-
-  final List<String> languages = [
-    'English',
-    'Spanish',
-    'French',
-    'German',
-    'Italian',
-    'Portuguese',
-    'Russian',
-    'Chinese',
-    'Japanese',
-    'Korean',
-    'Arabic',
-    'Hindi',
-    'Turkish',
-    'Dutch',
-    'Swedish',
-    'Norwegian',
-    'Danish',
-    'Finnish',
-    'Polish',
-    'Czech',
-  ];
+  Language? selectedFromLanguage;
+  Language? selectedToLanguage;
+  List<Language> languages = [];
+  bool isLoadingLanguages = true;
 
   final List<String> specializations = [
     'Medical',
@@ -56,6 +40,27 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
   ];
 
   final List<String> urgencyLevels = ['Low', 'Normal', 'Urgent'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguages();
+  }
+
+  Future<void> _loadLanguages() async {
+    try {
+      final languagesList = await SupabaseService().getLanguages();
+      setState(() {
+        languages = languagesList;
+        isLoadingLanguages = false;
+      });
+    } catch (e) {
+      log('Error loading languages: $e');
+      setState(() {
+        isLoadingLanguages = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +134,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                 Text(
                   'Ready to connect with interpreters?',
                   style: TextStyle(
-                    color: ColorManager.white.withOpacity(0.9),
+                    color: ColorManager.white.withValues(alpha: 0.9),
                     fontSize: AppSize.s14,
                   ),
                 ),
@@ -142,6 +147,32 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
   }
 
   Widget _buildLanguageSelection() {
+    if (isLoadingLanguages) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Language Pair',
+            style: TextStyle(
+              fontSize: AppSize.s18,
+              fontWeight: FontWeight.bold,
+              color: ColorManager.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppSize.s16),
+          Container(
+            padding: const EdgeInsets.all(AppSize.s20),
+            decoration: BoxDecoration(
+              color: ColorManager.white,
+              borderRadius: BorderRadius.circular(AppSize.s12),
+              border: Border.all(color: ColorManager.greyMedium, width: 1),
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -190,7 +221,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                     ),
                     const SizedBox(height: AppSize.s8),
                     Text(
-                      selectedFromLanguage ?? 'Select language',
+                      selectedFromLanguage?.name ?? 'Select language',
                       style: TextStyle(
                         fontSize: AppSize.s14,
                         fontWeight: FontWeight.w600,
@@ -248,7 +279,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                     ),
                     const SizedBox(height: AppSize.s8),
                     Text(
-                      selectedToLanguage ?? 'Select language',
+                      selectedToLanguage?.name ?? 'Select language',
                       style: TextStyle(
                         fontSize: AppSize.s14,
                         fontWeight: FontWeight.w600,
@@ -337,8 +368,8 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                       final language = languages[index];
                       final isSelected =
                           isFromLanguage
-                              ? selectedFromLanguage == language
-                              : selectedToLanguage == language;
+                              ? selectedFromLanguage?.id == language.id
+                              : selectedToLanguage?.id == language.id;
 
                       return GestureDetector(
                         onTap: () {
@@ -373,7 +404,9 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: ColorManager.black.withOpacity(0.05),
+                                color: ColorManager.black.withValues(
+                                  alpha: 0.05,
+                                ),
                                 blurRadius: AppSize.s8,
                                 offset: const Offset(0, 2),
                               ),
@@ -392,9 +425,9 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                               const SizedBox(width: AppSize.s8),
                               Expanded(
                                 child: Text(
-                                  language,
+                                  language.name,
                                   style: TextStyle(
-                                    fontSize: AppSize.s14,
+                                    fontSize: AppSize.s10,
                                     fontWeight: FontWeight.w600,
                                     color:
                                         isSelected
@@ -416,53 +449,6 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildSelectionChip({
-    required String language,
-    required String label,
-    required bool isSelected,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSize.s12,
-        vertical: AppSize.s8,
-      ),
-      decoration: BoxDecoration(
-        color:
-            isSelected
-                ? ColorManager.primary.withOpacity(0.1)
-                : ColorManager.greyLight,
-        borderRadius: BorderRadius.circular(AppSize.s8),
-        border: Border.all(
-          color: isSelected ? ColorManager.primary : ColorManager.greyMedium,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: AppSize.s12,
-              fontWeight: FontWeight.w500,
-              color: ColorManager.textSecondary,
-            ),
-          ),
-          const SizedBox(height: AppSize.s4),
-          Text(
-            language,
-            style: TextStyle(
-              fontSize: AppSize.s14,
-              fontWeight: FontWeight.w600,
-              color:
-                  isSelected ? ColorManager.primary : ColorManager.textPrimary,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 
@@ -489,6 +475,21 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
           onChanged: (value) {
             setState(() {
               selectedSpecialization = value;
+            });
+          },
+        ),
+
+        const SizedBox(height: AppSize.s16),
+
+        // Urgency Filter
+        _buildDropdownFilter(
+          title: 'Urgency',
+          value: selectedUrgency,
+          hint: 'Select urgency level',
+          items: urgencyLevels,
+          onChanged: (value) {
+            setState(() {
+              selectedUrgency = value;
             });
           },
         ),
@@ -596,6 +597,8 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
             ),
           ),
         ),
+        const SizedBox(height: AppSize.s12),
+
         const SizedBox(height: AppSize.s16),
       ],
     );
@@ -619,7 +622,9 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
           decoration: BoxDecoration(
             color: ColorManager.white,
             borderRadius: BorderRadius.circular(AppSize.s16),
-            border: Border.all(color: ColorManager.greyMedium.withOpacity(0.3)),
+            border: Border.all(
+              color: ColorManager.greyMedium.withValues(alpha: 0.3),
+            ),
           ),
           child: Column(
             children: [
@@ -654,13 +659,45 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
   }
 
   void _showRequestDialog() {
+    // Validate that both languages are selected
+    if (selectedFromLanguage == null || selectedToLanguage == null) {
+      showCustomDialog(
+        context: context,
+        title: 'Missing Information',
+        message:
+            'Please select both "From" and "To" languages before requesting an interpreter.',
+        primaryButtonText: 'OK',
+        icon: Icons.warning,
+        iconColor: ColorManager.primary,
+      );
+      return;
+    }
+
+    // Show confirmation dialog
     showCustomDialog(
       context: context,
       title: 'Request Interpreter',
-      message: 'Request interpreter functionality will be implemented here.',
-      primaryButtonText: 'OK',
+      message:
+          'Are you sure you want to request an interpreter for ${selectedFromLanguage?.name} to ${selectedToLanguage?.name}?',
+      primaryButtonText: 'Request',
+      secondaryButtonText: 'Cancel',
       icon: Icons.phone_in_talk,
       iconColor: ColorManager.primary,
+      onPrimaryPressed: () async {
+        Navigator.of(context).pop(); // Close dialog
+
+        // Navigate to waiting screen with Lottie while creating & waiting
+        Navigator.of(context).pushNamed(
+          Routes.requestWaiting,
+          arguments: {
+            'fromLanguageId': selectedFromLanguage!.id.toString(),
+            'toLanguageId': selectedToLanguage!.id.toString(),
+            'specialization': selectedSpecialization,
+            'urgency': selectedUrgency ?? 'Normal',
+            'description': null,
+          },
+        );
+      },
     );
   }
 }

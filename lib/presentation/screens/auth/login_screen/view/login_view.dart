@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
+import 'dart:developer';
+
+import 'package:interbridge/data/services/firebase_messaging_service.dart';
+import 'package:interbridge/data/services/permission_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
@@ -31,6 +37,67 @@ class _LoginViewBody extends StatefulWidget {
 }
 
 class _LoginViewBodyState extends State<_LoginViewBody> {
+  final AppPreferences _appPreferences = instance<AppPreferences>();
+
+  Future<void> _requestPermissionsAndNavigate() async {
+    try {
+      // Request all app permissions
+      final permissionResults =
+          await PermissionService.requestAllAppPermissions();
+
+      // Log permission results
+      log('Permission results: $permissionResults');
+
+      // Show permission summary to user
+      final grantedPermissions =
+          permissionResults.entries
+              .where((entry) => entry.value)
+              .map((entry) => entry.key)
+              .toList();
+
+      final deniedPermissions =
+          permissionResults.entries
+              .where((entry) => !entry.value)
+              .map((entry) => entry.key)
+              .toList();
+
+      if (grantedPermissions.isNotEmpty) {
+        log('Granted permissions: $grantedPermissions');
+      }
+
+      if (deniedPermissions.isNotEmpty) {
+        log('Denied permissions: $deniedPermissions');
+
+        // Show a brief message about denied permissions
+        if (mounted) {
+          CustomSnackBar.show(
+            context: context,
+            message:
+                'Some permissions were denied. You can enable them in app settings.',
+            type: SnackBarType.warning,
+            duration: const Duration(seconds: 3),
+          );
+        }
+      }
+
+      // Navigate to main screen
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    } catch (e) {
+      log('Error requesting permissions: $e');
+
+      // Navigate anyway if permissions fail
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -52,12 +119,11 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                 );
 
                 // Navigate to main screen after a short delay
-                Future.delayed(const Duration(milliseconds: 200), () {
+                Future.delayed(const Duration(milliseconds: 200), () async {
                   if (mounted) {
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      Routes.mainRoute,
-                      (route) => false,
-                    );
+                    _appPreferences.setLoginViewed();
+                    await FirebaseMessagingService().initialize();
+                    await _requestPermissionsAndNavigate();
                   }
                 });
               }

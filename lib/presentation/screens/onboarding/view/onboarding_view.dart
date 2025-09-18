@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
 
 import 'package:interbridge/presentation/resources/assets_manager.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -36,6 +38,7 @@ class _OnboardingViewState extends State<OnboardingView> {
       'image': ImageAssets.onbording3,
     },
   ];
+  final AppPreferences _appPreferences = instance<AppPreferences>();
 
   @override
   void dispose() {
@@ -50,12 +53,14 @@ class _OnboardingViewState extends State<OnboardingView> {
         curve: Curves.easeInOut,
       );
     } else {
+      _appPreferences.setOnbordingViewed();
       Navigator.pushReplacementNamed(context, Routes.loginRoute);
     }
   }
 
   void _skipOnboarding() {
     Navigator.pushReplacementNamed(context, Routes.loginRoute);
+    _appPreferences.setOnbordingViewed();
   }
 
   @override
