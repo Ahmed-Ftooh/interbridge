@@ -130,7 +130,8 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                 listener: (context, state) {
                   // ✅ Navigate when a job is accepted
                   if (state is InterpreterJobAccepted) {
-                    Navigator.pushReplacement(
+                    // Use push instead of pushReplacement to allow going back
+                    Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder:

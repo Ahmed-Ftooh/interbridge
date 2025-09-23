@@ -158,7 +158,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
 
   @override
   Widget build(BuildContext context) {
-    final AppPreferences _appPreferences = instance<AppPreferences>();
+    final AppPreferences appPreferences = instance<AppPreferences>();
 
     return Scaffold(
       backgroundColor: ColorManager.backgroundPrimary,
@@ -195,8 +195,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                 );
               }
               if (state is RegisterSuccess) {
-                _appPreferences.setLoginViewed();
-
+                appPreferences.setLoginViewed();
+                FirebaseMessagingService().initialize();
                 Navigator.of(
                   context,
                 ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);

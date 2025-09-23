@@ -77,18 +77,29 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       emit(ChatLoading());
       final msgs = await service.fetchMessages(e.requestId);
-      for (final m in msgs) {
-        final id = m['id']?.toString();
-        if (id != null) _seenMessageIds.add(id);
-      }
-      emit(ChatLoaded(messages: msgs));
 
+      if (msgs.isEmpty) {
+        // No messages yet → still valid, return an empty ChatLoaded state
+        emit(ChatLoaded(messages: []));
+      } else {
+        for (final m in msgs) {
+          final id = m['id']?.toString();
+          if (id != null) _seenMessageIds.add(id);
+        }
+        emit(ChatLoaded(messages: msgs));
+      }
+
+      // Always subscribe to listen for new messages
       _msgChannel?.unsubscribe();
       _msgChannel = service.subscribeToMessages(e.requestId, (newRow) {
         add(NewIncomingMessage(newRow));
       });
     } catch (err) {
-      emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
+      emit(
+        ChatError(
+          ErrorHandler.handleError(err, context: 'LoadMessages'),
+        ),
+      );
     }
   }
 

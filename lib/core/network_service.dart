@@ -55,7 +55,7 @@ class NetworkService {
     try {
       final result = await InternetAddress.lookup(
         'google.com',
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 2)); // Reduced from 5 to 2 seconds
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
       log('Connectivity check failed: $e');

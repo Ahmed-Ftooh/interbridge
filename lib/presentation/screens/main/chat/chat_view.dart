@@ -23,6 +23,7 @@ class ChatView extends StatefulWidget {
 
 class _ChatViewState extends State<ChatView> {
   final _input = TextEditingController();
+  String? _handledInviteMessageId;
 
   @override
   void initState() {
@@ -49,6 +50,14 @@ class _ChatViewState extends State<ChatView> {
               return IconButton(
                 icon: const Icon(Icons.call),
                 onPressed: () {
+                  // Send a special chat message that renders a Join button on the other side
+                  context.read<ChatBloc>().add(
+                    SendMessage(
+                      requestId: widget.requestId,
+                      content: '__CALL_INVITE__',
+                    ),
+                  );
+                  // Open call screen locally
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => CallScreen(channelId: widget.requestId),
@@ -80,6 +89,58 @@ class _ChatViewState extends State<ChatView> {
                   );
                 }
                 if (state is ChatLoaded) {
+                  // Auto-join if the latest message is a call invite from the other user
+                  if (state.messages.isNotEmpty) {
+                    final last = state.messages.last;
+                    final lastId = last['id']?.toString();
+                    final isInvite = last['content'] == '__CALL_INVITE__';
+                    final isFromMe = last['sender_id'] == myId;
+                    if (isInvite &&
+                        !isFromMe &&
+                        lastId != null &&
+                        _handledInviteMessageId != lastId) {
+                      _handledInviteMessageId = lastId;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder:
+                                (_) => CallScreen(channelId: widget.requestId),
+                          ),
+                        );
+                      });
+                    }
+                  }
+
+                  if (state.messages.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No messages yet',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Start the conversation by sending a message',
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
                   return ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: state.messages.length,
@@ -89,10 +150,42 @@ class _ChatViewState extends State<ChatView> {
                       final userProfile =
                           m['user_profiles'] as Map<String, dynamic>?;
                       final username =
-                          userProfile?['username'] ?? 'Unknown User';
+                          userProfile?['username'] ?? (isMe ? 'You' : 'User');
                       final profileImage =
                           userProfile?['profile_image'] as String?;
-                      final role = userProfile?['role'] as String?;
+
+                      // Render call invite as a button card for the recipient
+                      if (m['content'] == '__CALL_INVITE__' && !isMe) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 6,
+                            horizontal: 12,
+                          ),
+                          child: Card(
+                            color: Colors.green.shade50,
+                            child: ListTile(
+                              leading: const Icon(
+                                Icons.call,
+                                color: Colors.green,
+                              ),
+                              title: const Text('Incoming call'),
+                              subtitle: Text(
+                                'Tap to join — Channel: ${widget.requestId}',
+                              ),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => CallScreen(
+                                          channelId: widget.requestId,
+                                        ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      }
 
                       return Align(
                         alignment:

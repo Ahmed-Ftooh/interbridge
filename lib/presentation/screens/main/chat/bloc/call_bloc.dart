@@ -139,7 +139,28 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // 2) Init engine (once)
       log('Initializing Agora RTC Engine...');
       _engine ??= createAgoraRtcEngine();
-      await _engine!.initialize(RtcEngineContext(appId: agoraAppId));
+
+      // Check if Agora App ID is properly configured
+      String appId;
+      try {
+        appId = agoraAppId;
+      } catch (err) {
+        log('Agora App ID not configured: $err');
+        emit(
+          CallError(
+            AppError(
+              message: 'Voice calling not configured',
+              type: ErrorType.server,
+              userAction:
+                  'Please check your environment configuration and try again.',
+              isRetryable: false,
+            ),
+          ),
+        );
+        return;
+      }
+
+      await _engine!.initialize(RtcEngineContext(appId: appId));
       log('Agora RTC Engine initialized successfully');
 
       // 3) Handlers
@@ -175,10 +196,27 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         ),
       );
 
-      // 4) Local audio settings
+      // 4) Audio profile, scenario & route
+      await _engine!.setAudioProfile(
+        profile: AudioProfileType.audioProfileSpeechStandard,
+      );
+      await _engine!.setAudioScenario(
+        AudioScenarioType.audioScenarioCommunication,
+      );
+      await _engine!.setDefaultAudioRouteToSpeakerphone(
+        false,
+      ); // earpiece to reduce echo
+
       await _engine!.enableAudio();
       await _engine!.muteLocalAudioStream(_muted);
-      await _engine!.setEnableSpeakerphone(_speakerOn);
+      _speakerOn = false; // start on earpiece
+      try {
+        await _engine!.setEnableSpeakerphone(_speakerOn);
+      } catch (e) {
+        log(
+          'Warning: Could not set speakerphone, continuing with default audio route: $e',
+        );
+      }
 
       // 5) Token from Supabase
       final token = await service.fetchAgoraToken(
@@ -228,7 +266,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Emitter<CallState> emit,
   ) async {
     _speakerOn = !_speakerOn;
-    await _engine?.setEnableSpeakerphone(_speakerOn);
+    try {
+      await _engine?.setEnableSpeakerphone(_speakerOn);
+      // Adjust playback gain when speakerphone is on to mitigate room feedback
+      if (_speakerOn) {
+        await _engine?.adjustPlaybackSignalVolume(70);
+      } else {
+        await _engine?.adjustPlaybackSignalVolume(100);
+      }
+    } catch (e) {
+      log('Warning: Could not toggle speakerphone: $e');
+      // Revert the state if the operation failed
+      _speakerOn = !_speakerOn;
+    }
     if (state is CallOngoing) {
       emit((state as CallOngoing).copyWith(speakerOn: _speakerOn));
     }

@@ -10,50 +10,66 @@ class AppInitializer {
   static Future<void> initialize() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Initialize dependency injection
-    await initAppModule();
+    try {
+      // Initialize dependency injection (fast - local operations only)
+      await initAppModule();
 
-    // Load environment variables
-    await dotenv.load(fileName: "assets/.env");
+      // Load environment variables
+      await dotenv.load(fileName: "assets/.env");
 
-    // Validate required environment variables
-    final requiredVars = [
-      'AGORA_APP_ID',
-      'AGORA_APP_CERTIFICATE',
-      'SUPABASE_URL',
-      'SUPABASE_ANON_KEY',
-    ];
+      // Validate required environment variables
+      final requiredVars = [
+        'AGORA_APP_ID',
+        'AGORA_APP_CERTIFICATE',
+        'SUPABASE_URL',
+        'SUPABASE_ANON_KEY',
+      ];
 
-    final missingVars = <String>[];
-    for (final varName in requiredVars) {
-      if (dotenv.env[varName] == null || dotenv.env[varName]!.isEmpty) {
-        missingVars.add(varName);
+      final missingVars = <String>[];
+      for (final varName in requiredVars) {
+        if (dotenv.env[varName] == null || dotenv.env[varName]!.isEmpty) {
+          missingVars.add(varName);
+        }
       }
+
+      if (missingVars.isNotEmpty) {
+        throw Exception(
+          'Missing required environment variables: ${missingVars.join(', ')}\n'
+          'Please check your assets/.env file and ensure all required variables are set.\n'
+          'You can copy env.template to assets/.env and fill in your actual values.',
+        );
+      }
+
+      // Initialize Global Error Handler first (no network calls)
+      GlobalErrorHandler.initialize();
+
+      // Initialize Error Service (no network calls)
+      await ErrorService().initialize();
+
+      // Initialize services in parallel to reduce startup time
+      await Future.wait([
+        // Initialize Supabase
+        Supabase.initialize(
+          url: dotenv.env['SUPABASE_URL']!,
+          anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+        ),
+        // Initialize Network Service (with timeout)
+        NetworkService().initialize().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            // Continue with initialization even if network check fails
+            print('Network service initialization timed out, continuing...');
+          },
+        ),
+      ]);
+
+      // Initialize Firebase after Supabase is ready
+      await instance<FirebaseService>().initialize();
+    } catch (e) {
+      // Log error but don't crash the app
+      print('Error during app initialization: $e');
+      // You might want to show a user-friendly error screen instead
+      rethrow;
     }
-
-    if (missingVars.isNotEmpty) {
-      throw Exception(
-        'Missing required environment variables: ${missingVars.join(', ')}\n'
-        'Please check your assets/.env file and ensure all required variables are set.',
-      );
-    }
-
-    // Initialize Supabase FIRST (before Firebase services that depend on it)
-    await Supabase.initialize(
-      url: dotenv.env['SUPABASE_URL']!,
-      anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-    );
-
-    // Initialize Firebase using GetIt (after Supabase is ready)
-    await instance<FirebaseService>().initialize();
-
-    // Initialize Network Service
-    await NetworkService().initialize();
-
-    // Initialize Error Service
-    await ErrorService().initialize();
-
-    // Initialize Global Error Handler
-    GlobalErrorHandler.initialize();
   }
 }
