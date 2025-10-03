@@ -12,6 +12,7 @@ import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/data/services/notification_service.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
+import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/core/firebase_service.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 
@@ -36,6 +37,11 @@ Future<void> initAppModule() async {
     // Register InterpreterJobService
     instance.registerLazySingleton<InterpreterJobService>(
       () => InterpreterJobService(),
+    );
+
+    // Register DocumentTranslationService
+    instance.registerLazySingleton<DocumentTranslationService>(
+      () => DocumentTranslationService(),
     );
 
     // Register Firebase services

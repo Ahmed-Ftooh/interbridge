@@ -3,35 +3,36 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
-import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_preview_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
 import 'package:interbridge/app/di.dart';
 
-class InterpreterDocumentView extends StatefulWidget {
-  const InterpreterDocumentView({super.key});
+class InterpreterAcceptedDocumentsView extends StatefulWidget {
+  const InterpreterAcceptedDocumentsView({super.key});
 
   @override
-  State<InterpreterDocumentView> createState() =>
-      _InterpreterDocumentViewState();
+  State<InterpreterAcceptedDocumentsView> createState() =>
+      _InterpreterAcceptedDocumentsViewState();
 }
 
-class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
-  List<DocumentTranslationRequest> _availableRequests = [];
+class _InterpreterAcceptedDocumentsViewState
+    extends State<InterpreterAcceptedDocumentsView> {
+  List<DocumentTranslationRequest> _acceptedRequests = [];
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadAvailableRequests();
+    _loadAcceptedRequests();
   }
 
-  Future<void> _loadAvailableRequests() async {
+  Future<void> _loadAcceptedRequests() async {
     setState(() => _isLoading = true);
     try {
       final requests =
-          await instance<DocumentTranslationService>().getAvailableRequests();
+          await instance<DocumentTranslationService>().getAcceptedRequests();
       setState(() {
-        _availableRequests = requests;
+        _acceptedRequests = requests;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -43,25 +44,30 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
     }
   }
 
-  void _previewRequest(DocumentTranslationRequest request) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => InterpreterDocumentPreviewView(request: request),
-      ),
-    );
+  void _startTranslation(DocumentTranslationRequest request) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (context) => InterpreterTranslationView(request: request),
+          ),
+        )
+        .then((_) {
+          // Reload requests when returning from translation view
+          _loadAcceptedRequests();
+        });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Document Translation Requests'),
+        title: const Text('My Accepted Translations'),
         backgroundColor: ColorManager.primary2,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadAvailableRequests,
+            onPressed: _loadAcceptedRequests,
           ),
         ],
       ),
@@ -100,7 +106,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             ),
             const SizedBox(height: AppSize.s16),
             ElevatedButton(
-              onPressed: _loadAvailableRequests,
+              onPressed: _loadAcceptedRequests,
               child: const Text('Retry'),
             ),
           ],
@@ -108,7 +114,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
       );
     }
 
-    if (_availableRequests.isEmpty) {
+    if (_acceptedRequests.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -116,7 +122,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             Icon(Icons.description_outlined, size: 64, color: Colors.grey),
             SizedBox(height: AppSize.s16),
             Text(
-              'No Available Requests',
+              'No Accepted Translations',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -125,7 +131,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             ),
             SizedBox(height: AppSize.s8),
             Text(
-              'There are currently no document translation requests available.',
+              'You have no accepted document translation requests.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
@@ -135,12 +141,12 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadAvailableRequests,
+      onRefresh: _loadAcceptedRequests,
       child: ListView.builder(
         padding: const EdgeInsets.all(AppSize.s16),
-        itemCount: _availableRequests.length,
+        itemCount: _acceptedRequests.length,
         itemBuilder: (context, index) {
-          final request = _availableRequests[index];
+          final request = _acceptedRequests[index];
           return _buildRequestCard(request);
         },
       ),
@@ -198,13 +204,13 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                     vertical: AppSize.s4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(AppSize.s8),
                   ),
                   child: const Text(
-                    'Pending',
-                    style: TextStyle(
-                      color: Colors.orange,
+                    'Accepted',
+                    style: const TextStyle(
+                      color: Colors.green,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -217,7 +223,10 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             if (request.text != null && request.text!.isNotEmpty) ...[
               const Text(
                 'Text to Translate:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: AppSize.s8),
               Container(
@@ -251,7 +260,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                   color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppSize.s8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     const Icon(Icons.attach_file, color: Colors.blue),
                     const SizedBox(width: AppSize.s8),
@@ -264,6 +273,12 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                         ),
                       ),
                     ),
+                    TextButton(
+                      onPressed: () {
+                        // TODO: Open file viewer
+                      },
+                      child: const Text('View'),
+                    ),
                   ],
                 ),
               ),
@@ -271,7 +286,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             ],
 
             Text(
-              'Requested: ${request.createdAt.toString().split('.')[0]}',
+              'Accepted: ${request.acceptedAt?.toString().split('.')[0] ?? 'Unknown'}',
               style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
             const SizedBox(height: AppSize.s16),
@@ -279,14 +294,14 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => _previewRequest(request),
+                onPressed: () => _startTranslation(request),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.primary2,
+                  backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: AppSize.s12),
                 ),
                 child: const Text(
-                  'Preview & Accept',
+                  'Start Translation',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

@@ -11,11 +11,17 @@ class AppInitializer {
     WidgetsFlutterBinding.ensureInitialized();
 
     try {
-      // Initialize dependency injection (fast - local operations only)
+      // Initialize dependency injection first (fast - local operations only)
       await initAppModule();
 
-      // Load environment variables
-      await dotenv.load(fileName: "assets/.env");
+      // Load environment variables in parallel with other fast operations
+      final envFuture = dotenv.load(fileName: "assets/.env");
+
+      // Initialize Global Error Handler (no network calls)
+      GlobalErrorHandler.initialize();
+
+      // Wait for environment variables to load
+      await envFuture;
 
       // Validate required environment variables
       final requiredVars = [
@@ -40,12 +46,6 @@ class AppInitializer {
         );
       }
 
-      // Initialize Global Error Handler first (no network calls)
-      GlobalErrorHandler.initialize();
-
-      // Initialize Error Service (no network calls)
-      await ErrorService().initialize();
-
       // Initialize services in parallel to reduce startup time
       await Future.wait([
         // Initialize Supabase
@@ -53,9 +53,11 @@ class AppInitializer {
           url: dotenv.env['SUPABASE_URL']!,
           anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
         ),
+        // Initialize Error Service (no network calls)
+        ErrorService().initialize(),
         // Initialize Network Service (with timeout)
         NetworkService().initialize().timeout(
-          const Duration(seconds: 3),
+          const Duration(seconds: 2),
           onTimeout: () {
             // Continue with initialization even if network check fails
             print('Network service initialization timed out, continuing...');
@@ -63,8 +65,13 @@ class AppInitializer {
         ),
       ]);
 
-      // Initialize Firebase after Supabase is ready
-      await instance<FirebaseService>().initialize();
+      // Initialize Firebase after other services are ready (with timeout)
+      await instance<FirebaseService>().initialize().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          print('Firebase initialization timed out, continuing...');
+        },
+      );
     } catch (e) {
       // Log error but don't crash the app
       print('Error during app initialization: $e');

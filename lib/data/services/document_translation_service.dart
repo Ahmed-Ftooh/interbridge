@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:developer';
-import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
@@ -18,25 +17,12 @@ class DocumentTranslationService {
     required String fromLanguage,
     required String toLanguage,
     String? specialization,
-    String? text,
-    File? file,
+    required String text,
   }) async {
     try {
       final user = _client.auth.currentUser;
       if (user == null) {
         throw Exception('User must be authenticated to create a request');
-      }
-
-      String? fileUrl;
-      if (file != null) {
-        // Upload file to Supabase Storage
-        final fileName =
-            '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
-        final filePath = 'document_translations/${user.id}/$fileName';
-
-        await _client.storage.from('documents').upload(filePath, file);
-
-        fileUrl = _client.storage.from('documents').getPublicUrl(filePath);
       }
 
       // Create the request
@@ -46,7 +32,7 @@ class DocumentTranslationService {
         'to_language': toLanguage,
         'specialization': specialization,
         'text': text,
-        'file_url': fileUrl,
+        'file_url': null,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
       };
@@ -127,22 +113,52 @@ class DocumentTranslationService {
       );
       log('DEBUG: Specialization: ${request.specialization}');
 
-      // Query interpreters with the required language pair
-      final languageQuery = await _client
-          .from('interpreter_languages')
-          .select('user_id, language_id, fluency_id')
-          .eq('language_id', request.toLanguage);
+      // First, get language IDs for the from and to languages
+      final fromLanguageQuery =
+          await _client
+              .from('languages')
+              .select('id')
+              .eq('name', request.fromLanguage)
+              .single();
+      final toLanguageQuery =
+          await _client
+              .from('languages')
+              .select('id')
+              .eq('name', request.toLanguage)
+              .single();
+
+      final fromLanguageId = fromLanguageQuery['id'] as int;
+      final toLanguageId = toLanguageQuery['id'] as int;
 
       log(
-        'DEBUG: Found ${languageQuery.length} interpreters with target language',
+        'DEBUG: From language ID: $fromLanguageId, To language ID: $toLanguageId',
       );
 
-      // Get user IDs of matching interpreters
-      final matchingUserIds =
-          languageQuery.map((lang) => lang['user_id'] as String).toList();
+      // Find interpreters who have BOTH the from and to languages
+      final fromLanguageUsers = await _client
+          .from('interpreter_languages')
+          .select('user_id')
+          .eq('language_id', fromLanguageId);
+
+      final toLanguageUsers = await _client
+          .from('interpreter_languages')
+          .select('user_id')
+          .eq('language_id', toLanguageId);
+
+      final fromUserIds =
+          fromLanguageUsers.map((lang) => lang['user_id'] as String).toSet();
+      final toUserIds =
+          toLanguageUsers.map((lang) => lang['user_id'] as String).toSet();
+
+      // Find intersection - interpreters who have both languages
+      final matchingUserIds = fromUserIds.intersection(toUserIds).toList();
+
+      log(
+        'DEBUG: Found ${matchingUserIds.length} interpreters with both languages',
+      );
 
       if (matchingUserIds.isEmpty) {
-        log('DEBUG: No interpreters found with target language');
+        log('DEBUG: No interpreters found with both languages');
         return [];
       }
 
@@ -443,6 +459,110 @@ class DocumentTranslationService {
     } catch (e) {
       log('Error getting available document translation requests: $e');
       return [];
+    }
+  }
+
+  /// Get accepted document translation requests for the current interpreter
+  Future<List<DocumentTranslationRequest>> getAcceptedRequests() async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be authenticated');
+      }
+
+      final response = await _client
+          .from('document_translation_requests')
+          .select()
+          .eq('accepted_by', user.id)
+          .eq('status', 'accepted')
+          .order('accepted_at', ascending: false);
+
+      return response
+          .map((json) => DocumentTranslationRequest.fromJson(json))
+          .toList();
+    } catch (e) {
+      log('Error getting accepted document translation requests: $e');
+      return [];
+    }
+  }
+
+  /// Complete a document translation request
+  Future<void> completeRequest({
+    required String requestId,
+    required String translatedText,
+  }) async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be authenticated');
+      }
+
+      // Update the request with completed translation
+      await _client
+          .from('document_translation_requests')
+          .update({
+            'status': 'completed',
+            'translated_text': translatedText,
+            'translated_file_url': null,
+            'completed_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', requestId);
+
+      // Send notification to requester that translation is completed
+      await _notifyRequesterTranslationCompleted(requestId, user.id);
+    } catch (e) {
+      log('Error completing document translation request: $e');
+      rethrow;
+    }
+  }
+
+  /// Notify requester that their translation is completed
+  Future<void> _notifyRequesterTranslationCompleted(
+    String requestId,
+    String interpreterId,
+  ) async {
+    try {
+      // Get the request details
+      final requestResponse =
+          await _client
+              .from('document_translation_requests')
+              .select('requester_id')
+              .eq('id', requestId)
+              .single();
+
+      final requesterId = requestResponse['requester_id'];
+
+      // Get interpreter profile
+      final interpreterProfile =
+          await _client
+              .from('users_profile')
+              .select('username')
+              .eq('user_id', interpreterId)
+              .single();
+
+      // Get requester's FCM token
+      final requesterTokens = await _getFCMTokensForUsers([requesterId]);
+
+      if (requesterTokens.isNotEmpty) {
+        final notificationData = {
+          'title': 'Document Translation Completed',
+          'body':
+              '${interpreterProfile['username']} has completed your document translation',
+          'data': {
+            'request_id': requestId,
+            'interpreter_id': interpreterId,
+            'type': 'document_translation_completed',
+          },
+          'tokens': requesterTokens,
+        };
+
+        await _client.functions.invoke(
+          'send-notification',
+          body: jsonEncode(notificationData),
+        );
+      }
+    } catch (e) {
+      log('Error notifying requester of completion: $e');
     }
   }
 }

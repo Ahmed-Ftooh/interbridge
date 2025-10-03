@@ -11,6 +11,8 @@ class DocumentTranslationRequest {
   final DateTime createdAt;
   final DateTime? acceptedAt;
   final DateTime? completedAt;
+  final String? translatedText;
+  final String? translatedFileUrl;
 
   DocumentTranslationRequest({
     required this.id,
@@ -25,6 +27,8 @@ class DocumentTranslationRequest {
     required this.createdAt,
     this.acceptedAt,
     this.completedAt,
+    this.translatedText,
+    this.translatedFileUrl,
   });
 
   factory DocumentTranslationRequest.fromJson(Map<String, dynamic> json) {
@@ -47,6 +51,8 @@ class DocumentTranslationRequest {
           json['completed_at'] != null
               ? DateTime.parse(json['completed_at'] as String)
               : null,
+      translatedText: json['translated_text'] as String?,
+      translatedFileUrl: json['translated_file_url'] as String?,
     );
   }
 
@@ -64,6 +70,8 @@ class DocumentTranslationRequest {
       'created_at': createdAt.toIso8601String(),
       'accepted_at': acceptedAt?.toIso8601String(),
       'completed_at': completedAt?.toIso8601String(),
+      'translated_text': translatedText,
+      'translated_file_url': translatedFileUrl,
     };
   }
 
@@ -80,6 +88,8 @@ class DocumentTranslationRequest {
     DateTime? createdAt,
     DateTime? acceptedAt,
     DateTime? completedAt,
+    String? translatedText,
+    String? translatedFileUrl,
   }) {
     return DocumentTranslationRequest(
       id: id ?? this.id,
@@ -94,6 +104,8 @@ class DocumentTranslationRequest {
       createdAt: createdAt ?? this.createdAt,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
+      translatedText: translatedText ?? this.translatedText,
+      translatedFileUrl: translatedFileUrl ?? this.translatedFileUrl,
     );
   }
 }

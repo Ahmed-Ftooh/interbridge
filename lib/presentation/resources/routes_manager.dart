@@ -7,6 +7,7 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view/selec
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_language_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/language_fluency_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/voice_check_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_view.dart';
 import 'package:interbridge/presentation/screens/main/main_view.dart';
 import 'package:interbridge/presentation/screens/onboarding/view/onboarding_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_role_screen.dart';
@@ -28,6 +29,7 @@ class Routes {
   static const String voiceCheckScreen = "/voiceCheckScreen";
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
   static const String requestWaiting = "/requestWaiting";
+  static const String accepteddoucment = "/accepteddoucment";
 }
 
 class RouteGenerator {
@@ -35,6 +37,10 @@ class RouteGenerator {
     switch (settings.name) {
       case Routes.splashRoute:
         return MaterialPageRoute(builder: (_) => const SplashView());
+      case Routes.accepteddoucment:
+        return MaterialPageRoute(
+          builder: (_) => const InterpreterDocumentView(),
+        );
       case Routes.loginRoute:
         return MaterialPageRoute(builder: (_) => const LoginView());
       case Routes.onBoardingRoute:

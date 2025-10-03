@@ -200,9 +200,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await _engine!.setAudioProfile(
         profile: AudioProfileType.audioProfileSpeechStandard,
       );
-      await _engine!.setAudioScenario(
-        AudioScenarioType.audioScenarioCommunication,
-      );
+      await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
       await _engine!.setDefaultAudioRouteToSpeakerphone(
         false,
       ); // earpiece to reduce echo
