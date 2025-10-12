@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/chat_service.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bolc.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:lottie/lottie.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/resources/assets_manager.dart';
@@ -80,7 +80,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
                   final interpreterId = newRow['accepted_by'].toString();
                   final requesterId = newRow['requester_id'].toString();
                   if (mounted) {
-                    Navigator.pushReplacement(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
                         builder:
@@ -93,6 +93,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
                               ),
                             ),
                       ),
+                      (route) => false,
                     );
                   }
                 }

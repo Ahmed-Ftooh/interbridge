@@ -5,6 +5,7 @@ import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
 import 'package:interbridge/app/di.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 
 class InterpreterAcceptedDocumentsView extends StatefulWidget {
   const InterpreterAcceptedDocumentsView({super.key});
@@ -168,7 +169,10 @@ class _InterpreterAcceptedDocumentsViewState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${request.fromLanguage} → ${request.toLanguage}',
+                        _getLanguageDisplayText(
+                          request.fromLanguage,
+                          request.toLanguage,
+                        ),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -209,7 +213,7 @@ class _InterpreterAcceptedDocumentsViewState
                   ),
                   child: const Text(
                     'Accepted',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.green,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -223,10 +227,7 @@ class _InterpreterAcceptedDocumentsViewState
             if (request.text != null && request.text!.isNotEmpty) ...[
               const Text(
                 'Text to Translate:',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: AppSize.s8),
               Container(
@@ -247,10 +248,7 @@ class _InterpreterAcceptedDocumentsViewState
             if (request.fileUrl != null) ...[
               const Text(
                 'File Attached:',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: AppSize.s8),
               Container(
@@ -265,20 +263,12 @@ class _InterpreterAcceptedDocumentsViewState
                     const Icon(Icons.attach_file, color: Colors.blue),
                     const SizedBox(width: AppSize.s8),
                     const Expanded(
-                      child: const Text(
+                      child: Text(
                         'Document file',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.blue, fontSize: 14),
                       ),
                     ),
-                    TextButton(
-                      onPressed: () {
-                        // TODO: Open file viewer
-                      },
-                      child: const Text('View'),
-                    ),
+                    TextButton(onPressed: () {}, child: const Text('View')),
                   ],
                 ),
               ),
@@ -302,10 +292,7 @@ class _InterpreterAcceptedDocumentsViewState
                 ),
                 child: const Text(
                   'Start Translation',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -313,5 +300,22 @@ class _InterpreterAcceptedDocumentsViewState
         ),
       ),
     );
+  }
+
+  /// Helper method to convert language IDs to display names
+  String _getLanguageDisplayText(String fromLanguage, String toLanguage) {
+    final fromLanguageId = int.tryParse(fromLanguage) ?? 0;
+    final toLanguageId = int.tryParse(toLanguage) ?? 0;
+    final fromLanguageName = LanguageMappingUtility.getLanguageName(
+      fromLanguageId,
+    );
+    final toLanguageName = LanguageMappingUtility.getLanguageName(toLanguageId);
+
+    // Use language names if available, otherwise fallback to IDs
+    if (fromLanguageName.isNotEmpty && toLanguageName.isNotEmpty) {
+      return '$fromLanguageName → $toLanguageName';
+    } else {
+      return '$fromLanguage → $toLanguage';
+    }
   }
 }

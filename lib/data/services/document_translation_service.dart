@@ -17,7 +17,10 @@ class DocumentTranslationService {
     required String fromLanguage,
     required String toLanguage,
     String? specialization,
-    required String text,
+    String? text,
+    String? title,
+    String? comment,
+    String? translationMethod,
   }) async {
     try {
       final user = _client.auth.currentUser;
@@ -32,6 +35,9 @@ class DocumentTranslationService {
         'to_language': toLanguage,
         'specialization': specialization,
         'text': text,
+        'title': title,
+        'comment': comment,
+        'translation_method': translationMethod,
         'file_url': null,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
@@ -287,7 +293,7 @@ class DocumentTranslationService {
 
       final tokens = response.map((token) => token['token'] as String).toList();
       log(
-        'DEBUG: Extracted ${tokens.length} FCM tokens: ${tokens.map((t) => t.substring(0, 20) + "...").toList()}',
+        'DEBUG: Extracted ${tokens.length} FCM tokens: ${tokens.map((t) => '${t.substring(0, 20)}...').toList()}',
       );
 
       return tokens;
@@ -563,6 +569,42 @@ class DocumentTranslationService {
       }
     } catch (e) {
       log('Error notifying requester of completion: $e');
+    }
+  }
+
+  /// Delete a document translation request
+  Future<void> deleteRequest(String requestId) async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be authenticated');
+      }
+
+      // First, verify that the user owns this request
+      final requestResponse =
+          await _client
+              .from('document_translation_requests')
+              .select('requester_id, status')
+              .eq('id', requestId)
+              .single();
+
+      if (requestResponse['requester_id'] != user.id) {
+        throw Exception('You can only delete your own requests');
+      }
+
+      // Only allow deletion of pending requests
+      if (requestResponse['status'] != 'pending') {
+        throw Exception('You can only delete pending requests');
+      }
+
+      // Delete the request
+      await _client
+          .from('document_translation_requests')
+          .delete()
+          .eq('id', requestId);
+    } catch (e) {
+      log('Error deleting document translation request: $e');
+      rethrow;
     }
   }
 }

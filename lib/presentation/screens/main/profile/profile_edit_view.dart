@@ -65,20 +65,20 @@ class _ProfileEditViewState extends State<ProfileEditView> {
           listener: (context, state) {
             if (state is ProfileUpdated) {
               CustomSnackBar.show(
-                context: context,
+                context,
                 message: 'Profile updated successfully!',
                 type: SnackBarType.success,
               );
               Navigator.pop(context, true); // Return true to indicate update
             } else if (state is ProfileError) {
               CustomSnackBar.show(
-                context: context,
+                context,
                 message: state.message,
                 type: SnackBarType.error,
               );
             } else if (state is ImageError) {
               CustomSnackBar.show(
-                context: context,
+                context,
                 message: state.message,
                 type: SnackBarType.error,
               );

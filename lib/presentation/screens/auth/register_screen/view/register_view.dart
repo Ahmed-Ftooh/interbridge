@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
-import 'package:interbridge/data/services/firebase_messaging_service.dart';
 
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -158,8 +157,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
 
   @override
   Widget build(BuildContext context) {
-    final AppPreferences appPreferences = instance<AppPreferences>();
-
     return Scaffold(
       backgroundColor: ColorManager.backgroundPrimary,
       appBar: AppBar(
@@ -189,17 +186,17 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
               if (state is RegisterFailure) {
                 log(state.error);
                 CustomSnackBar.show(
-                  context: context,
+                  context,
                   message: state.error,
                   type: SnackBarType.error,
                 );
               }
               if (state is RegisterSuccess) {
-                appPreferences.setLoginViewed();
-                FirebaseMessagingService().initialize();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+                // mark that login flow started so splash doesn't route to onboarding
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  Routes.emailVerificationRoute,
+                  (route) => false,
+                );
               }
             },
             builder: (context, state) {
@@ -358,7 +355,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               // Enhanced validation
                               if (!_agreedToPrivacy) {
                                 CustomSnackBar.show(
-                                  context: context,
+                                  context,
                                   message:
                                       AppStrings.pleaseAgreeToPrivacyPolicy,
                                   type: SnackBarType.error,
@@ -369,7 +366,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               if (_passwordController.text !=
                                   _confirmPasswordController.text) {
                                 CustomSnackBar.show(
-                                  context: context,
+                                  context,
                                   message: AppStrings.passwordsDoNotMatch,
                                   type: SnackBarType.error,
                                 );
@@ -380,7 +377,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                   _emailController.text.trim().isEmpty ||
                                   _passwordController.text.isEmpty) {
                                 CustomSnackBar.show(
-                                  context: context,
+                                  context,
                                   message:
                                       AppStrings.pleaseFillInAllRequiredFields,
                                   type: SnackBarType.error,
@@ -392,7 +389,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               if (role == 'interpreter') {
                                 if (languages.isEmpty) {
                                   CustomSnackBar.show(
-                                    context: context,
+                                    context,
                                     message:
                                         AppStrings
                                             .pleaseSelectAtLeastOneLanguage,
@@ -403,7 +400,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
 
                                 if (skills.isEmpty) {
                                   CustomSnackBar.show(
-                                    context: context,
+                                    context,
                                     message:
                                         AppStrings.pleaseSelectAtLeastOneSkill,
                                     type: SnackBarType.error,
@@ -413,7 +410,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
 
                                 if (specializations.isEmpty) {
                                   CustomSnackBar.show(
-                                    context: context,
+                                    context,
                                     message:
                                         AppStrings
                                             .pleaseSelectAtLeastOneSpecialization,

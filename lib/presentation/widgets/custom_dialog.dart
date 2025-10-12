@@ -1,25 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
+import 'package:interbridge/presentation/resources/strings_manager.dart';
 
 class CustomDialog extends StatelessWidget {
   final String title;
-  final String message;
-  final String? primaryButtonText;
-  final String? secondaryButtonText;
-  final VoidCallback? onPrimaryPressed;
-  final VoidCallback? onSecondaryPressed;
+  final String? content;
+  final Widget? contentWidget;
+  final String? confirmText;
+  final String? cancelText;
+  final VoidCallback? onConfirm;
+  final VoidCallback? onCancel;
+  final bool showCancelButton;
+  final bool showConfirmButton;
   final IconData? icon;
   final Color? iconColor;
 
   const CustomDialog({
     super.key,
     required this.title,
-    required this.message,
-    this.primaryButtonText,
-    this.secondaryButtonText,
-    this.onPrimaryPressed,
-    this.onSecondaryPressed,
+    this.content,
+    this.contentWidget,
+    this.confirmText,
+    this.cancelText,
+    this.onConfirm,
+    this.onCancel,
+    this.showCancelButton = true,
+    this.showConfirmButton = true,
     this.icon,
     this.iconColor,
   });
@@ -30,99 +37,313 @@ class CustomDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSize.s16),
       ),
-      contentPadding: const EdgeInsets.all(AppSize.s20),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
+      title: Row(
         children: [
           if (icon != null) ...[
             Icon(
               icon,
-              size: AppSize.s50,
-              color: iconColor ?? ColorManager.primary,
+              color: iconColor ?? ColorManager.primary2,
+              size: AppSize.s24,
             ),
-            const SizedBox(height: AppSize.s16),
+            const SizedBox(width: AppSize.s12),
           ],
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: AppSize.s18,
-              fontWeight: FontWeight.bold,
-              color: ColorManager.textPrimary,
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: ColorManager.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSize.s12),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: AppSize.s14,
-              color: ColorManager.textSecondary,
-            ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
+      content:
+          contentWidget ??
+          (content != null
+              ? Text(
+                content!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ColorManager.textSecondary,
+                ),
+              )
+              : null),
       actions: [
-        if (secondaryButtonText != null)
+        if (showCancelButton)
           TextButton(
-            onPressed: onSecondaryPressed ?? () => Navigator.of(context).pop(),
-            child: Text(
-              secondaryButtonText!,
-              style: TextStyle(
-                color: ColorManager.textSecondary,
-                fontSize: AppSize.s14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            onPressed: onCancel ?? () => Navigator.of(context).pop(),
+            child: Text(cancelText ?? AppStrings.cancel),
           ),
-        if (primaryButtonText != null)
+        if (showConfirmButton)
           ElevatedButton(
-            onPressed: onPrimaryPressed ?? () => Navigator.of(context).pop(),
+            onPressed: onConfirm,
             style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.primary,
+              backgroundColor: ColorManager.primary2,
               foregroundColor: ColorManager.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppSize.s12),
-              ),
             ),
-            child: Text(
-              primaryButtonText!,
-              style: const TextStyle(
-                fontSize: AppSize.s14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: Text(confirmText ?? AppStrings.retry),
           ),
       ],
     );
   }
 }
 
-// Convenience method to show custom dialog
-void showCustomDialog({
-  required BuildContext context,
-  required String title,
-  required String message,
-  String? primaryButtonText,
-  String? secondaryButtonText,
-  VoidCallback? onPrimaryPressed,
-  VoidCallback? onSecondaryPressed,
-  IconData? icon,
-  Color? iconColor,
-}) {
-  showDialog(
-    context: context,
-    builder: (BuildContext context) {
-      return CustomDialog(
-        title: title,
-        message: message,
-        primaryButtonText: primaryButtonText,
-        secondaryButtonText: secondaryButtonText,
-        onPrimaryPressed: onPrimaryPressed,
-        onSecondaryPressed: onSecondaryPressed,
-        icon: icon,
-        iconColor: iconColor,
-      );
-    },
-  );
+class CustomConfirmDialog extends StatelessWidget {
+  final String title;
+  final String content;
+  final String? confirmText;
+  final String? cancelText;
+  final VoidCallback? onConfirm;
+  final VoidCallback? onCancel;
+  final IconData? icon;
+  final Color? iconColor;
+
+  const CustomConfirmDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.confirmText,
+    this.cancelText,
+    this.onConfirm,
+    this.onCancel,
+    this.icon,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomDialog(
+      title: title,
+      content: content,
+      confirmText: confirmText ?? AppStrings.delete,
+      cancelText: cancelText ?? AppStrings.cancel,
+      icon: icon ?? Icons.warning,
+      iconColor: iconColor ?? ColorManager.error,
+      onConfirm: onConfirm,
+      onCancel: onCancel ?? () => Navigator.of(context).pop(),
+    );
+  }
+}
+
+class CustomInfoDialog extends StatelessWidget {
+  final String title;
+  final String content;
+  final String? buttonText;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final Color? iconColor;
+
+  const CustomInfoDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.buttonText,
+    this.onPressed,
+    this.icon,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomDialog(
+      title: title,
+      content: content,
+      confirmText: buttonText ?? AppStrings.close,
+      showCancelButton: false,
+      icon: icon ?? Icons.info,
+      iconColor: iconColor ?? ColorManager.info,
+      onConfirm: onPressed ?? () => Navigator.of(context).pop(),
+    );
+  }
+}
+
+class CustomSuccessDialog extends StatelessWidget {
+  final String title;
+  final String content;
+  final String? buttonText;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final Color? iconColor;
+
+  const CustomSuccessDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.buttonText,
+    this.onPressed,
+    this.icon,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomDialog(
+      title: title,
+      content: content,
+      confirmText: buttonText ?? AppStrings.close,
+      showCancelButton: false,
+      icon: icon ?? Icons.check_circle,
+      iconColor: iconColor ?? ColorManager.success,
+      onConfirm: onPressed ?? () => Navigator.of(context).pop(),
+    );
+  }
+}
+
+class CustomErrorDialog extends StatelessWidget {
+  final String title;
+  final String content;
+  final String? buttonText;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final Color? iconColor;
+
+  const CustomErrorDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.buttonText,
+    this.onPressed,
+    this.icon,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomDialog(
+      title: title,
+      content: content,
+      confirmText: buttonText ?? AppStrings.close,
+      showCancelButton: false,
+      icon: icon ?? Icons.error,
+      iconColor: iconColor ?? ColorManager.error,
+      onConfirm: onPressed ?? () => Navigator.of(context).pop(),
+    );
+  }
+}
+
+// Extension methods for easy dialog showing
+extension CustomDialogExtension on BuildContext {
+  Future<void> showCustomDialog({
+    required String title,
+    String? content,
+    Widget? contentWidget,
+    String? confirmText,
+    String? cancelText,
+    VoidCallback? onConfirm,
+    VoidCallback? onCancel,
+    bool showCancelButton = true,
+    bool showConfirmButton = true,
+    IconData? icon,
+    Color? iconColor,
+  }) {
+    return showDialog(
+      context: this,
+      builder:
+          (context) => CustomDialog(
+            title: title,
+            content: content,
+            contentWidget: contentWidget,
+            confirmText: confirmText,
+            cancelText: cancelText,
+            onConfirm: onConfirm,
+            onCancel: onCancel,
+            showCancelButton: showCancelButton,
+            showConfirmButton: showConfirmButton,
+            icon: icon,
+            iconColor: iconColor,
+          ),
+    );
+  }
+
+  Future<void> showConfirmDialog({
+    required String title,
+    required String content,
+    String? confirmText,
+    String? cancelText,
+    VoidCallback? onConfirm,
+    VoidCallback? onCancel,
+    IconData? icon,
+    Color? iconColor,
+  }) {
+    return showDialog(
+      context: this,
+      builder:
+          (context) => CustomConfirmDialog(
+            title: title,
+            content: content,
+            confirmText: confirmText,
+            cancelText: cancelText,
+            onConfirm: onConfirm,
+            onCancel: onCancel,
+            icon: icon,
+            iconColor: iconColor,
+          ),
+    );
+  }
+
+  Future<void> showInfoDialog({
+    required String title,
+    required String content,
+    String? buttonText,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Color? iconColor,
+  }) {
+    return showDialog(
+      context: this,
+      builder:
+          (context) => CustomInfoDialog(
+            title: title,
+            content: content,
+            buttonText: buttonText,
+            onPressed: onPressed,
+            icon: icon,
+            iconColor: iconColor,
+          ),
+    );
+  }
+
+  Future<void> showSuccessDialog({
+    required String title,
+    required String content,
+    String? buttonText,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Color? iconColor,
+  }) {
+    return showDialog(
+      context: this,
+      builder:
+          (context) => CustomSuccessDialog(
+            title: title,
+            content: content,
+            buttonText: buttonText,
+            onPressed: onPressed,
+            icon: icon,
+            iconColor: iconColor,
+          ),
+    );
+  }
+
+  Future<void> showErrorDialog({
+    required String title,
+    required String content,
+    String? buttonText,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Color? iconColor,
+  }) {
+    return showDialog(
+      context: this,
+      builder:
+          (context) => CustomErrorDialog(
+            title: title,
+            content: content,
+            buttonText: buttonText,
+            onPressed: onPressed,
+            icon: icon,
+            iconColor: iconColor,
+          ),
+    );
+  }
 }

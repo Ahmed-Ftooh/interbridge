@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
+import 'package:interbridge/presentation/resources/strings_manager.dart';
+import 'package:interbridge/presentation/widgets/custom_card.dart';
+import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/presentation/widgets/custom_text_field.dart';
+import 'package:interbridge/presentation/widgets/custom_dialog.dart';
+import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
+import 'package:interbridge/presentation/widgets/custom_loading.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
@@ -17,12 +24,17 @@ class DocumentTranslationView extends StatefulWidget {
 }
 
 class _DocumentTranslationViewState extends State<DocumentTranslationView> {
+  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _commentController = TextEditingController();
   Language? _selectedFromLanguage;
   Language? _selectedToLanguage;
   String? _selectedSpecialization;
   bool _isLoading = false;
   List<DocumentTranslationRequest> _userRequests = [];
+
+  // Translation method selection
+  String _selectedTranslationMethod = 'text';
 
   // Language selection variables
   List<Language> _languages = [];
@@ -37,6 +49,13 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
     'Social Services',
     'Mental Health',
     'None of the Above',
+  ];
+
+  final List<String> _translationMethods = [
+    'text',
+    'document',
+    'voice',
+    'image',
   ];
 
   @override
@@ -81,16 +100,21 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
 
   Future<void> _submitRequest() async {
     if (_selectedFromLanguage == null || _selectedToLanguage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select both languages')),
+      context.showErrorSnackBar(AppStrings.pleaseSelectBothLanguages);
+      return;
+    }
+
+    if (_titleController.text.trim().isEmpty) {
+      context.showErrorSnackBar(
+        'Please provide a title for your translation request',
       );
       return;
     }
 
-    if (_textController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please provide text to translate')),
-      );
+    // Validate based on translation method
+    if (_selectedTranslationMethod == 'text' &&
+        _textController.text.trim().isEmpty) {
+      context.showErrorSnackBar(AppStrings.pleaseProvideTextToTranslate);
       return;
     }
 
@@ -101,22 +125,30 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
         fromLanguage: _selectedFromLanguage!.name,
         toLanguage: _selectedToLanguage!.name,
         specialization: _selectedSpecialization,
-        text: _textController.text.trim(),
+        text:
+            _selectedTranslationMethod == 'text'
+                ? _textController.text.trim()
+                : null,
+        title: _titleController.text.trim(),
+        comment:
+            _commentController.text.trim().isNotEmpty
+                ? _commentController.text.trim()
+                : null,
+        translationMethod: _selectedTranslationMethod,
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Translation request submitted successfully!'),
-          ),
-        );
+        context.showSuccessSnackBar(AppStrings.translationRequestSubmitted);
 
         // Clear form
+        _titleController.clear();
         _textController.clear();
+        _commentController.clear();
         setState(() {
           _selectedFromLanguage = null;
           _selectedToLanguage = null;
           _selectedSpecialization = null;
+          _selectedTranslationMethod = 'text';
         });
 
         // Reload requests
@@ -124,9 +156,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error submitting request: $e')));
+        context.showErrorSnackBar('${AppStrings.errorSubmittingRequest}$e');
       }
     } finally {
       setState(() => _isLoading = false);
@@ -146,8 +176,45 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Title Field
+            CustomCard(
+              padding: const EdgeInsets.all(AppSize.s20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.title,
+                        color: ColorManager.primary2,
+                        size: AppSize.s20,
+                      ),
+                      const SizedBox(width: AppSize.s8),
+                      Text(
+                        'Request Title',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSize.s16),
+                  CustomTextField(
+                    controller: _titleController,
+                    hintText:
+                        'Enter a descriptive title for your translation request',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSize.s16),
+
             // Language Selection
             _buildLanguageSelection(),
+            const SizedBox(height: AppSize.s16),
+
+            // Translation Method Selection
+            _buildTranslationMethodSelection(),
             const SizedBox(height: AppSize.s16),
 
             // Specialization Selection
@@ -193,103 +260,67 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
             ),
             const SizedBox(height: AppSize.s16),
 
-            // Text Input
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSize.s20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.text_fields,
-                          color: ColorManager.primary2,
-                          size: AppSize.s20,
-                        ),
-                        const SizedBox(width: AppSize.s8),
-                        const Text(
-                          'Text to Translate',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSize.s16),
-                    TextField(
-                      controller: _textController,
-                      maxLines: 8,
-                      decoration: InputDecoration(
-                        hintText: 'Enter the text you want to translate...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppSize.s12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppSize.s12),
-                          borderSide: BorderSide(
-                            color: ColorManager.primary2,
-                            width: 2,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.all(AppSize.s16),
+            // Content Input based on translation method
+            _buildContentInput(),
+            const SizedBox(height: AppSize.s16),
+
+            // Comment Field
+            CustomCard(
+              padding: const EdgeInsets.all(AppSize.s20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.comment,
+                        color: ColorManager.primary2,
+                        size: AppSize.s20,
                       ),
-                    ),
-                    const SizedBox(height: AppSize.s12),
-                    Text(
-                      'Paste or type your text above. The translation will be provided by our professional interpreters.',
-                      style: TextStyle(
-                        fontSize: AppSize.s12,
-                        color: ColorManager.textSecondary,
-                        fontStyle: FontStyle.italic,
+                      const SizedBox(width: AppSize.s8),
+                      Text(
+                        'Additional Comments (Optional)',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSize.s16),
+                  CustomTextField(
+                    controller: _commentController,
+                    maxLines: 3,
+                    hintText:
+                        'Add any specific instructions or context for the interpreter',
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: AppSize.s16),
 
             // Submit Button
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submitRequest,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: ColorManager.primary2,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: AppSize.s16),
-              ),
-              child:
-                  _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                        'Submit Translation Request',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+            CustomButton(
+              text: AppStrings.submitTranslationRequest,
+              isLoading: _isLoading,
+              onTap: _submitRequest,
             ),
             const SizedBox(height: AppSize.s24),
 
             // User Requests
-            const Text(
-              'Your Translation Requests',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Text(
+              AppStrings.yourTranslationRequests,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: AppSize.s16),
             if (_isLoading)
-              const Center(child: CircularProgressIndicator())
+              const CustomLoadingWidget()
             else if (_userRequests.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(AppSize.s16),
-                  child: Text(
-                    'No translation requests yet. Submit your first request above!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
+              const CustomEmptyState(
+                icon: Icons.description_outlined,
+                title: AppStrings.noTranslationRequestsYet,
+                subtitle: 'Submit your first request above!',
               )
             else
               ..._userRequests.map((request) => _buildRequestCard(request)),
@@ -300,7 +331,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
   }
 
   Widget _buildRequestCard(DocumentTranslationRequest request) {
-    return Card(
+    return CustomCard(
       margin: const EdgeInsets.only(bottom: AppSize.s8),
       child: ListTile(
         title: Text('${request.fromLanguage} → ${request.toLanguage}'),
@@ -316,25 +347,25 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Delete button for pending requests
+            if (request.status == 'pending')
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                onPressed: () => _showDeleteConfirmation(request),
+                tooltip: 'Delete request',
+              ),
             if (request.status == 'completed' && request.translatedText != null)
               IconButton(
+                icon: const Icon(Icons.copy),
                 onPressed: () {
                   Clipboard.setData(
                     ClipboardData(text: request.translatedText!),
                   );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Translation copied to clipboard!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
+                  context.showSuccessSnackBar(
+                    AppStrings.translationCopiedToClipboard,
                   );
                 },
-                icon: const Icon(Icons.copy, size: 18),
                 tooltip: 'Copy translation',
-                style: IconButton.styleFrom(
-                  foregroundColor: ColorManager.primary2,
-                ),
               ),
             _getStatusIcon(request.status),
           ],
@@ -365,17 +396,17 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
   Widget _buildLanguageSelection() {
     if (_isLoadingLanguages) {
       return const Card(
-        child: const Padding(
-          padding: const EdgeInsets.all(AppSize.s16),
-          child: const Column(
+        child: Padding(
+          padding: EdgeInsets.all(AppSize.s16),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Language Pair',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: AppSize.s16),
-              const Center(child: CircularProgressIndicator()),
+              SizedBox(height: AppSize.s16),
+              Center(child: CircularProgressIndicator()),
             ],
           ),
         ),
@@ -737,7 +768,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
                   if (request.translatedFileUrl != null) ...[
                     const Text(
                       'Translated File:',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: AppSize.s8),
                     Container(
@@ -752,15 +783,13 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
                           const Icon(Icons.attach_file, color: Colors.green),
                           const SizedBox(width: AppSize.s8),
                           const Expanded(
-                            child: const Text(
+                            child: Text(
                               'Download translated file',
-                              style: const TextStyle(color: Colors.green),
+                              style: TextStyle(color: Colors.green),
                             ),
                           ),
                           TextButton(
-                            onPressed: () {
-                              // TODO: Download file
-                            },
+                            onPressed: () {},
                             child: const Text('Download'),
                           ),
                         ],
@@ -785,9 +814,417 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView> {
     );
   }
 
+  void _showDeleteConfirmation(DocumentTranslationRequest request) {
+    context.showConfirmDialog(
+      title: AppStrings.deleteTranslationRequest,
+      content:
+          '${AppStrings.areYouSureDeleteRequest}\n\n'
+          '${request.fromLanguage} → ${request.toLanguage}\n'
+          '${AppStrings.thisActionCannotBeUndone}',
+      confirmText: AppStrings.delete,
+      cancelText: AppStrings.cancel,
+      onConfirm: () {
+        Navigator.of(context).pop();
+        _deleteRequest(request);
+      },
+    );
+  }
+
+  Future<void> _deleteRequest(DocumentTranslationRequest request) async {
+    setState(() => _isLoading = true);
+
+    try {
+      await instance<DocumentTranslationService>().deleteRequest(request.id);
+
+      if (mounted) {
+        context.showSuccessSnackBar(AppStrings.translationRequestDeleted);
+
+        // Reload requests to update the UI
+        await _loadUserRequests();
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showErrorSnackBar('${AppStrings.errorDeletingRequest}$e');
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   void dispose() {
+    _titleController.dispose();
     _textController.dispose();
+    _commentController.dispose();
     super.dispose();
+  }
+
+  Widget _buildTranslationMethodSelection() {
+    return CustomCard(
+      padding: const EdgeInsets.all(AppSize.s20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.category,
+                color: ColorManager.primary2,
+                size: AppSize.s20,
+              ),
+              const SizedBox(width: AppSize.s8),
+              Text(
+                'Translation Method',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSize.s16),
+          Wrap(
+            spacing: AppSize.s12,
+            runSpacing: AppSize.s12,
+            children:
+                _translationMethods.map((method) {
+                  return _buildTranslationMethodCard(method);
+                }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTranslationMethodCard(String method) {
+    final isSelected = _selectedTranslationMethod == method;
+    final methodData = _getTranslationMethodData(method);
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedTranslationMethod = method;
+        });
+      },
+      child: Container(
+        width: (MediaQuery.of(context).size.width - 80) / 2,
+        padding: const EdgeInsets.all(AppSize.s16),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? ColorManager.primary2.withValues(alpha: 0.1)
+                  : Colors.white,
+          borderRadius: BorderRadius.circular(AppSize.s12),
+          border: Border.all(
+            color: isSelected ? ColorManager.primary2 : ColorManager.greyMedium,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              methodData['icon'],
+              color:
+                  isSelected
+                      ? ColorManager.primary2
+                      : ColorManager.textSecondary,
+              size: AppSize.s32,
+            ),
+            const SizedBox(height: AppSize.s8),
+            Text(
+              methodData['title'],
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color:
+                    isSelected
+                        ? ColorManager.primary2
+                        : ColorManager.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSize.s4),
+            Text(
+              methodData['description'],
+              style: TextStyle(
+                fontSize: AppSize.s12,
+                color: ColorManager.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _getTranslationMethodData(String method) {
+    switch (method) {
+      case 'text':
+        return {
+          'icon': Icons.text_fields,
+          'title': 'Text',
+          'description': 'Type or paste text',
+        };
+      case 'document':
+        return {
+          'icon': Icons.description,
+          'title': 'Document',
+          'description': 'Upload document file',
+        };
+      case 'voice':
+        return {
+          'icon': Icons.mic,
+          'title': 'Voice',
+          'description': 'Record audio message',
+        };
+      case 'image':
+        return {
+          'icon': Icons.image,
+          'title': 'Image',
+          'description': 'Upload image with text',
+        };
+      default:
+        return {
+          'icon': Icons.help,
+          'title': 'Unknown',
+          'description': 'Unknown method',
+        };
+    }
+  }
+
+  Widget _buildContentInput() {
+    switch (_selectedTranslationMethod) {
+      case 'text':
+        return CustomCard(
+          padding: const EdgeInsets.all(AppSize.s20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.text_fields,
+                    color: ColorManager.primary2,
+                    size: AppSize.s20,
+                  ),
+                  const SizedBox(width: AppSize.s8),
+                  Text(
+                    AppStrings.textToTranslate,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSize.s16),
+              CustomTextField(
+                controller: _textController,
+                maxLines: 8,
+                hintText: AppStrings.enterTextToTranslate,
+              ),
+              const SizedBox(height: AppSize.s12),
+              Text(
+                'Paste or type your text above. The translation will be provided by our professional interpreters.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ColorManager.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        );
+      case 'document':
+        return CustomCard(
+          padding: const EdgeInsets.all(AppSize.s20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.description,
+                    color: ColorManager.primary2,
+                    size: AppSize.s20,
+                  ),
+                  const SizedBox(width: AppSize.s8),
+                  Text(
+                    'Document Upload',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSize.s16),
+              Container(
+                width: double.infinity,
+                height: AppSize.s120,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: ColorManager.greyMedium,
+                    style: BorderStyle.solid,
+                  ),
+                  borderRadius: BorderRadius.circular(AppSize.s12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.cloud_upload,
+                      size: 48,
+                      color: ColorManager.textSecondary,
+                    ),
+                    const SizedBox(height: AppSize.s12),
+                    Text(
+                      'Tap to upload document',
+                      style: TextStyle(
+                        fontSize: AppSize.s16,
+                        fontWeight: FontWeight.w600,
+                        color: ColorManager.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s4),
+                    Text(
+                      'PDF, DOC, DOCX, TXT supported',
+                      style: TextStyle(
+                        fontSize: AppSize.s12,
+                        color: ColorManager.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      case 'voice':
+        return CustomCard(
+          padding: const EdgeInsets.all(AppSize.s20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.mic,
+                    color: ColorManager.primary2,
+                    size: AppSize.s20,
+                  ),
+                  const SizedBox(width: AppSize.s8),
+                  Text(
+                    'Voice Recording',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSize.s16),
+              Container(
+                width: double.infinity,
+                height: AppSize.s120,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: ColorManager.greyMedium,
+                    style: BorderStyle.solid,
+                  ),
+                  borderRadius: BorderRadius.circular(AppSize.s12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.mic,
+                      size: 48,
+                      color: ColorManager.textSecondary,
+                    ),
+                    const SizedBox(height: AppSize.s12),
+                    Text(
+                      'Tap to record voice message',
+                      style: TextStyle(
+                        fontSize: AppSize.s16,
+                        fontWeight: FontWeight.w600,
+                        color: ColorManager.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s4),
+                    Text(
+                      'Record up to 5 minutes',
+                      style: TextStyle(
+                        fontSize: AppSize.s12,
+                        color: ColorManager.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      case 'image':
+        return CustomCard(
+          padding: const EdgeInsets.all(AppSize.s20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.image,
+                    color: ColorManager.primary2,
+                    size: AppSize.s20,
+                  ),
+                  const SizedBox(width: AppSize.s8),
+                  Text(
+                    'Image Upload',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSize.s16),
+              Container(
+                width: double.infinity,
+                height: AppSize.s120,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: ColorManager.greyMedium,
+                    style: BorderStyle.solid,
+                  ),
+                  borderRadius: BorderRadius.circular(AppSize.s12),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.add_photo_alternate,
+                      size: 48,
+                      color: ColorManager.textSecondary,
+                    ),
+                    const SizedBox(height: AppSize.s12),
+                    Text(
+                      'Tap to upload image',
+                      style: TextStyle(
+                        fontSize: AppSize.s16,
+                        fontWeight: FontWeight.w600,
+                        color: ColorManager.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s4),
+                    Text(
+                      'JPG, PNG, GIF supported',
+                      style: TextStyle(
+                        fontSize: AppSize.s12,
+                        color: ColorManager.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

@@ -4,10 +4,11 @@ import 'package:interbridge/data/services/chat_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bolc.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 
 class InterpreterHomeView extends StatefulWidget {
   const InterpreterHomeView({super.key});
@@ -131,7 +132,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                   // ✅ Navigate when a job is accepted
                   if (state is InterpreterJobAccepted) {
                     // Use push instead of pushReplacement to allow going back
-                    Navigator.push(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
                         builder:
@@ -144,6 +145,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                               ),
                             ),
                       ),
+                      (route) => false,
                     );
                   }
 
@@ -246,7 +248,21 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
 
   Widget _buildJobCardFromRequest(InterpreterRequest request) {
     final isUrgent = request.urgency.toLowerCase() == 'urgent';
-    final language = '${request.fromLanguage} - ${request.toLanguage}';
+
+    // Convert language IDs to names
+    final fromLanguageId = int.tryParse(request.fromLanguage) ?? 0;
+    final toLanguageId = int.tryParse(request.toLanguage) ?? 0;
+    final fromLanguageName = LanguageMappingUtility.getLanguageName(
+      fromLanguageId,
+    );
+    final toLanguageName = LanguageMappingUtility.getLanguageName(toLanguageId);
+
+    // Use language names if available, otherwise fallback to IDs
+    final language =
+        fromLanguageName.isNotEmpty && toLanguageName.isNotEmpty
+            ? '$fromLanguageName - $toLanguageName'
+            : '${request.fromLanguage} - ${request.toLanguage}';
+
     final specialization = request.specialization ?? 'General';
     final description = request.description ?? 'Interpreter request';
     final isProcessingThisJob =

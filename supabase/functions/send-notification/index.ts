@@ -203,6 +203,8 @@ Deno.serve(async (req) => {
 
     // Send notification to each token (FCM HTTP v1 does not support multicast in one call)
     let successCount = 0, failureCount = 0, errors = [];
+    const invalidTokens = [];
+    
     for (const token of tokens) {
       try {
         const message = {
@@ -229,14 +231,55 @@ Deno.serve(async (req) => {
           console.log("Successfully sent notification to token");
         } else {
           failureCount++;
-          const err = await res.text();
-          errors.push({ token: token.substring(0, 20) + "...", error: err });
-          console.error("Failed to send notification:", err);
+          const errorData = await res.json();
+          console.error("Failed to send notification:", errorData);
+          
+          // Check if token is invalid/unregistered
+          if (errorData.error && 
+              (errorData.error.code === 404 || 
+               errorData.error.details?.some((detail: any) => detail.errorCode === "UNREGISTERED"))) {
+            console.log("Token is invalid/unregistered, marking for cleanup:", token.substring(0, 20) + "...");
+            invalidTokens.push(token);
+          }
+          
+          errors.push({ 
+            token: token.substring(0, 20) + "...", 
+            error: errorData,
+            isInvalid: errorData.error?.code === 404 || 
+                      errorData.error?.details?.some((detail: any) => detail.errorCode === "UNREGISTERED")
+          });
         }
       } catch (error) {
         failureCount++;
         errors.push({ token: token.substring(0, 20) + "...", error: error.message });
         console.error("Error sending notification:", error);
+      }
+    }
+
+    // Clean up invalid tokens from database
+    if (invalidTokens.length > 0) {
+      try {
+        console.log(`Cleaning up ${invalidTokens.length} invalid tokens from database`);
+        
+        // Use Supabase client to delete invalid tokens
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        
+        const { error: deleteError } = await supabase
+          .from('fcm_tokens')
+          .delete()
+          .in('token', invalidTokens);
+          
+        if (deleteError) {
+          console.error("Error cleaning up invalid tokens:", deleteError);
+        } else {
+          console.log("Successfully cleaned up invalid tokens");
+        }
+      } catch (cleanupError) {
+        console.error("Error during token cleanup:", cleanupError);
       }
     }
 

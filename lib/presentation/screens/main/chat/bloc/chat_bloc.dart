@@ -2,6 +2,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/config.dart';
 import 'package:interbridge/data/services/chat_service.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/error_handler.dart';
@@ -18,6 +19,12 @@ class SendMessage extends ChatEvent {
   final String requestId;
   final String content;
   SendMessage({required this.requestId, required this.content});
+}
+
+class SendCallStateMessage extends ChatEvent {
+  final String requestId;
+  final String callState; // 'CALL_ENDED', 'CALL_JOINED', etc.
+  SendCallStateMessage({required this.requestId, required this.callState});
 }
 
 class NewIncomingMessage extends ChatEvent {
@@ -61,6 +68,7 @@ class ChatCallEnded extends ChatState {}
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatService service;
+  final SupabaseService _supabaseService = SupabaseService();
   RtcEngine? _engine;
   RealtimeChannel? _msgChannel;
   final Set<String> _seenMessageIds = {};
@@ -68,6 +76,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({required this.service}) : super(ChatInitial()) {
     on<LoadMessages>(_onLoadMessages);
     on<SendMessage>(_onSendMessage);
+    on<SendCallStateMessage>(_onSendCallStateMessage);
     on<NewIncomingMessage>(_onNewIncomingMessage);
     on<StartVoiceCall>(_onStartVoiceCall);
     on<EndVoiceCall>(_onEndVoiceCall);
@@ -76,30 +85,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Future<void> _onLoadMessages(LoadMessages e, Emitter<ChatState> emit) async {
     try {
       emit(ChatLoading());
-      final msgs = await service.fetchMessages(e.requestId);
 
-      if (msgs.isEmpty) {
-        // No messages yet → still valid, return an empty ChatLoaded state
-        emit(ChatLoaded(messages: []));
-      } else {
-        for (final m in msgs) {
-          final id = m['id']?.toString();
-          if (id != null) _seenMessageIds.add(id);
-        }
-        emit(ChatLoaded(messages: msgs));
-      }
+      // Load existing messages from the database
+      final messages = await service.fetchMessages(e.requestId);
+      emit(ChatLoaded(messages: messages));
 
-      // Always subscribe to listen for new messages
+      // Subscribe to listen for new messages
       _msgChannel?.unsubscribe();
       _msgChannel = service.subscribeToMessages(e.requestId, (newRow) {
         add(NewIncomingMessage(newRow));
       });
     } catch (err) {
-      emit(
-        ChatError(
-          ErrorHandler.handleError(err, context: 'LoadMessages'),
-        ),
-      );
+      emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
     }
   }
 
@@ -111,15 +108,69 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
-  void _onNewIncomingMessage(NewIncomingMessage e, Emitter<ChatState> emit) {
+  Future<void> _onSendCallStateMessage(
+    SendCallStateMessage e,
+    Emitter<ChatState> emit,
+  ) async {
+    try {
+      await service.sendMessage(e.requestId, e.callState);
+    } catch (err) {
+      emit(
+        ChatError(
+          ErrorHandler.handleError(err, context: 'SendCallStateMessage'),
+        ),
+      );
+    }
+  }
+
+  void _onNewIncomingMessage(
+    NewIncomingMessage e,
+    Emitter<ChatState> emit,
+  ) async {
     if (state is! ChatLoaded) return;
     final id = e.raw['id']?.toString();
     if (id != null && _seenMessageIds.contains(id)) return;
     if (id != null) _seenMessageIds.add(id);
 
     final current = (state as ChatLoaded);
+    final newMessage = Map<String, dynamic>.from(e.raw);
+
+    // Check if the message has user profile data
+    if (newMessage['user_profiles'] == null &&
+        newMessage['sender_id'] != null) {
+      try {
+        // Fetch user profile for the sender
+        final userProfile = await _supabaseService.getUserProfile(
+          newMessage['sender_id'],
+        );
+        if (userProfile != null) {
+          newMessage['user_profiles'] = {
+            'username': userProfile.username,
+            'profile_image': _supabaseService.getProfileImageUrl(
+              userProfile.profileImage,
+            ),
+            'role': userProfile.role,
+          };
+        } else {
+          // Fallback if profile not found
+          newMessage['user_profiles'] = {
+            'username': 'User',
+            'profile_image': null,
+            'role': 'user',
+          };
+        }
+      } catch (error) {
+        // Fallback if there's an error fetching profile
+        newMessage['user_profiles'] = {
+          'username': 'User',
+          'profile_image': null,
+          'role': 'user',
+        };
+      }
+    }
+
     final updated = List<Map<String, dynamic>>.from(current.messages)
-      ..add(e.raw);
+      ..add(newMessage);
     emit(ChatLoaded(messages: updated, inCall: current.inCall));
   }
 

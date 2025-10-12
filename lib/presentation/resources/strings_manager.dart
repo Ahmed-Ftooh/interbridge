@@ -222,6 +222,19 @@ class AppStrings {
   static const String noAvailableJobs = 'No available jobs';
   static const String noActiveJobs = 'No active jobs';
   static const String noCompletedJobs = 'No completed jobs';
+
+  // Translation Request Strings
+  static const String translationRequests = 'Translation Requests';
+  static const String pending = 'Pending';
+  static const String inProgress = 'In Progress';
+  static const String completed = 'Completed';
+  static const String newTranslationRequest = 'New Translation Request';
+  static const String noTranslationRequests = 'No Translation Requests';
+  static const String createYourFirstRequest =
+      'Create your first translation request';
+  static const String copyTranslation = 'Copy Translation';
+  static const String close = 'Close';
+  static const String interpreterDashboard = 'Interpreter Dashboard';
   static const String noEarnings = 'No earnings yet';
   static const String noRecentActivity = 'No recent activity';
 
@@ -253,4 +266,65 @@ class AppStrings {
   static const String enterSpecializationField =
       "Enter your specialization field";
   static const String selectedFields = "Selected: ";
+
+  // Document Translation Strings
+  static const String textToTranslate = "Text to Translate";
+  static const String enterTextToTranslate =
+      "Enter the text you want to translate...";
+  static const String submitTranslationRequest = "Submit Translation Request";
+  static const String yourTranslationRequests = "Your Translation Requests";
+  static const String noTranslationRequestsYet =
+      "No translation requests yet. Submit your first request above!";
+  static const String translationRequestSubmitted =
+      "Translation request submitted successfully!";
+  static const String errorSubmittingRequest = "Error submitting request: ";
+  static const String pleaseSelectBothLanguages =
+      "Please select both languages";
+  static const String pleaseProvideTextToTranslate =
+      "Please provide text to translate";
+  static const String errorLoadingRequests = "Error loading requests: ";
+  static const String translationCopiedToClipboard =
+      "Translation copied to clipboard!";
+  static const String deleteTranslationRequest = "Delete Translation Request";
+  static const String areYouSureDeleteRequest =
+      "Are you sure you want to delete this translation request?";
+  static const String thisActionCannotBeUndone =
+      "This action cannot be undone.";
+  static const String cancel = "Cancel";
+  static const String delete = "Delete";
+  static const String translationRequestDeleted =
+      "Translation request deleted successfully!";
+  static const String errorDeletingRequest = "Error deleting request: ";
+
+  // Chat Strings
+  static const String typeMessage = "Type a message...";
+  static const String send = "Send";
+  static const String incomingCall = "Incoming call";
+  static const String tapToJoin = "Tap to join — Channel: ";
+  static const String textCopiedToClipboard = "Text copied to clipboard!";
+
+  // Job/Request Strings
+  static const String acceptJobAction = "Accept Job";
+  static const String declineJobAction = "Decline Job";
+  static const String acceptAndTranslate = "Accept & Translate";
+  static const String jobAccepted = "Job accepted successfully!";
+  static const String jobDeclined = "Job declined successfully!";
+  static const String errorAcceptingJob = "Error accepting job: ";
+  static const String errorDecliningJob = "Error declining job: ";
+  static const String noAvailableJobsMessage = "No available jobs";
+  static const String checkBackLater =
+      "Check back later for new interpreter requests";
+
+  // Profile Strings
+  static const String saveProfile = "Save Profile";
+  static const String profileSaved = "Profile saved successfully!";
+  static const String errorSavingProfile = "Error saving profile: ";
+
+  // Common Actions
+  static const String retry = "Retry";
+  static const String copy = "Copy";
+  static const String download = "Download";
+  static const String loading = "Loading...";
+  static const String error = "Error";
+  static const String success = "Success";
 }

@@ -5,6 +5,9 @@ class DocumentTranslationRequest {
   final String toLanguage;
   final String? specialization;
   final String? text;
+  final String? title;
+  final String? comment;
+  final String? translationMethod;
   final String? fileUrl;
   final String status;
   final String? acceptedBy;
@@ -21,6 +24,9 @@ class DocumentTranslationRequest {
     required this.toLanguage,
     this.specialization,
     this.text,
+    this.title,
+    this.comment,
+    this.translationMethod,
     this.fileUrl,
     required this.status,
     this.acceptedBy,
@@ -39,6 +45,9 @@ class DocumentTranslationRequest {
       toLanguage: json['to_language'] as String,
       specialization: json['specialization'] as String?,
       text: json['text'] as String?,
+      title: json['title'] as String?,
+      comment: json['comment'] as String?,
+      translationMethod: json['translation_method'] as String?,
       fileUrl: json['file_url'] as String?,
       status: json['status'] as String,
       acceptedBy: json['accepted_by'] as String?,
@@ -64,6 +73,9 @@ class DocumentTranslationRequest {
       'to_language': toLanguage,
       'specialization': specialization,
       'text': text,
+      'title': title,
+      'comment': comment,
+      'translation_method': translationMethod,
       'file_url': fileUrl,
       'status': status,
       'accepted_by': acceptedBy,
@@ -82,6 +94,9 @@ class DocumentTranslationRequest {
     String? toLanguage,
     String? specialization,
     String? text,
+    String? title,
+    String? comment,
+    String? translationMethod,
     String? fileUrl,
     String? status,
     String? acceptedBy,
@@ -98,6 +113,9 @@ class DocumentTranslationRequest {
       toLanguage: toLanguage ?? this.toLanguage,
       specialization: specialization ?? this.specialization,
       text: text ?? this.text,
+      title: title ?? this.title,
+      comment: comment ?? this.comment,
+      translationMethod: translationMethod ?? this.translationMethod,
       fileUrl: fileUrl ?? this.fileUrl,
       status: status ?? this.status,
       acceptedBy: acceptedBy ?? this.acceptedBy,

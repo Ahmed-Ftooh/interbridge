@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bolc.dart';
-import 'package:interbridge/presentation/screens/main/chat/call_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
+import 'package:interbridge/data/services/session_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 
@@ -24,11 +25,13 @@ class ChatView extends StatefulWidget {
 class _ChatViewState extends State<ChatView> {
   final _input = TextEditingController();
   String? _handledInviteMessageId;
+  String? _handledCallEndedMessageId;
 
   @override
   void initState() {
     super.initState();
     context.read<ChatBloc>().add(LoadMessages(widget.requestId));
+    _saveSessionState();
   }
 
   @override
@@ -45,6 +48,7 @@ class _ChatViewState extends State<ChatView> {
       appBar: AppBar(
         title: const Text('Chat'),
         actions: [
+          // Call button
           BlocBuilder<ChatBloc, ChatState>(
             builder: (context, state) {
               return IconButton(
@@ -57,15 +61,41 @@ class _ChatViewState extends State<ChatView> {
                       content: '__CALL_INVITE__',
                     ),
                   );
-                  // Open call screen locally
-                  Navigator.of(context).push(
+                  // Open enhanced call screen locally
+                  Navigator.of(context).pushReplacement(
                     MaterialPageRoute(
-                      builder: (_) => CallScreen(channelId: widget.requestId),
+                      builder:
+                          (_) => EnhancedCallScreen(
+                            channelId: widget.requestId,
+                            chatBloc: context.read<ChatBloc>(),
+                          ),
                     ),
                   );
                 },
               );
             },
+          ),
+          // End Session button
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'end_session') {
+                _showEndSessionDialog();
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem(
+                    value: 'end_session',
+                    child: Row(
+                      children: [
+                        Icon(Icons.exit_to_app, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('End Session'),
+                      ],
+                    ),
+                  ),
+                ],
           ),
         ],
       ),
@@ -94,7 +124,10 @@ class _ChatViewState extends State<ChatView> {
                     final last = state.messages.last;
                     final lastId = last['id']?.toString();
                     final isInvite = last['content'] == '__CALL_INVITE__';
+                    final isCallEnded = last['content'] == '__CALL_ENDED__';
                     final isFromMe = last['sender_id'] == myId;
+
+                    // Handle call invite
                     if (isInvite &&
                         !isFromMe &&
                         lastId != null &&
@@ -105,9 +138,27 @@ class _ChatViewState extends State<ChatView> {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder:
-                                (_) => CallScreen(channelId: widget.requestId),
+                                (_) => EnhancedCallScreen(
+                                  channelId: widget.requestId,
+                                  chatBloc: context.read<ChatBloc>(),
+                                ),
                           ),
                         );
+                      });
+                    }
+
+                    // Handle call ended notification
+                    if (isCallEnded &&
+                        !isFromMe &&
+                        lastId != null &&
+                        _handledCallEndedMessageId != lastId) {
+                      _handledCallEndedMessageId = lastId;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        // Close any open call screens
+                        Navigator.of(context).popUntil((route) {
+                          return route.isFirst;
+                        });
                       });
                     }
                   }
@@ -141,11 +192,23 @@ class _ChatViewState extends State<ChatView> {
                     );
                   }
 
+                  // Filter out call invite messages that are no longer relevant
+                  final filteredMessages =
+                      state.messages.where((message) {
+                        // Keep all messages except call invites that are from the current user
+                        // (call invites from others are shown as join buttons)
+                        if (message['content'] == '__CALL_INVITE__' &&
+                            message['sender_id'] == myId) {
+                          return false; // Hide call invites from current user
+                        }
+                        return true; // Keep all other messages
+                      }).toList();
+
                   return ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: state.messages.length,
+                    itemCount: filteredMessages.length,
                     itemBuilder: (context, index) {
-                      final m = state.messages[index];
+                      final m = filteredMessages[index];
                       final isMe = m['sender_id'] == myId;
                       final userProfile =
                           m['user_profiles'] as Map<String, dynamic>?;
@@ -173,11 +236,12 @@ class _ChatViewState extends State<ChatView> {
                                 'Tap to join — Channel: ${widget.requestId}',
                               ),
                               onTap: () {
-                                Navigator.of(context).push(
+                                Navigator.of(context).pushReplacement(
                                   MaterialPageRoute(
                                     builder:
-                                        (_) => CallScreen(
+                                        (_) => EnhancedCallScreen(
                                           channelId: widget.requestId,
+                                          chatBloc: context.read<ChatBloc>(),
                                         ),
                                   ),
                                 );
@@ -257,22 +321,7 @@ class _ChatViewState extends State<ChatView> {
                                   ),
                                 ),
                               ),
-                              if (isMe) ...[
-                                const SizedBox(width: 8),
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundImage:
-                                      profileImage != null &&
-                                              profileImage.isNotEmpty
-                                          ? NetworkImage(profileImage)
-                                          : null,
-                                  child:
-                                      profileImage == null ||
-                                              profileImage.isEmpty
-                                          ? const Icon(Icons.person, size: 16)
-                                          : null,
-                                ),
-                              ],
+                              // Remove the profile image from the sender's side (isMe)
                             ],
                           ),
                         ),
@@ -324,5 +373,65 @@ class _ChatViewState extends State<ChatView> {
       SendMessage(requestId: widget.requestId, content: text),
     );
     _input.clear();
+    _saveSessionState();
+  }
+
+  void _saveSessionState() {
+    SessionService.saveSession(
+      requestId: widget.requestId,
+      requesterId: widget.requesterId,
+      interpreterId: widget.interpreterId,
+      currentScreen: 'chat',
+    );
+  }
+
+  void _showEndSessionDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('End Session'),
+            content: const Text(
+              'Are you sure you want to end this session? You will be returned to the home screen.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    // Close the dialog first
+                    Navigator.of(context).pop();
+
+                    // End the session
+                    await SessionService.endSession();
+
+                    // Ensure we're still mounted before navigating
+                    if (mounted) {
+                      // Clear the entire navigation stack and go to home
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil('/main', (route) => false);
+                    }
+                  } catch (e) {
+                    // If there's an error, still try to navigate back
+                    if (mounted) {
+                      Navigator.of(
+                        context,
+                      ).pushNamedAndRemoveUntil('/main', (route) => false);
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('End Session'),
+              ),
+            ],
+          ),
+    );
   }
 }

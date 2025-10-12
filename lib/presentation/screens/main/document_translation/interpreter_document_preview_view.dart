@@ -5,6 +5,7 @@ import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 
 class InterpreterDocumentPreviewView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -124,7 +125,10 @@ class _InterpreterDocumentPreviewViewState
                     const SizedBox(width: AppSize.s12),
                     Expanded(
                       child: Text(
-                        '${widget.request.fromLanguage} → ${widget.request.toLanguage}',
+                        _getLanguageDisplayText(
+                          widget.request.fromLanguage,
+                          widget.request.toLanguage,
+                        ),
                         style: TextStyle(
                           fontSize: AppSize.s20,
                           fontWeight: FontWeight.bold,
@@ -243,7 +247,7 @@ class _InterpreterDocumentPreviewViewState
                               children: [
                                 const Text(
                                   'Document file',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: AppSize.s14,
                                     fontWeight: FontWeight.w500,
                                     color: Colors.blue,
@@ -262,7 +266,7 @@ class _InterpreterDocumentPreviewViewState
                           ),
                           IconButton(
                             onPressed: () {
-                              // TODO: Open file viewer
+                              //
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('File viewer coming soon!'),
@@ -396,5 +400,22 @@ class _InterpreterDocumentPreviewViewState
         ],
       ),
     );
+  }
+
+  /// Helper method to convert language IDs to display names
+  String _getLanguageDisplayText(String fromLanguage, String toLanguage) {
+    final fromLanguageId = int.tryParse(fromLanguage) ?? 0;
+    final toLanguageId = int.tryParse(toLanguage) ?? 0;
+    final fromLanguageName = LanguageMappingUtility.getLanguageName(
+      fromLanguageId,
+    );
+    final toLanguageName = LanguageMappingUtility.getLanguageName(toLanguageId);
+
+    // Use language names if available, otherwise fallback to IDs
+    if (fromLanguageName.isNotEmpty && toLanguageName.isNotEmpty) {
+      return '$fromLanguageName → $toLanguageName';
+    } else {
+      return '$fromLanguage → $toLanguage';
+    }
   }
 }

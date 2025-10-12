@@ -5,6 +5,8 @@ import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_text_field_container.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 class ForgotPasswordView extends StatefulWidget {
   const ForgotPasswordView({super.key});
@@ -27,8 +29,22 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       _isLoading = true;
     });
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      await SupabaseService().sendPasswordResetEmail(
+        email: _emailController.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      CustomSnackBar.show(
+        context,
+        message: 'Failed to send reset link: $e',
+        type: SnackBarType.error,
+      );
+      return;
+    }
 
     if (!mounted) return;
 
@@ -38,15 +54,16 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
 
     // Show success message
     CustomSnackBar.show(
-      context: context,
+      context,
       message: AppStrings.resetLinkSentToEmail,
       type: SnackBarType.success,
     );
 
-    // Navigate back after showing success message
+    // Optionally show in-app reset screen if link handled in-app
+    // For now, navigate back to login
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pushNamed(Routes.resetPasswordRoute);
       }
     });
   }
@@ -122,12 +139,14 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                   CustomTextFieldContainer(
                     controller: _emailController,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
+                      final input = value?.trim() ?? '';
+                      if (input.isEmpty) {
                         return AppStrings.pleaseEnterEmailAddress;
                       }
+                      // Simple, robust email check (allows modern TLDs)
                       if (!RegExp(
-                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}\$',
-                      ).hasMatch(value)) {
+                        r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                      ).hasMatch(input)) {
                         return AppStrings.pleaseEnterValidEmail;
                       }
                       return null;

@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -302,7 +303,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       await _supabaseService.deleteProfileImage(filename);
     } catch (e) {
       // Log error but don't throw - image deletion is not critical
-      print('Warning: Failed to delete image: $e');
+      log('Warning: Failed to delete image: $e');
     }
   }
 }

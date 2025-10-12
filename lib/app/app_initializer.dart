@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -52,6 +54,9 @@ class AppInitializer {
         Supabase.initialize(
           url: dotenv.env['SUPABASE_URL']!,
           anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+          authOptions: const FlutterAuthClientOptions(
+            authFlowType: AuthFlowType.pkce,
+          ),
         ),
         // Initialize Error Service (no network calls)
         ErrorService().initialize(),
@@ -60,7 +65,7 @@ class AppInitializer {
           const Duration(seconds: 2),
           onTimeout: () {
             // Continue with initialization even if network check fails
-            print('Network service initialization timed out, continuing...');
+            log('Network service initialization timed out, continuing...');
           },
         ),
       ]);
@@ -69,12 +74,31 @@ class AppInitializer {
       await instance<FirebaseService>().initialize().timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          print('Firebase initialization timed out, continuing...');
+          log('Firebase initialization timed out, continuing...');
         },
       );
+
+      // Listen for Supabase auth deep-link redirects to handle password reset
+      // and email verification inside the app.
+      Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
+        final AuthChangeEvent type = event.event;
+        // When a password recovery link is opened, the session is updated
+        // and event type is passwordRecovery. Route to reset screen.
+        if (type == AuthChangeEvent.passwordRecovery) {
+          // We cannot navigate here (no BuildContext). Screens will check
+          // current session and route accordingly. Nothing more needed.
+          log('Auth event: passwordRecovery');
+        }
+        if (type == AuthChangeEvent.signedIn) {
+          log('Auth event: signedIn');
+        }
+        if (type == AuthChangeEvent.tokenRefreshed) {
+          log('Auth event: tokenRefreshed');
+        }
+      });
     } catch (e) {
       // Log error but don't crash the app
-      print('Error during app initialization: $e');
+      log('Error during app initialization: $e');
       // You might want to show a user-friendly error screen instead
       rethrow;
     }

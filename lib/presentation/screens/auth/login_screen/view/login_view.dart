@@ -41,7 +41,13 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
 
   Future<void> _requestPermissionsAndNavigate() async {
     try {
-      // Request all app permissions
+      // Request a
+      //ll app permissions
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
       final permissionResults =
           await PermissionService.requestAllAppPermissions();
 
@@ -71,7 +77,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
         // Show a brief message about denied permissions
         if (mounted) {
           CustomSnackBar.show(
-            context: context,
+            context,
             message:
                 'Some permissions were denied. You can enable them in app settings.',
             type: SnackBarType.warning,
@@ -81,11 +87,6 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
       }
 
       // Navigate to main screen
-      if (mounted) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-      }
     } catch (e) {
       log('Error requesting permissions: $e');
 
@@ -112,7 +113,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
               if (state.isSuccess) {
                 // Show success message briefly before navigation
                 CustomSnackBar.show(
-                  context: context,
+                  context,
                   message: 'Login successful! Welcome back.',
                   type: SnackBarType.success,
                   duration: const Duration(seconds: 2),
@@ -121,7 +122,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                 // Navigate to main screen after a short delay
                 Future.delayed(const Duration(milliseconds: 200), () async {
                   if (mounted) {
-                    _appPreferences.setLoginViewed();
+                    await _appPreferences.setLoginViewed();
                     await FirebaseMessagingService().initialize();
                     await _requestPermissionsAndNavigate();
                   }
@@ -131,7 +132,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
               // Handle login failure
               if (state.isFailure && state.errorMessage != null) {
                 CustomSnackBar.show(
-                  context: context,
+                  context,
                   message: state.errorMessage!,
                   type: SnackBarType.error,
                 );

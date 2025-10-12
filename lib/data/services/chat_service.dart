@@ -1,8 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:developer';
+import 'supabase_service.dart';
 
 class ChatService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseService _supabaseService = SupabaseService();
 
   Future<List<Map<String, dynamic>>> fetchMessages(String requestId) async {
     log('Fetching messages for requestId: $requestId');
@@ -21,7 +23,7 @@ class ChatService {
           .order('created_at', ascending: true);
       log('Successfully fetched ${res.length} messages with user profiles');
 
-      // Process messages to ensure proper username fallbacks
+      // Process messages to ensure proper username fallbacks and profile image URLs
       return List<Map<String, dynamic>>.from(res).map((message) {
         final userProfile = message['user_profiles'] as Map<String, dynamic>?;
         if (userProfile == null || userProfile['username'] == null) {
@@ -31,6 +33,14 @@ class ChatService {
             'profile_image': null,
             'role': 'user',
           };
+        } else {
+          // Ensure profile image URL is properly formatted
+          final profileImage = userProfile['profile_image'] as String?;
+          if (profileImage != null && profileImage.isNotEmpty) {
+            userProfile['profile_image'] = _supabaseService.getProfileImageUrl(
+              profileImage,
+            );
+          }
         }
         return message;
       }).toList();

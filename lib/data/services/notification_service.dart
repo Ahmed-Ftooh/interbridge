@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/notification_model.dart';
+import 'package:interbridge/data/services/fcm_token_cleanup_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -145,6 +146,43 @@ class NotificationService {
       await saveNotification(notification);
     } catch (e) {
       log('Error creating notification from FCM: $e');
+    }
+  }
+
+  /// Clean up invalid FCM tokens
+  Future<void> cleanupInvalidTokens() async {
+    try {
+      log('Starting FCM token cleanup...');
+
+      final cleanupService = FCMTokenCleanupService();
+
+      // Clean up old tokens (older than 30 days)
+      await cleanupService.cleanupOldTokens();
+
+      // Clean up tokens with invalid format
+      await cleanupService.cleanupInvalidFormatTokens();
+
+      // Get statistics
+      final stats = await cleanupService.getTokenStatistics();
+      log('FCM token cleanup completed. Stats: $stats');
+    } catch (e) {
+      log('Error during FCM token cleanup: $e');
+    }
+  }
+
+  /// Get FCM token statistics
+  Future<Map<String, dynamic>> getTokenStatistics() async {
+    try {
+      final cleanupService = FCMTokenCleanupService();
+      return await cleanupService.getTokenStatistics();
+    } catch (e) {
+      log('Error getting token statistics: $e');
+      return {
+        'total_tokens': 0,
+        'unique_users': 0,
+        'recent_tokens': 0,
+        'old_tokens': 0,
+      };
     }
   }
 }

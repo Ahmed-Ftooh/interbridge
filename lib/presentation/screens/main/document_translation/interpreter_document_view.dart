@@ -5,6 +5,7 @@ import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_preview_view.dart';
 import 'package:interbridge/app/di.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 
 class InterpreterDocumentView extends StatefulWidget {
   const InterpreterDocumentView({super.key});
@@ -162,7 +163,10 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${request.fromLanguage} → ${request.toLanguage}',
+                        _getLanguageDisplayText(
+                          request.fromLanguage,
+                          request.toLanguage,
+                        ),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -238,10 +242,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
             if (request.fileUrl != null) ...[
               const Text(
                 'File Attached:',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: AppSize.s8),
               Container(
@@ -253,15 +254,12 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                 ),
                 child: const Row(
                   children: [
-                    const Icon(Icons.attach_file, color: Colors.blue),
-                    const SizedBox(width: AppSize.s8),
-                    const Expanded(
-                      child: const Text(
+                    Icon(Icons.attach_file, color: Colors.blue),
+                    SizedBox(width: AppSize.s8),
+                    Expanded(
+                      child: Text(
                         'Document file',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.blue, fontSize: 14),
                       ),
                     ),
                   ],
@@ -287,10 +285,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                 ),
                 child: const Text(
                   'Preview & Accept',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -298,5 +293,22 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
         ),
       ),
     );
+  }
+
+  /// Helper method to convert language IDs to display names
+  String _getLanguageDisplayText(String fromLanguage, String toLanguage) {
+    final fromLanguageId = int.tryParse(fromLanguage) ?? 0;
+    final toLanguageId = int.tryParse(toLanguage) ?? 0;
+    final fromLanguageName = LanguageMappingUtility.getLanguageName(
+      fromLanguageId,
+    );
+    final toLanguageName = LanguageMappingUtility.getLanguageName(toLanguageId);
+
+    // Use language names if available, otherwise fallback to IDs
+    if (fromLanguageName.isNotEmpty && toLanguageName.isNotEmpty) {
+      return '$fromLanguageName → $toLanguageName';
+    } else {
+      return '$fromLanguage → $toLanguage';
+    }
   }
 }

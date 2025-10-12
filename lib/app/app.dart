@@ -8,6 +8,8 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view_model
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/languageFluencyBloc/language_fluency_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectLanguageBloc/select_language_bloc.dart';
 import 'package:interbridge/app/di.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 
 class MyApp extends StatefulWidget {
   // named constructor
@@ -25,13 +27,6 @@ class MyApp extends StatefulWidget {
 }
 
 class MyAppState extends State<MyApp> {
-  // final AppPreferences _appPreferences = instance<AppPreferences>();
-  // @override
-  // void didChangeDependencies() {
-  //   _appPreferences.getLocale().then((locale) => context.setLocale(locale));
-  //   super.didChangeDependencies();
-  // }
-
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
@@ -47,6 +42,8 @@ class MyAppState extends State<MyApp> {
         BlocProvider<SelectLanguageBloc>(
           create: (_) => instance<SelectLanguageBloc>(),
         ),
+        BlocProvider<CallBloc>(create: (_) => instance<CallBloc>()),
+        BlocProvider<ChatBloc>(create: (_) => instance<ChatBloc>()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,

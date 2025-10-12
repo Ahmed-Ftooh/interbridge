@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/forgot_password_view.dart';
+import 'package:interbridge/presentation/screens/auth/forgot_password_screen/reset_password_view.dart';
+import 'package:interbridge/presentation/screens/auth/verification/email_verification_view.dart';
 import 'package:interbridge/presentation/screens/auth/login_screen/view/login_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/register_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_field_view.dart';
@@ -14,12 +16,15 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view/selec
 import 'package:interbridge/presentation/screens/splash/splash_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/request_waiting_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
 
 class Routes {
   static const String splashRoute = "/";
   static const String loginRoute = "/login";
   static const String registerRoute = "/register";
   static const String forgotPasswordRoute = "/forgotPassword";
+  static const String emailVerificationRoute = "/emailVerification";
+  static const String resetPasswordRoute = "/resetPassword";
   static const String onBoardingRoute = "/onBoarding";
   static const String mainRoute = "/main";
   static const String chatRoute = "/chat";
@@ -30,6 +35,7 @@ class Routes {
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
   static const String requestWaiting = "/requestWaiting";
   static const String accepteddoucment = "/accepteddoucment";
+  static const String documentTranslation = "/documentTranslation";
 }
 
 class RouteGenerator {
@@ -37,6 +43,16 @@ class RouteGenerator {
     switch (settings.name) {
       case Routes.splashRoute:
         return MaterialPageRoute(builder: (_) => const SplashView());
+      case Routes.emailVerificationRoute:
+        return MaterialPageRoute(
+          builder: (_) => const EmailVerificationView(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
+      case Routes.resetPasswordRoute:
+        return MaterialPageRoute(
+          builder: (_) => const ResetPasswordView(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
       case Routes.accepteddoucment:
         return MaterialPageRoute(
           builder: (_) => const InterpreterDocumentView(),
@@ -99,6 +115,10 @@ class RouteGenerator {
                 urgency: args['urgency'],
                 description: args['description'],
               ),
+        );
+      case Routes.documentTranslation:
+        return MaterialPageRoute(
+          builder: (_) => const DocumentTranslationView(),
         );
       default:
         return unDefinedRoute();

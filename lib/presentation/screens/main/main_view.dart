@@ -17,6 +17,11 @@ import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
+import 'package:interbridge/data/services/chat_service.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -37,6 +42,7 @@ class _MainViewState extends State<MainView> {
     super.initState();
     _supabaseService = instance<SupabaseService>();
     _loadUserProfile();
+    _checkForActiveSession();
   }
 
   Future<void> _loadUserProfile() async {
@@ -80,6 +86,119 @@ class _MainViewState extends State<MainView> {
           isLoading = false;
           error = ErrorHandler.handleError(e, context: 'LoadUserProfile');
         });
+      }
+    }
+  }
+
+  Future<void> _checkForActiveSession() async {
+    try {
+      final hasSession = await SessionService.hasActiveSession();
+
+      if (hasSession) {
+        log('Active session found, showing restoration dialog');
+        _showSessionRestorationDialog();
+      }
+    } catch (e) {
+      log('Error checking for active session: $e');
+    }
+  }
+
+  void _showSessionRestorationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.restore, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('Restore Session'),
+              ],
+            ),
+            content: const Text(
+              'You have an active session. Would you like to continue where you left off?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await SessionService.clearSession();
+                  if (mounted) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: const Text('Start Fresh'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _restoreSession();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Continue Session'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final session = await SessionService.getSession();
+
+      if (session == null) {
+        log('No session data found');
+        return;
+      }
+
+      final requestId = session['requestId'] as String;
+      final requesterId = session['requesterId'] as String;
+      final interpreterId = session['interpreterId'] as String;
+      final currentScreen = session['currentScreen'] as String?;
+
+      log('Restoring session: $currentScreen for request: $requestId');
+
+      // Create chat bloc for the session
+      final chatBloc = ChatBloc(service: instance<ChatService>());
+
+      Widget targetScreen;
+
+      switch (currentScreen) {
+        case 'chat':
+          targetScreen = ChatView(
+            requestId: requestId,
+            requesterId: requesterId,
+            interpreterId: interpreterId,
+          );
+          break;
+        case 'call':
+          targetScreen = EnhancedCallScreen(
+            channelId: requestId,
+            chatBloc: chatBloc,
+          );
+          break;
+        default:
+          log('Unknown screen type: $currentScreen');
+          return;
+      }
+
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => targetScreen));
+      }
+    } catch (e) {
+      log('Error restoring session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to restore session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

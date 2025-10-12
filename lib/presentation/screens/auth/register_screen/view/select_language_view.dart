@@ -72,7 +72,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen>
       listener: (context, state) {
         if (state.errorMessage != null) {
           CustomSnackBar.show(
-            context: context,
+            context,
             message: state.errorMessage!,
             type: SnackBarType.error,
           );

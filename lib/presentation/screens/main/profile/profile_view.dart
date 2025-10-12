@@ -1005,7 +1005,7 @@ class _ProfileViewState extends State<ProfileView> {
         Container(
           padding: const EdgeInsets.all(AppSize.s16),
           decoration: BoxDecoration(
-            color: ColorManager.greyLight.withOpacity(0.3),
+            color: ColorManager.greyLight.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(AppSize.s8),
             border: Border.all(color: Colors.grey[300]!),
           ),
@@ -1067,9 +1067,9 @@ class _ProfileViewState extends State<ProfileView> {
         Container(
           padding: const EdgeInsets.all(AppSize.s12),
           decoration: BoxDecoration(
-            color: ColorManager.info.withOpacity(0.1),
+            color: ColorManager.info.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(AppSize.s8),
-            border: Border.all(color: ColorManager.info.withOpacity(0.3)),
+            border: Border.all(color: ColorManager.info.withValues(alpha: 0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

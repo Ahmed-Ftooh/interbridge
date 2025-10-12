@@ -193,6 +193,9 @@ class FirebaseMessagingService {
         return;
       }
 
+      // Clean up old tokens for this user first
+      await _cleanupOldUserTokens(user.id);
+
       await _client.from('fcm_tokens').upsert({
         'user_id': user.id,
         'token': token,
@@ -202,6 +205,34 @@ class FirebaseMessagingService {
       debugPrint('✅ FCM token registered in Supabase');
     } catch (e) {
       debugPrint('❌ Error registering FCM token: $e');
+    }
+  }
+
+  /// Clean up old tokens for a user
+  Future<void> _cleanupOldUserTokens(String userId) async {
+    try {
+      // Keep only the 3 most recent tokens per user
+      final response = await _client
+          .from('fcm_tokens')
+          .select('id, created_at')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      if (response.length > 3) {
+        final tokensToDelete =
+            response.skip(3).map((row) => row['id']).toList();
+
+        await _client
+            .from('fcm_tokens')
+            .delete()
+            .inFilter('id', tokensToDelete);
+
+        debugPrint(
+          '🧹 Cleaned up ${tokensToDelete.length} old FCM tokens for user',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error cleaning up old user tokens: $e');
     }
   }
 

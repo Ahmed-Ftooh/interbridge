@@ -27,11 +27,55 @@ class SupabaseService {
     required String email,
     required String password,
   }) async {
-    return await _client.auth.signUp(
-      email: email,
-      password: password,
+    return await _client.auth.signUp(email: email, password: password);
+  }
 
-      emailRedirectTo: 'http://localhost:3000',
+  Future<void> sendEmailOtp(String email) async {
+    try {
+      await _client.auth.signInWithOtp(
+        email: email,
+        // You can specify a redirect URL after verification (optional
+        shouldCreateUser: true, // creates a new user if not registered
+      );
+      print('OTP sent to $email');
+    } catch (e) {
+      print('Error sending OTP: $e');
+    }
+  }
+
+  Future<void> sendPasswordResetEmail({required String email}) async {
+    await _client.auth.resetPasswordForEmail(
+      email,
+      redirectTo:
+          const String.fromEnvironment('SUPABASE_RESET_REDIRECT') != ''
+              ? const String.fromEnvironment('SUPABASE_RESET_REDIRECT')
+              : null,
+    );
+  }
+
+  Future<void> updatePassword({required String newPassword}) async {
+    await _client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
+  Future<void> verifyEmailOtp({
+    required String email,
+    required String token,
+  }) async {
+    await _client.auth.verifyOTP(
+      token: token,
+      type: OtpType.signup,
+      email: email,
+    );
+  }
+
+  Future<void> verifyRecoveryOtp({
+    required String email,
+    required String token,
+  }) async {
+    await _client.auth.verifyOTP(
+      token: token,
+      type: OtpType.recovery,
+      email: email,
     );
   }
 
@@ -463,7 +507,7 @@ class SupabaseService {
       });
     } catch (e) {
       // Log error but don't fail the upload
-      print('Failed to store voice sample metadata: $e');
+      log('Failed to store voice sample metadata: $e');
     }
   }
 
@@ -507,7 +551,7 @@ class SupabaseService {
 
       final certType = certificateType ?? 'medical_interpreter';
       final objectPath =
-          'certificates/${user.id}/${dateStr}_${certType}_${safeName}';
+          'certificates/${user.id}/${dateStr}_${certType}_$safeName';
 
       await _client.storage
           .from('documents')
@@ -583,7 +627,7 @@ class SupabaseService {
       });
     } catch (e) {
       // Log error but don't fail the upload
-      print('Failed to store certificate metadata: $e');
+      log('Failed to store certificate metadata: $e');
     }
   }
 }

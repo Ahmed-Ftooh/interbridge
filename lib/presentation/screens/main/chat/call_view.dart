@@ -52,7 +52,7 @@ class _CallScreenBodyState extends State<_CallScreenBody> {
             barrierDismissible: false,
             builder:
                 (context) => AlertDialog(
-                  title: Text('Call Error'),
+                  title: const Text('Call Error'),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,7 +162,10 @@ class _CallScreenBodyState extends State<_CallScreenBody> {
                         icon: Icons.call_end,
                         label: 'Hang up',
                         color: Colors.redAccent,
-                        onTap: () => context.read<CallBloc>().add(EndCall()),
+                        onTap: () {
+                          context.read<CallBloc>().add(EndCall());
+                          Navigator.of(context).maybePop();
+                        },
                       ),
                       _roundIconButton(
                         icon: speakerOn ? Icons.volume_up : Icons.hearing,
@@ -197,8 +200,8 @@ class _CallScreenBodyState extends State<_CallScreenBody> {
             height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withOpacity(0.12),
-              border: Border.all(color: color.withOpacity(0.4)),
+              color: color.withValues(alpha: 0.12),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
             ),
             child: Icon(icon, color: color, size: 28),
           ),

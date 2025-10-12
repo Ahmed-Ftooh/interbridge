@@ -1,15 +1,24 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
+import 'package:interbridge/data/services/translation_cache_service.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InterpreterTranslationView extends StatefulWidget {
   final DocumentTranslationRequest request;
+  final String? cachedTranslationText;
 
-  const InterpreterTranslationView({super.key, required this.request});
+  const InterpreterTranslationView({
+    super.key,
+    required this.request,
+    this.cachedTranslationText,
+  });
 
   @override
   State<InterpreterTranslationView> createState() =>
@@ -21,13 +30,37 @@ class _InterpreterTranslationViewState
   final TextEditingController _translatedTextController =
       TextEditingController();
   bool _isSubmitting = false;
+  late TranslationCacheService _cacheService;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill with original text for reference
-    if (widget.request.text != null && widget.request.text!.isNotEmpty) {
+    _cacheService = instance<TranslationCacheService>();
+
+    // Cache the active translation request
+    _cacheActiveTranslation();
+
+    // Load cached translation text if available, otherwise pre-fill with original text
+    if (widget.cachedTranslationText != null &&
+        widget.cachedTranslationText!.isNotEmpty) {
+      _translatedTextController.text = widget.cachedTranslationText!;
+    } else if (widget.request.text != null && widget.request.text!.isNotEmpty) {
       _translatedTextController.text = widget.request.text!;
+    }
+  }
+
+  Future<void> _cacheActiveTranslation() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        await _cacheService.cacheActiveTranslation(
+          request: widget.request,
+          currentUserId: user.id,
+          currentTranslationText: _translatedTextController.text,
+        );
+      }
+    } catch (e) {
+      log('Error caching active translation: $e');
     }
   }
 
@@ -51,6 +84,9 @@ class _InterpreterTranslationViewState
       );
 
       if (mounted) {
+        // Clear cache after successful submission
+        await _cacheService.clearCache();
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Translation submitted successfully!'),
@@ -244,6 +280,8 @@ class _InterpreterTranslationViewState
                     ),
                     onChanged: (value) {
                       setState(() {}); // Rebuild to show/hide copy button
+                      // Cache the translation text as user types
+                      _cacheService.updateTranslationText(value);
                     },
                   ),
                   const SizedBox(height: AppSize.s20),
@@ -361,7 +399,21 @@ class _InterpreterTranslationViewState
 
   @override
   void dispose() {
+    // Save the current translation text before disposing
+    _saveCurrentTranslation();
     _translatedTextController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveCurrentTranslation() async {
+    try {
+      if (_translatedTextController.text.isNotEmpty) {
+        await _cacheService.updateTranslationText(
+          _translatedTextController.text,
+        );
+      }
+    } catch (e) {
+      log('Error saving translation text: $e');
+    }
   }
 }

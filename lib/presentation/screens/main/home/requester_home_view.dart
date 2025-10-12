@@ -5,8 +5,9 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/widgets/custom_dialog.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/presentation/widgets/custom_dialog.dart';
+
 import 'package:interbridge/data/models/language.dart';
 
 class RequesterHomeView extends StatefulWidget {
@@ -661,12 +662,12 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
   void _showRequestDialog() {
     // Validate that both languages are selected
     if (selectedFromLanguage == null || selectedToLanguage == null) {
-      showCustomDialog(
-        context: context,
+      (context).showCustomDialog(
         title: 'Missing Information',
-        message:
+        content:
             'Please select both "From" and "To" languages before requesting an interpreter.',
-        primaryButtonText: 'OK',
+        confirmText: 'OK',
+
         icon: Icons.warning,
         iconColor: ColorManager.primary,
       );
@@ -674,16 +675,16 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
     }
 
     // Show confirmation dialog
-    showCustomDialog(
-      context: context,
+    (context).showCustomDialog(
       title: 'Request Interpreter',
-      message:
+      content:
           'Are you sure you want to request an interpreter for ${selectedFromLanguage?.name} to ${selectedToLanguage?.name}?',
-      primaryButtonText: 'Request',
-      secondaryButtonText: 'Cancel',
+      confirmText: 'Request',
+      cancelText: 'Cancel',
       icon: Icons.phone_in_talk,
       iconColor: ColorManager.primary,
-      onPrimaryPressed: () async {
+      onCancel: () => Navigator.of(context).pop(),
+      onConfirm: () async {
         Navigator.of(context).pop(); // Close dialog
 
         // Navigate to waiting screen with Lottie while creating & waiting
