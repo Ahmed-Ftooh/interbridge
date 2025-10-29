@@ -21,6 +21,9 @@ class DocumentTranslationService {
     String? title,
     String? comment,
     String? translationMethod,
+    String? fileUrl,
+    String? fileType,
+    String? fileName,
   }) async {
     try {
       final user = _client.auth.currentUser;
@@ -29,6 +32,27 @@ class DocumentTranslationService {
       }
 
       // Create the request
+      // Normalize translation method to satisfy DB check constraint
+      String? normalizedMethod;
+      if (translationMethod != null) {
+        switch (translationMethod) {
+          case 'pdf':
+            normalizedMethod = 'document';
+            break;
+          case 'image':
+            normalizedMethod = 'image';
+            break;
+          case 'voice':
+            normalizedMethod = 'document';
+            break;
+          case 'text':
+            normalizedMethod = 'text';
+            break;
+          default:
+            normalizedMethod = translationMethod;
+        }
+      }
+
       final requestData = {
         'requester_id': user.id,
         'from_language': fromLanguage,
@@ -37,18 +61,48 @@ class DocumentTranslationService {
         'text': text,
         'title': title,
         'comment': comment,
-        'translation_method': translationMethod,
-        'file_url': null,
+        'translation_method': normalizedMethod,
+        'file_url': fileUrl,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      final response =
-          await _client
-              .from('document_translation_requests')
-              .insert(requestData)
-              .select()
-              .single();
+      // Only include optional columns if they exist in the schema.
+      // Avoid sending columns like 'file_name' / 'file_type' that may not be present.
+      if (fileType != null) {
+        try {
+          // Attempt adding; if the column doesn't exist, PostgREST will error.
+          // We skip attaching to request when column missing by catching below in insert.
+          (requestData as Map<String, dynamic>)['file_type'] = fileType;
+        } catch (_) {}
+      }
+      if (fileName != null) {
+        try {
+          (requestData as Map<String, dynamic>)['file_name'] = fileName;
+        } catch (_) {}
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response =
+            await _client
+                .from('document_translation_requests')
+                .insert(requestData)
+                .select()
+                .single();
+      } on PostgrestException {
+        // Retry without potentially missing columns
+        final minimalRequest =
+            Map<String, dynamic>.from(requestData)
+              ..remove('file_type')
+              ..remove('file_name');
+        response =
+            await _client
+                .from('document_translation_requests')
+                .insert(minimalRequest)
+                .select()
+                .single();
+      }
 
       final request = DocumentTranslationRequest.fromJson(response);
 
@@ -492,10 +546,35 @@ class DocumentTranslationService {
     }
   }
 
+  /// Get completed document translation requests for the current interpreter
+  Future<List<DocumentTranslationRequest>> getCompletedRequests() async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be authenticated');
+      }
+
+      final response = await _client
+          .from('document_translation_requests')
+          .select()
+          .eq('accepted_by', user.id)
+          .eq('status', 'completed')
+          .order('completed_at', ascending: false);
+
+      return response
+          .map((json) => DocumentTranslationRequest.fromJson(json))
+          .toList();
+    } catch (e) {
+      log('Error getting completed document translation requests: $e');
+      return [];
+    }
+  }
+
   /// Complete a document translation request
   Future<void> completeRequest({
     required String requestId,
-    required String translatedText,
+    String? translatedText,
+    String? translatedFileUrl,
   }) async {
     try {
       final user = _client.auth.currentUser;
@@ -509,7 +588,7 @@ class DocumentTranslationService {
           .update({
             'status': 'completed',
             'translated_text': translatedText,
-            'translated_file_url': null,
+            'translated_file_url': translatedFileUrl,
             'completed_at': DateTime.now().toIso8601String(),
           })
           .eq('id', requestId);
@@ -580,21 +659,29 @@ class DocumentTranslationService {
         throw Exception('User must be authenticated');
       }
 
-      // First, verify that the user owns this request
+      // First, verify that the user owns this request or is the assigned interpreter
       final requestResponse =
           await _client
               .from('document_translation_requests')
-              .select('requester_id, status')
+              .select('requester_id, accepted_by, status')
               .eq('id', requestId)
               .single();
 
-      if (requestResponse['requester_id'] != user.id) {
-        throw Exception('You can only delete your own requests');
+      final bool isRequester = requestResponse['requester_id'] == user.id;
+      final bool isInterpreter = requestResponse['accepted_by'] == user.id;
+      
+      if (!isRequester && !isInterpreter) {
+        throw Exception('You do not have permission to delete this request');
       }
 
-      // Only allow deletion of pending requests
-      if (requestResponse['status'] != 'pending') {
-        throw Exception('You can only delete pending requests');
+      // Requesters can delete pending requests
+      // Interpreters can delete accepted requests
+      final String status = requestResponse['status'] as String;
+      if (isRequester && status != 'pending') {
+        throw Exception('Requesters can only delete pending requests');
+      }
+      if (isInterpreter && status != 'accepted') {
+        throw Exception('Interpreters can only delete accepted requests');
       }
 
       // Delete the request

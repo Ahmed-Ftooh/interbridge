@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_accepted_documents_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/interpreter_completed_documents_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_view.dart';
 
 class InterpreterDashboardView extends StatelessWidget {
@@ -9,7 +10,7 @@ class InterpreterDashboardView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Interpreter Dashboard'),
@@ -20,6 +21,7 @@ class InterpreterDashboardView extends StatelessWidget {
             tabs: [
               Tab(text: 'Available'),
               Tab(text: 'My Tasks'),
+              Tab(text: 'Completed'),
             ],
           ),
         ),
@@ -27,6 +29,7 @@ class InterpreterDashboardView extends StatelessWidget {
           children: [
             InterpreterDocumentView(),
             InterpreterAcceptedDocumentsView(),
+            InterpreterCompletedDocumentsView(),
           ],
         ),
       ),

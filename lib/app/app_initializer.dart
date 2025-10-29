@@ -34,17 +34,42 @@ class AppInitializer {
       ];
 
       final missingVars = <String>[];
+      final placeholderVars = <String>[];
+
       for (final varName in requiredVars) {
-        if (dotenv.env[varName] == null || dotenv.env[varName]!.isEmpty) {
+        final value = dotenv.env[varName];
+        if (value == null || value.isEmpty) {
           missingVars.add(varName);
+        } else if (value.startsWith('your_') ||
+            value.startsWith('PLACEHOLDER_')) {
+          placeholderVars.add(varName);
         }
       }
 
-      if (missingVars.isNotEmpty) {
+      // Combine missing and placeholder variables
+      final invalidVars = [...missingVars, ...placeholderVars];
+
+      if (invalidVars.isNotEmpty) {
+        final missingText =
+            missingVars.isNotEmpty ? 'Missing: ${missingVars.join(', ')}' : '';
+        final placeholderText =
+            placeholderVars.isNotEmpty
+                ? 'Placeholder values: ${placeholderVars.join(', ')}'
+                : '';
+        final issueText = [
+          missingText,
+          placeholderText,
+        ].where((text) => text.isNotEmpty).join('\n');
+
         throw Exception(
-          'Missing required environment variables: ${missingVars.join(', ')}\n'
+          'Environment configuration issues:\n$issueText\n\n'
           'Please check your assets/.env file and ensure all required variables are set.\n'
-          'You can copy env.template to assets/.env and fill in your actual values.',
+          'You can copy env.template to assets/.env and fill in your actual values.\n\n'
+          'Steps to fix:\n'
+          '1. Copy env.template to assets/.env\n'
+          '2. Fill in your actual Supabase and Agora credentials\n'
+          '3. Restart the app\n\n'
+          'Current environment variables found: ${dotenv.env.keys.isEmpty ? "None" : dotenv.env.keys.join(", ")}',
         );
       }
 

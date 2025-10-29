@@ -5,7 +5,7 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
-import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/interpreter_dashboard_view.dart';
 import 'package:interbridge/presentation/screens/main/home/interpreter_home_view.dart';
 import 'package:interbridge/presentation/screens/main/home/requester_home_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/profile_view.dart';
@@ -22,6 +22,7 @@ import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/data/services/chat_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -95,29 +96,84 @@ class _MainViewState extends State<MainView> {
       final hasSession = await SessionService.hasActiveSession();
 
       if (hasSession) {
-        log('Active session found, showing restoration dialog');
-        _showSessionRestorationDialog();
+        log('Active session found, checking if request was accepted...');
+        await _checkIfRequestWasAccepted();
       }
     } catch (e) {
       log('Error checking for active session: $e');
     }
   }
 
-  void _showSessionRestorationDialog() {
+  Future<void> _checkIfRequestWasAccepted() async {
+    try {
+      final session = await SessionService.getSession();
+      if (session == null) return;
+
+      final requestId = session['requestId'] as String;
+
+      // Check if the request status has changed to accepted
+      final response =
+          await Supabase.instance.client
+              .from('interpreter_requests')
+              .select('status, accepted_by, accepted_at')
+              .eq('id', requestId)
+              .single();
+
+      if (response['status'] == 'accepted') {
+        log(
+          'Request was accepted while app was in background, updating session...',
+        );
+
+        // Update session to reflect that request was accepted
+        await SessionService.saveSession(
+          requestId: requestId,
+          requesterId: session['requesterId'] as String,
+          interpreterId: response['accepted_by'] as String,
+          currentScreen: 'chat', // Move directly to chat
+        );
+
+        // Show restoration dialog
+        _showSessionRestorationDialog();
+      } else {
+        log('Request still pending, showing restoration dialog');
+        _showSessionRestorationDialog();
+      }
+    } catch (e) {
+      log('Error checking request status: $e');
+      // If there's an error, still show the restoration dialog
+      _showSessionRestorationDialog();
+    }
+  }
+
+  void _showSessionRestorationDialog() async {
+    // Get session info to show more context
+    final session = await SessionService.getSession();
+    final isRequestAccepted =
+        session != null &&
+        (session['currentScreen'] == 'chat' ||
+            session['currentScreen'] == 'call');
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder:
           (context) => AlertDialog(
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.restore, color: Colors.blue),
-                SizedBox(width: 8),
-                Text('Restore Session'),
+                Icon(
+                  isRequestAccepted ? Icons.check_circle : Icons.restore,
+                  color: isRequestAccepted ? Colors.green : Colors.blue,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isRequestAccepted ? 'Request Accepted!' : 'Restore Session',
+                ),
               ],
             ),
-            content: const Text(
-              'You have an active session. Would you like to continue where you left off?',
+            content: Text(
+              isRequestAccepted
+                  ? 'Your request has been accepted! Would you like to start the session?'
+                  : 'You have an active session. Would you like to continue where you left off?',
             ),
             actions: [
               TextButton(
@@ -135,10 +191,13 @@ class _MainViewState extends State<MainView> {
                   await _restoreSession();
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor:
+                      isRequestAccepted ? Colors.green : Colors.blue,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('Continue Session'),
+                child: Text(
+                  isRequestAccepted ? 'Start Session' : 'Continue Session',
+                ),
               ),
             ],
           ),
@@ -249,7 +308,7 @@ class _MainViewState extends State<MainView> {
             : const RequesterHomeView();
       case 1:
         return isInterpreter
-            ? const InterpreterDocumentView()
+            ? const InterpreterDashboardView()
             : const DocumentTranslationView();
       case 2:
         return const ProfileView();

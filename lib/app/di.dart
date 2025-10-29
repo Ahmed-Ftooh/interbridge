@@ -18,6 +18,7 @@ import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/services/translation_cache_service.dart';
+import 'package:interbridge/data/services/machine_translation_service.dart';
 import 'package:interbridge/data/services/app_state_restoration_service.dart';
 import 'package:interbridge/core/firebase_service.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
@@ -57,6 +58,11 @@ Future<void> initAppModule() async {
     // Register TranslationCacheService
     instance.registerLazySingleton<TranslationCacheService>(
       () => TranslationCacheService(),
+    );
+
+    // Register MachineTranslationService
+    instance.registerLazySingleton<MachineTranslationService>(
+      () => MachineTranslationService(),
     );
 
     // Register AppStateRestorationService

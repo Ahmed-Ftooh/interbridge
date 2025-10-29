@@ -125,6 +125,13 @@ class InterpreterJobService {
         throw Exception('User must be authenticated');
       }
 
+      // Add the job to the interpreter's declined jobs list
+      await _client.from('interpreter_declined_jobs').insert({
+        'interpreter_id': user.id,
+        'request_id': requestId,
+        'declined_at': DateTime.now().toIso8601String(),
+      });
+
       log('Job declined by interpreter: $requestId');
     } catch (e) {
       log('Error declining job: $e');

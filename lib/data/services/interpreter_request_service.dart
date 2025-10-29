@@ -278,3 +278,34 @@ class InterpreterRequestService {
     }
   }
 }
+
+extension InterpreterRequestAdmin on InterpreterRequestService {
+  /// Delete a pending interpreter request created by the current user
+  Future<void> deleteRequest(String requestId) async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be authenticated');
+      }
+
+      // Verify ownership and status
+      final row = await _client
+          .from('interpreter_requests')
+          .select('requester_id, status')
+          .eq('id', requestId)
+          .single();
+
+      if (row['requester_id'] != user.id) {
+        throw Exception('You can only delete your own requests');
+      }
+      if (row['status'] != 'pending') {
+        throw Exception('Only pending requests can be deleted');
+      }
+
+      await _client.from('interpreter_requests').delete().eq('id', requestId);
+    } catch (e) {
+      log('Error deleting interpreter request: $e');
+      rethrow;
+    }
+  }
+}

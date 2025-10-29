@@ -5,6 +5,7 @@ import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
+import 'package:interbridge/data/services/hidden_items_service.dart';
 
 class InterpreterCompletedDocumentsView extends StatefulWidget {
   const InterpreterCompletedDocumentsView({super.key});
@@ -31,8 +32,11 @@ class _InterpreterCompletedDocumentsViewState
     try {
       final requests =
           await instance<DocumentTranslationService>().getCompletedRequests();
+      final hidden =
+          await HiddenItemsService().getInterpreterHiddenCompletedIds();
       setState(() {
-        _completedRequests = requests;
+        _completedRequests =
+            requests.where((r) => !hidden.contains(r.id)).toList();
         _isLoading = false;
         _errorMessage = null;
       });
@@ -192,6 +196,21 @@ class _InterpreterCompletedDocumentsViewState
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Remove from Completed',
+                  onPressed: () async {
+                    await HiddenItemsService().hideInterpreterCompleted(
+                      request.id,
+                    );
+                    await _loadCompletedRequests();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Removed from Completed')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.delete_outline, size: 18),
                 ),
               ],
             ),

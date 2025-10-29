@@ -5,6 +5,7 @@ import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.da
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
+import 'package:interbridge/presentation/services/call_state_manager.dart';
 
 class ChatView extends StatefulWidget {
   final String requestId;
@@ -61,8 +62,9 @@ class _ChatViewState extends State<ChatView> {
                       content: '__CALL_INVITE__',
                     ),
                   );
-                  // Open enhanced call screen locally
-                  Navigator.of(context).pushReplacement(
+                  // Open enhanced call screen locally - use push instead of pushReplacement
+                  // This allows user to go back to chat while call is active
+                  Navigator.of(context).push(
                     MaterialPageRoute(
                       builder:
                           (_) => EnhancedCallScreen(
@@ -101,6 +103,55 @@ class _ChatViewState extends State<ChatView> {
       ),
       body: Column(
         children: [
+          // Call indicator - show when there's an active call
+          StreamBuilder<String?>(
+            stream: CallStateManager().activeCallStream,
+            builder: (context, snapshot) {
+              final activeChannelId = snapshot.data;
+              final isCallActive = activeChannelId == widget.requestId;
+
+              if (isCallActive) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.green,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.call, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Call in progress',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          // Navigate back to call screen
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EnhancedCallScreen(
+                                    channelId: widget.requestId,
+                                    chatBloc: context.read<ChatBloc>(),
+                                  ),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Return to call',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Expanded(
             child: BlocBuilder<ChatBloc, ChatState>(
               builder: (context, state) {
@@ -155,9 +206,10 @@ class _ChatViewState extends State<ChatView> {
                       _handledCallEndedMessageId = lastId;
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
-                        // Close any open call screens
+                        // Close any open call screens and go back to chat
                         Navigator.of(context).popUntil((route) {
-                          return route.isFirst;
+                          return route.isFirst ||
+                              route.settings.name == '/main';
                         });
                       });
                     }
@@ -192,15 +244,22 @@ class _ChatViewState extends State<ChatView> {
                     );
                   }
 
-                  // Filter out call invite messages that are no longer relevant
+                  // Filter out call state messages that are no longer relevant
                   final filteredMessages =
                       state.messages.where((message) {
-                        // Keep all messages except call invites that are from the current user
-                        // (call invites from others are shown as join buttons)
-                        if (message['content'] == '__CALL_INVITE__' &&
-                            message['sender_id'] == myId) {
-                          return false; // Hide call invites from current user
+                        final content = message['content'] as String?;
+                        final senderId = message['sender_id'] as String?;
+
+                        // Hide call invites from current user (they're not needed in chat)
+                        if (content == '__CALL_INVITE__' && senderId == myId) {
+                          return false;
                         }
+
+                        // Hide call ended messages from both users (they're system messages)
+                        if (content == '__CALL_ENDED__') {
+                          return false;
+                        }
+
                         return true; // Keep all other messages
                       }).toList();
 
@@ -218,38 +277,38 @@ class _ChatViewState extends State<ChatView> {
                           userProfile?['profile_image'] as String?;
 
                       // Render call invite as a button card for the recipient
-                      if (m['content'] == '__CALL_INVITE__' && !isMe) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 6,
-                            horizontal: 12,
-                          ),
-                          child: Card(
-                            color: Colors.green.shade50,
-                            child: ListTile(
-                              leading: const Icon(
-                                Icons.call,
-                                color: Colors.green,
-                              ),
-                              title: const Text('Incoming call'),
-                              subtitle: Text(
-                                'Tap to join — Channel: ${widget.requestId}',
-                              ),
-                              onTap: () {
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(
-                                    builder:
-                                        (_) => EnhancedCallScreen(
-                                          channelId: widget.requestId,
-                                          chatBloc: context.read<ChatBloc>(),
-                                        ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        );
-                      }
+                      // if (m['content'] == '__CALL_INVITE__' && !isMe) {
+                      //   return Padding(
+                      //     padding: const EdgeInsets.symmetric(
+                      //       vertical: 6,
+                      //       horizontal: 12,
+                      //     ),
+                      //     child: Card(
+                      //       color: Colors.green.shade50,
+                      //       child: ListTile(
+                      //         leading: const Icon(
+                      //           Icons.call,
+                      //           color: Colors.green,
+                      //         ),
+                      //         title: const Text('Incoming call'),
+                      //         subtitle: Text(
+                      //           'Tap to join — Channel: ${widget.requestId}',
+                      //         ),
+                      //         onTap: () {
+                      //           Navigator.of(context).push(
+                      //             MaterialPageRoute(
+                      //               builder:
+                      //                   (_) => EnhancedCallScreen(
+                      //                     channelId: widget.requestId,
+                      //                     chatBloc: context.read<ChatBloc>(),
+                      //                   ),
+                      //             ),
+                      //           );
+                      //         },
+                      //       ),
+                      //     ),
+                      //   );
+                      // }
 
                       return Align(
                         alignment:

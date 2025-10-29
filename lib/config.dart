@@ -5,19 +5,25 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 String get agoraAppId {
   final appId = dotenv.env['AGORA_APP_ID'];
   if (appId == null || appId.isEmpty) {
-    throw Exception(
-      'AGORA_APP_ID is not set in environment variables. Please check your .env file.',
-    );
+    // Return a placeholder to prevent crashes during development
+    // This should be caught by the app initializer validation
+    return 'PLACEHOLDER_AGORA_APP_ID';
   }
   return appId;
+}
+
+/// Check if Agora is properly configured
+bool get isAgoraConfigured {
+  final appId = dotenv.env['AGORA_APP_ID'];
+  return appId != null && appId.isNotEmpty && appId != 'your_agora_app_id_here';
 }
 
 String get agoraAppCertificate {
   final certificate = dotenv.env['AGORA_APP_CERTIFICATE'];
   if (certificate == null || certificate.isEmpty) {
-    throw Exception(
-      'AGORA_APP_CERTIFICATE is not set in environment variables. Please check your .env file.',
-    );
+    // Return a placeholder to prevent crashes during development
+    // This should be caught by the app initializer validation
+    return 'PLACEHOLDER_AGORA_APP_CERTIFICATE';
   }
   return certificate;
 }

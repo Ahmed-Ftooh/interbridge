@@ -553,20 +553,34 @@ class SupabaseService {
       final objectPath =
           'certificates/${user.id}/${dateStr}_${certType}_$safeName';
 
-      await _client.storage
-          .from('documents')
-          .uploadBinary(
-            objectPath,
-            await certificateFile.readAsBytes(),
-            fileOptions: FileOptions(
-              upsert: true,
-              contentType: _getContentType(extension),
-            ),
-          );
+      // Try preferred bucket, fallback to 'documents' if not found
+      String bucket = 'documents';
+      try {
+        await _client.storage
+            .from(bucket)
+            .uploadBinary(
+              objectPath,
+              await certificateFile.readAsBytes(),
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: _getContentType(extension),
+              ),
+            );
+      } catch (_) {
+        bucket = 'documents';
+        await _client.storage
+            .from(bucket)
+            .uploadBinary(
+              objectPath,
+              await certificateFile.readAsBytes(),
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: _getContentType(extension),
+              ),
+            );
+      }
 
-      final publicUrl = _client.storage
-          .from('documents')
-          .getPublicUrl(objectPath);
+      final publicUrl = _client.storage.from(bucket).getPublicUrl(objectPath);
 
       // Store certificate metadata in database
       await _storeCertificateMetadata(

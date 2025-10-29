@@ -54,20 +54,7 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Document Translation Requests'),
-        backgroundColor: ColorManager.primary2,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAvailableRequests,
-          ),
-        ],
-      ),
-      body: _buildBody(),
-    );
+    return _buildBody();
   }
 
   Widget _buildBody() {

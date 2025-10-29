@@ -325,6 +325,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   }
 
   Future<void> _onEndCall(EndCall e, Emitter<CallState> emit) async {
+    log('Ending call...');
     _timer?.cancel();
     _timer = null;
 
@@ -338,20 +339,33 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     _startedAt = null;
     _remoteUids.clear();
-    try {
-      await _engine?.leaveChannel();
 
-      // Send call ended notification to chat
-      if (_chatBloc != null && state is CallOngoing) {
-        final ongoingState = state as CallOngoing;
+    // Send call ended notification to chat BEFORE leaving channel
+    if (_chatBloc != null && !_chatBloc.isClosed && state is CallOngoing) {
+      final ongoingState = state as CallOngoing;
+      try {
+        log('Sending call ended message to chat...');
         _chatBloc.add(
           SendCallStateMessage(
             requestId: ongoingState.channelId,
             callState: '__CALL_ENDED__',
           ),
         );
+        // Wait a moment for the message to be sent
+        await Future.delayed(const Duration(milliseconds: 500));
+      } catch (e) {
+        log('Error sending call ended message: $e');
       }
+    }
+
+    try {
+      log('Leaving Agora channel...');
+      await _engine?.leaveChannel();
+      log('Successfully left Agora channel');
+    } catch (e) {
+      log('Error leaving channel: $e');
     } finally {
+      log('Emitting CallEnded state');
       emit(CallEnded());
     }
   }

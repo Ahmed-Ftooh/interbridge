@@ -52,7 +52,10 @@ class _CallFeedbackFormState extends State<CallFeedbackForm> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: BoxConstraints(
+          maxWidth: 400,
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
@@ -91,27 +94,37 @@ class _CallFeedbackFormState extends State<CallFeedbackForm> {
 
               const SizedBox(height: 24),
 
-              // Star Rating
-              _buildStarRating(),
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Star Rating
+                      _buildStarRating(),
 
-              const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-              // Connection Quality
-              _buildConnectionQuality(),
+                      // Connection Quality
+                      _buildConnectionQuality(),
 
-              const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-              // Call Experience
-              _buildCallExperience(),
+                      // Call Experience
+                      _buildCallExperience(),
 
-              const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-              // Comments
-              _buildCommentsField(),
+                      // Comments
+                      _buildCommentsField(),
+                    ],
+                  ),
+                ),
+              ),
 
               const SizedBox(height: 24),
 
-              // Action Buttons
+              // Action Buttons - Fixed at bottom
               _buildActionButtons(),
             ],
           ),
@@ -263,7 +276,10 @@ class _CallFeedbackFormState extends State<CallFeedbackForm> {
 
   void _skipFeedback() {
     Navigator.of(context).pop();
-    widget.onFeedbackSubmitted();
+    // Add a small delay to ensure the dialog is closed before calling the callback
+    Future.delayed(const Duration(milliseconds: 100), () {
+      widget.onFeedbackSubmitted();
+    });
   }
 
   Future<void> _submitFeedback() async {
@@ -286,10 +302,14 @@ class _CallFeedbackFormState extends State<CallFeedbackForm> {
           const SnackBar(
             content: Text('Thank you for your feedback!'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
         Navigator.of(context).pop();
-        widget.onFeedbackSubmitted();
+        // Add a small delay to ensure the dialog is closed before calling the callback
+        Future.delayed(const Duration(milliseconds: 100), () {
+          widget.onFeedbackSubmitted();
+        });
       }
     } catch (e) {
       if (mounted) {

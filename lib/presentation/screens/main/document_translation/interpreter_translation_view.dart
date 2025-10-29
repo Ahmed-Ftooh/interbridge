@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -9,6 +10,23 @@ import 'package:interbridge/data/services/translation_cache_service.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:interbridge/core/file_utility.dart';
+
+String _getTranslationMethodLabel(String? method) {
+  switch (method) {
+    case 'text':
+      return 'Text';
+    case 'document':
+      return 'Document';
+    case 'image':
+      return 'Image';
+    case 'voice':
+      return 'Voice';
+    default:
+      return 'Unknown';
+  }
+}
 
 class InterpreterTranslationView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -31,6 +49,7 @@ class _InterpreterTranslationViewState
       TextEditingController();
   bool _isSubmitting = false;
   late TranslationCacheService _cacheService;
+  String? _uploadedTranslatedFileUrl;
 
   @override
   void initState() {
@@ -65,10 +84,11 @@ class _InterpreterTranslationViewState
   }
 
   Future<void> _submitTranslation() async {
-    if (_translatedTextController.text.trim().isEmpty) {
+    if ((_translatedTextController.text.trim().isEmpty) &&
+        (_uploadedTranslatedFileUrl == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please provide translated text'),
+          content: Text('Please provide translated text or upload a file'),
           backgroundColor: Colors.red,
         ),
       );
@@ -80,7 +100,11 @@ class _InterpreterTranslationViewState
     try {
       await instance<DocumentTranslationService>().completeRequest(
         requestId: widget.request.id,
-        translatedText: _translatedTextController.text.trim(),
+        translatedText:
+            _translatedTextController.text.trim().isNotEmpty
+                ? _translatedTextController.text.trim()
+                : null,
+        translatedFileUrl: _uploadedTranslatedFileUrl,
       );
 
       if (mounted) {
@@ -109,6 +133,96 @@ class _InterpreterTranslationViewState
     }
   }
 
+  Future<void> _pickAndUploadTranslatedFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+      if (result == null || result.files.single.path == null) return;
+      final path = result.files.single.path!;
+      final file = File(path);
+      final bytes = await file.readAsBytes();
+      final originalFilename = result.files.single.name;
+      final filename = originalFilename.replaceAll(
+        RegExp(r'[^a-zA-Z0-9_\-.]'),
+        '_',
+      );
+      final ext = filename.split('.').last.toLowerCase();
+      String contentType;
+      switch (ext) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'png':
+          contentType = 'image/png';
+          break;
+        case 'jpg':
+        case 'jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case 'heic':
+          contentType = 'image/heic';
+          break;
+        case 'webp':
+          contentType = 'image/webp';
+          break;
+        case 'mp3':
+          contentType = 'audio/mpeg';
+          break;
+        case 'wav':
+          contentType = 'audio/wav';
+          break;
+        case 'm4a':
+          contentType = 'audio/mp4';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      // Upload to Supabase storage in 'documents' bucket
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+      final dateStr = DateTime.now().toIso8601String().split('T').first;
+      final objectPath =
+          'translated/${user.id}/$dateStr/${DateTime.now().millisecondsSinceEpoch}_$filename';
+      // Try preferred bucket, fallback to 'documents' if not found
+      String bucket = 'documents';
+      try {
+        await client.storage
+            .from(bucket)
+            .uploadBinary(
+              objectPath,
+              bytes,
+              fileOptions: FileOptions(upsert: true, contentType: contentType),
+            );
+      } catch (_) {
+        bucket = 'documents';
+        await client.storage
+            .from(bucket)
+            .uploadBinary(
+              objectPath,
+              bytes,
+              fileOptions: FileOptions(upsert: true, contentType: contentType),
+            );
+      }
+      final publicUrl = client.storage.from(bucket).getPublicUrl(objectPath);
+
+      setState(() => _uploadedTranslatedFileUrl = publicUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Translated file uploaded'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to upload file: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,6 +231,11 @@ class _InterpreterTranslationViewState
         backgroundColor: ColorManager.primary2,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Upload translated file',
+            onPressed: _pickAndUploadTranslatedFile,
+            icon: const Icon(Icons.cloud_upload),
+          ),
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _isSubmitting ? null : _submitTranslation,
@@ -130,7 +249,7 @@ class _InterpreterTranslationViewState
             width: double.infinity,
             padding: const EdgeInsets.all(AppSize.s20),
             decoration: BoxDecoration(
-              color: ColorManager.primary2.withValues(alpha: 0.1),
+              color: ColorManager.primary2.withOpacity(0.1),
               border: Border(
                 bottom: BorderSide(color: ColorManager.greyMedium, width: 1),
               ),
@@ -144,39 +263,69 @@ class _InterpreterTranslationViewState
                 ),
                 const SizedBox(width: AppSize.s12),
                 Expanded(
-                  child: Text(
-                    '${widget.request.fromLanguage} → ${widget.request.toLanguage}',
-                    style: TextStyle(
-                      fontSize: AppSize.s20,
-                      fontWeight: FontWeight.bold,
-                      color: ColorManager.textPrimary,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.request.fromLanguage} → ${widget.request.toLanguage}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (widget.request.title != null) ...[
+                        const SizedBox(height: AppSize.s4),
+                        Text(
+                          widget.request.title!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppSize.s4),
+                      Text(
+                        'Type: ${_getTranslationMethodLabel(widget.request.translationMethod)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: ColorManager.textSecondary,
+                        ),
+                      ),
+                      if (widget.request.fileUrl != null) ...[
+                        const SizedBox(height: AppSize.s8),
+                        GestureDetector(
+                          onTap:
+                              () => FileUtility.openFilePreview(
+                                context,
+                                widget.request.fileUrl!,
+                                widget.request.translationMethod,
+                                widget.request.fileName,
+                                widget.request.fileType,
+                              ),
+                          child: Row(
+                            children: [
+                              FileUtility.getFileTypeIcon(
+                                widget.request.translationMethod,
+                              ),
+                              const SizedBox(width: AppSize.s8),
+                              const Text(
+                                'View Original File',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (widget.request.specialization != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSize.s12,
-                      vertical: AppSize.s6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: ColorManager.primary2,
-                      borderRadius: BorderRadius.circular(AppSize.s16),
-                    ),
-                    child: Text(
-                      widget.request.specialization!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: AppSize.s12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
-
           // Content area
           Expanded(
             child: SingleChildScrollView(
@@ -200,7 +349,7 @@ class _InterpreterTranslationViewState
                       width: double.infinity,
                       padding: const EdgeInsets.all(AppSize.s16),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.05),
+                        color: Colors.grey.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(AppSize.s12),
                         border: Border.all(
                           color: ColorManager.greyMedium,
@@ -218,7 +367,83 @@ class _InterpreterTranslationViewState
                     ),
                     const SizedBox(height: AppSize.s24),
                   ],
-
+                  // File preview section
+                  if (widget.request.fileUrl != null &&
+                      widget.request.translationMethod != 'text') ...[
+                    Text(
+                      'Original File:',
+                      style: TextStyle(
+                        fontSize: AppSize.s16,
+                        fontWeight: FontWeight.bold,
+                        color: ColorManager.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSize.s16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(AppSize.s12),
+                        border: Border.all(
+                          color: Colors.blue.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          FileUtility.getFileTypeIcon(
+                            widget.request.translationMethod,
+                          ),
+                          const SizedBox(width: AppSize.s12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _getTranslationMethodLabel(
+                                    widget.request.translationMethod,
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: AppSize.s14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                if (widget.request.fileName != null) ...[
+                                  const SizedBox(height: AppSize.s4),
+                                  Text(
+                                    widget.request.fileName!,
+                                    style: TextStyle(
+                                      fontSize: AppSize.s12,
+                                      color: Colors.blue.withOpacity(0.7),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed:
+                                () => FileUtility.openFilePreview(
+                                  context,
+                                  widget.request.fileUrl!,
+                                  widget.request.translationMethod,
+                                  widget.request.fileName,
+                                  widget.request.fileType,
+                                ),
+                            icon: const Icon(
+                              Icons.open_in_new,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s24),
+                  ],
                   // Translation section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -285,18 +510,31 @@ class _InterpreterTranslationViewState
                     },
                   ),
                   const SizedBox(height: AppSize.s20),
-
+                  if (_uploadedTranslatedFileUrl != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green),
+                        const SizedBox(width: AppSize.s8),
+                        Expanded(
+                          child: Text(
+                            'Translated file attached',
+                            style: TextStyle(color: ColorManager.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSize.s20),
+                  ],
                   const SizedBox(height: AppSize.s24),
-
                   // Instructions
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(AppSize.s16),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.1),
+                      color: Colors.amber.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(AppSize.s12),
                       border: Border.all(
-                        color: Colors.amber.withValues(alpha: 0.3),
+                        color: Colors.amber.withOpacity(0.3),
                         width: 1,
                       ),
                     ),
@@ -340,7 +578,6 @@ class _InterpreterTranslationViewState
               ),
             ),
           ),
-
           // Submit button
           Container(
             padding: const EdgeInsets.all(AppSize.s20),
@@ -361,26 +598,13 @@ class _InterpreterTranslationViewState
                 ),
                 child:
                     _isSubmitting
-                        ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              height: AppSize.s20,
-                              width: AppSize.s20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            ),
-                            SizedBox(width: AppSize.s12),
-                            Text(
-                              'Submitting...',
-                              style: TextStyle(
-                                fontSize: AppSize.s16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        ? const SizedBox(
+                          height: AppSize.s20,
+                          width: AppSize.s20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
                         : const Text(
                           'Submit Translation',

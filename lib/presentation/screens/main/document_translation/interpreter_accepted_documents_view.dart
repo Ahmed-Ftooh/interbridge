@@ -6,6 +6,8 @@ import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
+import 'package:interbridge/core/file_utility.dart';
+import 'package:interbridge/data/services/hidden_items_service.dart';
 
 class InterpreterAcceptedDocumentsView extends StatefulWidget {
   const InterpreterAcceptedDocumentsView({super.key});
@@ -32,8 +34,11 @@ class _InterpreterAcceptedDocumentsViewState
     try {
       final requests =
           await instance<DocumentTranslationService>().getAcceptedRequests();
+      final hidden =
+          await HiddenItemsService().getInterpreterHiddenAcceptedIds();
       setState(() {
-        _acceptedRequests = requests;
+        _acceptedRequests =
+            requests.where((r) => !hidden.contains(r.id)).toList();
         _isLoading = false;
         _errorMessage = null;
       });
@@ -58,22 +63,57 @@ class _InterpreterAcceptedDocumentsViewState
         });
   }
 
+  void _showOptionsDialog(DocumentTranslationRequest request) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Request Options'),
+            content: const Text('What would you like to do with this request?'),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _deleteRequest(request);
+                },
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _deleteRequest(DocumentTranslationRequest request) async {
+    try {
+      await instance<DocumentTranslationService>().deleteRequest(request.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadAcceptedRequests();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Accepted Translations'),
-        backgroundColor: ColorManager.primary2,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAcceptedRequests,
-          ),
-        ],
-      ),
-      body: _buildBody(),
-    );
+    return _buildBody();
   }
 
   Widget _buildBody() {
@@ -162,65 +202,81 @@ class _InterpreterAcceptedDocumentsViewState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _getLanguageDisplayText(
-                          request.fromLanguage,
-                          request.toLanguage,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (request.specialization != null) ...[
-                        const SizedBox(height: AppSize.s8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSize.s8,
-                            vertical: AppSize.s4,
+            GestureDetector(
+              onLongPress: () => _showOptionsDialog(request),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _getLanguageDisplayText(
+                            request.fromLanguage,
+                            request.toLanguage,
                           ),
-                          decoration: BoxDecoration(
-                            color: ColorManager.primary2.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppSize.s8),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
-                          child: Text(
-                            request.specialization!,
-                            style: TextStyle(
-                              color: ColorManager.primary2,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                        ),
+                        if (request.specialization != null) ...[
+                          const SizedBox(height: AppSize.s8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSize.s8,
+                              vertical: AppSize.s4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: ColorManager.primary2.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(AppSize.s8),
+                            ),
+                            child: Text(
+                              request.specialization!,
+                              style: TextStyle(
+                                color: ColorManager.primary2,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSize.s8,
-                    vertical: AppSize.s4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppSize.s8),
-                  ),
-                  child: const Text(
-                    'Accepted',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
                     ),
                   ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSize.s8,
+                vertical: AppSize.s4,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(AppSize.s8),
+              ),
+              child: const Text(
+                'Accepted',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Remove from My Tasks',
+              onPressed: () async {
+                await HiddenItemsService().hideInterpreterAccepted(request.id);
+                await _loadAcceptedRequests();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Removed from My Tasks')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.delete_outline, size: 18),
             ),
             const SizedBox(height: AppSize.s16),
 
@@ -229,12 +285,13 @@ class _InterpreterAcceptedDocumentsViewState
                 'Text to Translate:',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
+
               const SizedBox(height: AppSize.s8),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(AppSize.s12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.1),
+                  color: Colors.grey.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(AppSize.s8),
                 ),
                 child: Text(
@@ -244,7 +301,6 @@ class _InterpreterAcceptedDocumentsViewState
               ),
               const SizedBox(height: AppSize.s16),
             ],
-
             if (request.fileUrl != null) ...[
               const Text(
                 'File Attached:',
@@ -255,20 +311,39 @@ class _InterpreterAcceptedDocumentsViewState
                 width: double.infinity,
                 padding: const EdgeInsets.all(AppSize.s12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(AppSize.s8),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.attach_file, color: Colors.blue),
+                    FileUtility.getFileTypeIcon(
+                      request.translationMethod,
+                      fileName: request.fileName,
+                    ),
                     const SizedBox(width: AppSize.s8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Document file',
-                        style: TextStyle(color: Colors.blue, fontSize: 14),
+                        FileUtility.getFileTypeLabel(
+                          request.translationMethod,
+                          fileName: request.fileName,
+                        ),
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                    TextButton(onPressed: () {}, child: const Text('View')),
+                    TextButton(
+                      onPressed:
+                          () => FileUtility.openFilePreview(
+                            context,
+                            request.fileUrl!,
+                            request.translationMethod,
+                            request.fileName,
+                            request.fileType,
+                          ),
+                      child: const Text('View'),
+                    ),
                   ],
                 ),
               ),

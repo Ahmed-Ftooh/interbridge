@@ -7,8 +7,10 @@ class DocumentTranslationRequest {
   final String? text;
   final String? title;
   final String? comment;
-  final String? translationMethod;
+  final String? translationMethod; // 'text', 'pdf', 'image', 'voice'
   final String? fileUrl;
+  final String? fileType; // File extension or mime type
+  final String? fileName; // Original filename
   final String status;
   final String? acceptedBy;
   final DateTime createdAt;
@@ -28,6 +30,8 @@ class DocumentTranslationRequest {
     this.comment,
     this.translationMethod,
     this.fileUrl,
+    this.fileType,
+    this.fileName,
     required this.status,
     this.acceptedBy,
     required this.createdAt,
@@ -49,6 +53,8 @@ class DocumentTranslationRequest {
       comment: json['comment'] as String?,
       translationMethod: json['translation_method'] as String?,
       fileUrl: json['file_url'] as String?,
+      fileType: json['file_type'] as String?,
+      fileName: json['file_name'] as String?,
       status: json['status'] as String,
       acceptedBy: json['accepted_by'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -77,6 +83,8 @@ class DocumentTranslationRequest {
       'comment': comment,
       'translation_method': translationMethod,
       'file_url': fileUrl,
+      'file_type': fileType,
+      'file_name': fileName,
       'status': status,
       'accepted_by': acceptedBy,
       'created_at': createdAt.toIso8601String(),
@@ -98,6 +106,8 @@ class DocumentTranslationRequest {
     String? comment,
     String? translationMethod,
     String? fileUrl,
+    String? fileType,
+    String? fileName,
     String? status,
     String? acceptedBy,
     DateTime? createdAt,
@@ -117,6 +127,8 @@ class DocumentTranslationRequest {
       comment: comment ?? this.comment,
       translationMethod: translationMethod ?? this.translationMethod,
       fileUrl: fileUrl ?? this.fileUrl,
+      fileType: fileType ?? this.fileType,
+      fileName: fileName ?? this.fileName,
       status: status ?? this.status,
       acceptedBy: acceptedBy ?? this.acceptedBy,
       createdAt: createdAt ?? this.createdAt,
