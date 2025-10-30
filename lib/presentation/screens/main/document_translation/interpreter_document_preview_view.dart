@@ -7,7 +7,7 @@ import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
-import 'package:interbridge/core/file_utility.dart';
+import 'shared/shared_file_link_box.dart';
 
 class InterpreterDocumentPreviewView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -239,71 +239,12 @@ class _InterpreterDocumentPreviewViewState
                             ),
                           ),
                           const SizedBox(height: AppSize.s16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(AppSize.s16),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(AppSize.s12),
-                              border: Border.all(
-                                color: Colors.blue.withOpacity(0.3),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                FileUtility.getFileTypeIcon(
-                                  widget.request.translationMethod,
-                                  fileName: widget.request.fileName,
-                                ),
-                                const SizedBox(width: AppSize.s12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        FileUtility.getFileTypeLabel(
-                                          widget.request.translationMethod,
-                                          fileName: widget.request.fileName,
-                                        ),
-                                        style: const TextStyle(
-                                          fontSize: AppSize.s14,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                      const SizedBox(height: AppSize.s4),
-                                      if (widget.request.fileName != null) ...[
-                                        Text(
-                                          widget.request.fileName!,
-                                          style: TextStyle(
-                                            fontSize: AppSize.s12,
-                                            color: Colors.blue.withOpacity(0.7),
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed:
-                                      () => FileUtility.openFilePreview(
-                                        context,
-                                        widget.request.fileUrl!,
-                                        widget.request.translationMethod,
-                                        widget.request.fileName,
-                                        widget.request.fileType,
-                                      ),
-                                  icon: const Icon(
-                                    Icons.open_in_new,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          SharedFileLinkBox(
+                            context: context,
+                            fileUrl: widget.request.fileUrl!,
+                            fileName: widget.request.fileName,
+                            method: widget.request.translationMethod,
+                            isOriginal: true,
                           ),
                           const SizedBox(height: AppSize.s24),
                         ],

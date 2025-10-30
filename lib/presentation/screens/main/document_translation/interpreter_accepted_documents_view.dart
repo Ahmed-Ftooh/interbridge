@@ -6,8 +6,8 @@ import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_translation_view.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
-import 'package:interbridge/core/file_utility.dart';
 import 'package:interbridge/data/services/hidden_items_service.dart';
+import 'shared/shared_file_link_box.dart';
 
 class InterpreterAcceptedDocumentsView extends StatefulWidget {
   const InterpreterAcceptedDocumentsView({super.key});
@@ -307,45 +307,12 @@ class _InterpreterAcceptedDocumentsViewState
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: AppSize.s8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppSize.s12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(AppSize.s8),
-                ),
-                child: Row(
-                  children: [
-                    FileUtility.getFileTypeIcon(
-                      request.translationMethod,
-                      fileName: request.fileName,
-                    ),
-                    const SizedBox(width: AppSize.s8),
-                    Expanded(
-                      child: Text(
-                        FileUtility.getFileTypeLabel(
-                          request.translationMethod,
-                          fileName: request.fileName,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed:
-                          () => FileUtility.openFilePreview(
-                            context,
-                            request.fileUrl!,
-                            request.translationMethod,
-                            request.fileName,
-                            request.fileType,
-                          ),
-                      child: const Text('View'),
-                    ),
-                  ],
-                ),
+              SharedFileLinkBox(
+                context: context,
+                fileUrl: request.fileUrl!,
+                fileName: request.fileName,
+                method: request.translationMethod,
+                isOriginal: true,
               ),
               const SizedBox(height: AppSize.s16),
             ],

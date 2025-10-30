@@ -95,3 +95,52 @@ CREATE POLICY "Users can update own call feedback" ON call_feedback
 GRANT SELECT, INSERT, UPDATE ON call_sessions TO authenticated;
 GRANT SELECT ON call_statistics TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON call_feedback TO authenticated;
+
+-- Document Translation Requests Table Schema
+-- This table stores document translation requests from requesters to interpreters
+
+CREATE TABLE IF NOT EXISTS document_translation_requests (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  requester_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  from_language TEXT NOT NULL,
+  to_language TEXT NOT NULL,
+  specialization TEXT,
+  text TEXT,
+  title TEXT,
+  comment TEXT,
+  translation_method TEXT,
+  file_url TEXT,
+  file_type TEXT,
+  file_name TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  accepted_by UUID REFERENCES auth.users(id),
+  accepted_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  translated_text TEXT,
+  translated_file_url TEXT
+);
+
+-- Indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_document_translation_requests_requester_id ON document_translation_requests(requester_id);
+CREATE INDEX IF NOT EXISTS idx_document_translation_requests_status ON document_translation_requests(status);
+CREATE INDEX IF NOT EXISTS idx_document_translation_requests_created_at ON document_translation_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_document_translation_requests_accepted_by ON document_translation_requests(accepted_by);
+
+-- Enable RLS for document translation requests
+ALTER TABLE document_translation_requests ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can manage their own document translation requests
+CREATE POLICY "Users can manage their own document translation requests" ON document_translation_requests
+  FOR ALL USING (auth.uid() = requester_id);
+
+-- Policy: Interpreters can view pending document translation requests
+CREATE POLICY "Interpreters can view pending document translation requests" ON document_translation_requests
+  FOR SELECT USING (status = 'pending');
+
+-- Policy: Interpreters can update document translation requests they accept
+CREATE POLICY "Interpreters can update document translation requests they accept" ON document_translation_requests
+  FOR UPDATE USING (auth.uid() = accepted_by);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON document_translation_requests TO authenticated;

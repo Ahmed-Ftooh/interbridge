@@ -42,7 +42,10 @@ Make sure your Supabase database has the following tables:
 
 - `chat_messages` - for storing chat messages
 - `user_profiles` - for user profile information
-- `requests` - for interpretation requests
+- `interpreter_requests` - for interpretation requests
+- `document_translation_requests` - for document translation requests
+- `notifications` - for storing notification history
+- `fcm_tokens` - for push notification tokens
 
 ### 5. Edge Functions
 

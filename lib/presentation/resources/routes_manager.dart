@@ -34,7 +34,7 @@ class Routes {
   static const String voiceCheckScreen = "/voiceCheckScreen";
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
   static const String requestWaiting = "/requestWaiting";
-  static const String accepteddoucment = "/accepteddoucment";
+  static const String accepteddocument = "/accepteddocument";
   static const String documentTranslation = "/documentTranslation";
 }
 
@@ -53,7 +53,7 @@ class RouteGenerator {
           builder: (_) => const ResetPasswordView(),
           settings: RouteSettings(arguments: settings.arguments),
         );
-      case Routes.accepteddoucment:
+      case Routes.accepteddocument:
         return MaterialPageRoute(
           builder: (_) => const InterpreterDocumentView(),
         );

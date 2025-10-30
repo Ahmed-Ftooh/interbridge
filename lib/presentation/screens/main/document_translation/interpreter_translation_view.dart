@@ -9,24 +9,11 @@ import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/services/translation_cache_service.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:flutter/services.dart';
+import 'package:interbridge/presentation/screens/main/preview/embedded_audio_player.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:interbridge/core/file_utility.dart';
-
-String _getTranslationMethodLabel(String? method) {
-  switch (method) {
-    case 'text':
-      return 'Text';
-    case 'document':
-      return 'Document';
-    case 'image':
-      return 'Image';
-    case 'voice':
-      return 'Voice';
-    default:
-      return 'Unknown';
-  }
-}
+import 'shared/helpers.dart';
+import 'shared/shared_file_link_box.dart';
 
 class InterpreterTranslationView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -56,10 +43,8 @@ class _InterpreterTranslationViewState
     super.initState();
     _cacheService = instance<TranslationCacheService>();
 
-    // Cache the active translation request
     _cacheActiveTranslation();
 
-    // Load cached translation text if available, otherwise pre-fill with original text
     if (widget.cachedTranslationText != null &&
         widget.cachedTranslationText!.isNotEmpty) {
       _translatedTextController.text = widget.cachedTranslationText!;
@@ -108,9 +93,7 @@ class _InterpreterTranslationViewState
       );
 
       if (mounted) {
-        // Clear cache after successful submission
         await _cacheService.clearCache();
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Translation submitted successfully!'),
@@ -129,7 +112,9 @@ class _InterpreterTranslationViewState
         );
       }
     } finally {
-      setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -177,14 +162,13 @@ class _InterpreterTranslationViewState
           contentType = 'application/octet-stream';
       }
 
-      // Upload to Supabase storage in 'documents' bucket
       final client = Supabase.instance.client;
       final user = client.auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
       final dateStr = DateTime.now().toIso8601String().split('T').first;
       final objectPath =
           'translated/${user.id}/$dateStr/${DateTime.now().millisecondsSinceEpoch}_$filename';
-      // Try preferred bucket, fallback to 'documents' if not found
+
       String bucket = 'documents';
       try {
         await client.storage
@@ -285,39 +269,22 @@ class _InterpreterTranslationViewState
                       ],
                       const SizedBox(height: AppSize.s4),
                       Text(
-                        'Type: ${_getTranslationMethodLabel(widget.request.translationMethod)}',
+                        'Type: ${getTranslationMethodLabel(widget.request.translationMethod)}',
                         style: TextStyle(
                           fontSize: 12,
                           color: ColorManager.textSecondary,
                         ),
                       ),
-                      if (widget.request.fileUrl != null) ...[
+                      if (widget.request.fileUrl != null &&
+                          widget.request.translationMethod != 'voice') ...[
+                        // --- CHANGED: Don't show this link for voice, as the player is in the body ---
                         const SizedBox(height: AppSize.s8),
-                        GestureDetector(
-                          onTap:
-                              () => FileUtility.openFilePreview(
-                                context,
-                                widget.request.fileUrl!,
-                                widget.request.translationMethod,
-                                widget.request.fileName,
-                                widget.request.fileType,
-                              ),
-                          child: Row(
-                            children: [
-                              FileUtility.getFileTypeIcon(
-                                widget.request.translationMethod,
-                              ),
-                              const SizedBox(width: AppSize.s8),
-                              const Text(
-                                'View Original File',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                            ],
-                          ),
+                        SharedFileLinkBox(
+                          context: context,
+                          fileUrl: widget.request.fileUrl!,
+                          fileName: widget.request.fileName,
+                          method: widget.request.translationMethod,
+                          isOriginal: true,
                         ),
                       ],
                     ],
@@ -356,7 +323,8 @@ class _InterpreterTranslationViewState
                           width: 1,
                         ),
                       ),
-                      child: Text(
+                      child: SelectableText(
+                        // Made text selectable
                         widget.request.text!,
                         style: TextStyle(
                           fontSize: AppSize.s14,
@@ -367,7 +335,9 @@ class _InterpreterTranslationViewState
                     ),
                     const SizedBox(height: AppSize.s24),
                   ],
-                  // File preview section
+
+                  // --- *** THIS IS THE KEY CHANGE *** ---
+                  // Original File / Player section
                   if (widget.request.fileUrl != null &&
                       widget.request.translationMethod != 'text') ...[
                     Text(
@@ -379,71 +349,26 @@ class _InterpreterTranslationViewState
                       ),
                     ),
                     const SizedBox(height: AppSize.s12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSize.s16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(AppSize.s12),
-                        border: Border.all(
-                          color: Colors.blue.withOpacity(0.2),
-                          width: 1,
-                        ),
+
+                    // Conditionally show the audio player OR the file button
+                    if (widget.request.translationMethod == 'voice')
+                      EmbeddedAudioPlayer(
+                        url: widget.request.fileUrl!,
+                        fileName: widget.request.fileName,
+                      )
+                    else // This is for PDF, Image, etc.
+                      SharedFileLinkBox(
+                        context: context,
+                        fileUrl: widget.request.fileUrl!,
+                        fileName: widget.request.fileName,
+                        method: widget.request.translationMethod,
+                        isOriginal: true,
                       ),
-                      child: Row(
-                        children: [
-                          FileUtility.getFileTypeIcon(
-                            widget.request.translationMethod,
-                          ),
-                          const SizedBox(width: AppSize.s12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _getTranslationMethodLabel(
-                                    widget.request.translationMethod,
-                                  ),
-                                  style: const TextStyle(
-                                    fontSize: AppSize.s14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                if (widget.request.fileName != null) ...[
-                                  const SizedBox(height: AppSize.s4),
-                                  Text(
-                                    widget.request.fileName!,
-                                    style: TextStyle(
-                                      fontSize: AppSize.s12,
-                                      color: Colors.blue.withOpacity(0.7),
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed:
-                                () => FileUtility.openFilePreview(
-                                  context,
-                                  widget.request.fileUrl!,
-                                  widget.request.translationMethod,
-                                  widget.request.fileName,
-                                  widget.request.fileType,
-                                ),
-                            icon: const Icon(
-                              Icons.open_in_new,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+
                     const SizedBox(height: AppSize.s24),
                   ],
+                  // --- *** END OF KEY CHANGE *** ---
+
                   // Translation section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -504,8 +429,7 @@ class _InterpreterTranslationViewState
                       ),
                     ),
                     onChanged: (value) {
-                      setState(() {}); // Rebuild to show/hide copy button
-                      // Cache the translation text as user types
+                      setState(() {});
                       _cacheService.updateTranslationText(value);
                     },
                   ),
@@ -623,7 +547,6 @@ class _InterpreterTranslationViewState
 
   @override
   void dispose() {
-    // Save the current translation text before disposing
     _saveCurrentTranslation();
     _translatedTextController.dispose();
     super.dispose();

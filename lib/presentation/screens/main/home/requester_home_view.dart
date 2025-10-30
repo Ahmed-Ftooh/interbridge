@@ -104,7 +104,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
     return Container(
       padding: const EdgeInsets.all(AppSize.s20),
       decoration: BoxDecoration(
-        gradient: ColorManager.primaryGradient,
+        gradient: ColorManager.secondaryGradient,
         borderRadius: BorderRadius.circular(AppSize.s16),
       ),
       child: Row(
@@ -114,7 +114,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
             backgroundColor: ColorManager.white,
             child: Icon(
               Icons.person,
-              color: ColorManager.primary,
+              color: ColorManager.primary2,
               size: AppSize.s28,
             ),
           ),
@@ -207,7 +207,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                         Icon(
                           Icons.language,
                           size: AppSize.s16,
-                          color: ColorManager.primary,
+                          color: ColorManager.primary2,
                         ),
                         const SizedBox(width: AppSize.s8),
                         Text(
@@ -241,7 +241,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
             Center(
               child: Icon(
                 Icons.arrow_downward,
-                color: ColorManager.primary,
+                color: ColorManager.primary2,
                 size: AppSize.s20,
               ),
             ),
@@ -265,7 +265,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                         Icon(
                           Icons.language,
                           size: AppSize.s16,
-                          color: ColorManager.primary,
+                          color: ColorManager.primary2,
                         ),
                         const SizedBox(width: AppSize.s8),
                         Text(
@@ -393,7 +393,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
                           decoration: BoxDecoration(
                             color:
                                 isSelected
-                                    ? ColorManager.primary
+                                    ? ColorManager.primary2
                                     : ColorManager.white,
                             borderRadius: BorderRadius.circular(AppSize.s12),
                             border: Border.all(
@@ -575,7 +575,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
               _showRequestDialog();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.primary,
+              backgroundColor: ColorManager.primary2,
               foregroundColor: ColorManager.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppSize.s16),
@@ -669,7 +669,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
         confirmText: 'OK',
 
         icon: Icons.warning,
-        iconColor: ColorManager.primary,
+        iconColor: ColorManager.primary2,
       );
       return;
     }
@@ -682,7 +682,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
       confirmText: 'Request',
       cancelText: 'Cancel',
       icon: Icons.phone_in_talk,
-      iconColor: ColorManager.primary,
+      iconColor: ColorManager.primary2,
       onCancel: () => Navigator.of(context).pop(),
       onConfirm: () async {
         Navigator.of(context).pop(); // Close dialog

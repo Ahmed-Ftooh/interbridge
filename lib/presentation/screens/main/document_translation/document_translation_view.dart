@@ -12,8 +12,13 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
-import 'package:interbridge/data/services/hidden_items_service.dart';
-import 'package:interbridge/core/file_utility.dart'; // Import FileUtility for preview
+// Import FileUtility for preview
+import 'package:flutter_bloc/flutter_bloc.dart'; // <-- Add bloc import
+import 'bloc/document_translation_bloc.dart';
+import 'bloc/document_translation_event.dart';
+import 'bloc/document_translation_state.dart';
+import 'shared/helpers.dart';
+import 'shared/shared_file_link_box.dart';
 
 class DocumentTranslationView extends StatefulWidget {
   const DocumentTranslationView({super.key});
@@ -54,140 +59,101 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
   String? _pickedFilePath;
   String? _pickedFileName;
   int? _pickedFileSize;
+  bool _isUploading = false;
 
   // Other state
-  bool _isLoading = false;
-  bool _isSubmitting = false;
   DateTime? _lastSubmitAt;
   List<DocumentTranslationRequest> _userRequests = [];
   List<Language> _languages = [];
 
   late TabController _tabController;
+  late DocumentTranslationBloc _bloc;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadInitialData();
+    _bloc = DocumentTranslationBloc(
+      translationService: instance<DocumentTranslationService>(),
+      supabaseService: instance<SupabaseService>(),
+    );
+    _bloc.add(LoadLanguages());
+    _bloc.add(LoadUserRequests());
   }
-
-  Future<void> _loadInitialData() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    try {
-      _languages = await instance<SupabaseService>().getLanguages();
-      await _loadUserRequests();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading initial data: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _loadLanguages() async {
-    try {
-      final languagesList = await instance<SupabaseService>().getLanguages();
-      if (mounted) {
-        setState(() {
-          _languages = languagesList;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        // Optional error message
-      }
-    }
-  }
-
-  Future<void> _loadUserRequests() async {
-    if (!mounted) return;
-    if (!_isLoading) setState(() => _isLoading = true);
-    try {
-      final requests =
-          await instance<DocumentTranslationService>().getUserRequests();
-      final hiddenIds = await HiddenItemsService().getUserHiddenRequestIds();
-      if (mounted) {
-        setState(() {
-          _userRequests =
-              requests.where((r) => !hiddenIds.contains(r.id)).toList();
-          _userRequests.sort((a, b) {
-            if (a.status == 'pending' && b.status != 'pending') return -1;
-            if (a.status != 'pending' && b.status == 'pending') return 1;
-            return b.createdAt.compareTo(a.createdAt);
-          });
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading requests: $e')));
-      }
-    } finally {
-      if (mounted && _isLoading) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _swapLanguages() {
-    setState(() {
-      final temp = _selectedFromLanguage;
-      _selectedFromLanguage = _selectedToLanguage;
-      _selectedToLanguage = temp;
-    });
-  }
-
-  // --- *** ADDED: Missing helper function *** ---
-  String _getTranslationMethodLabel(String? method) {
-    switch (method?.toLowerCase()) {
-      // Use lowerCase for safety
-      case 'text':
-        return 'Text';
-      case 'pdf': // Still show PDF in UI for clarity
-        return 'PDF';
-      case 'document': // This is what might be stored if 'pdf' was chosen
-        return 'Document';
-      case 'image':
-        return 'Image';
-      case 'voice':
-        return 'Voice'; // Added voice
-      default:
-        return 'File'; // Fallback
-    }
-  }
-  // --- *** END ADDED FUNCTION *** ---
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.documentTranslation),
-        backgroundColor: ColorManager.primary2,
-        foregroundColor: Colors.white,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [Tab(text: 'New Request'), Tab(text: 'My Requests')],
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildNewRequestTab(), _buildRequestsTab()],
+    return BlocProvider.value(
+      value: _bloc,
+      child: BlocConsumer<DocumentTranslationBloc, DocumentTranslationState>(
+        listener: (context, state) {
+          if (state is DocumentTranslationOperationSuccess) {
+            _clearForm();
+            _bloc.add(LoadUserRequests());
+            _tabController.animateTo(1);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Operation successful'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+          if (state is DocumentTranslationOperationFailure) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.error), backgroundColor: Colors.red),
+            );
+          }
+        },
+        builder: (context, state) {
+          bool isLoading = state is DocumentTranslationLoading;
+          List<Language> langs =
+              state is DocumentTranslationLoadSuccess
+                  ? state.languages
+                  : _languages;
+          List<DocumentTranslationRequest> requests =
+              state is DocumentTranslationLoadSuccess
+                  ? state.requests
+                  : _userRequests;
+
+          // Fallback to controller state ONLY if bloc not yet loaded.
+          if (state is DocumentTranslationLoadSuccess) {
+            _languages = langs;
+            _userRequests = requests;
+          }
+
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text(AppStrings.documentTranslation),
+              backgroundColor: ColorManager.primary2,
+              foregroundColor: Colors.white,
+              bottom: TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'New Request'),
+                  Tab(text: 'My Requests'),
+                ],
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+              ),
+            ),
+            body: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildNewRequestTab(isLoading: isLoading, langs: langs),
+                _buildRequestsTab(isLoading: isLoading, requests: requests),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildNewRequestTab() {
-    // ... (rest of the build methods remain the same as previous correct version)
+  Widget _buildNewRequestTab({
+    bool isLoading = false,
+    required List<Language> langs,
+  }) {
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(AppSize.s20),
@@ -196,13 +162,13 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           children: [
             _buildMethodSelector(),
             const SizedBox(height: AppSize.s24),
-            _buildLanguageSelection(),
+            _buildLanguageSelection(langs: langs),
             const SizedBox(height: AppSize.s24),
             _buildContentInput(),
             const SizedBox(height: AppSize.s24),
             _buildAdditionalOptions(),
             const SizedBox(height: AppSize.s32),
-            _buildSubmitButton(),
+            _buildSubmitButton(isLoading: isLoading || _isUploading),
           ],
         ),
       ),
@@ -306,7 +272,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  Widget _buildLanguageSelection() {
+  Widget _buildLanguageSelection({required List<Language> langs}) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -383,7 +349,11 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                   onPressed:
                       (_selectedFromLanguage != null ||
                               _selectedToLanguage != null)
-                          ? _swapLanguages
+                          ? () => setState(() {
+                            final temp = _selectedFromLanguage;
+                            _selectedFromLanguage = _selectedToLanguage;
+                            _selectedToLanguage = temp;
+                          })
                           : null,
                   icon: Container(
                     padding: const EdgeInsets.all(8),
@@ -823,11 +793,11 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  Widget _buildSubmitButton() {
+  Widget _buildSubmitButton({bool isLoading = false}) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _isSubmitting ? null : _submitRequest,
+        onPressed: isLoading ? null : _submitRequest,
         style: ElevatedButton.styleFrom(
           backgroundColor: ColorManager.primary2,
           foregroundColor: Colors.white,
@@ -838,7 +808,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           elevation: 2,
         ),
         icon:
-            _isSubmitting
+            isLoading
                 ? Container(
                   width: 20,
                   height: 20,
@@ -853,21 +823,30 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                   size: 20,
                 ), // Adjusted icon size
         label: Text(
-          _isSubmitting ? 'Submitting...' : 'Submit Translation Request',
+          isLoading || _isUploading
+              ? _isUploading
+                  ? 'Uploading...'
+                  : 'Submitting...'
+              : 'Submit Translation Request',
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );
   }
 
-  Widget _buildRequestsTab() {
-    if (_isLoading && _userRequests.isEmpty) {
+  Widget _buildRequestsTab({
+    bool isLoading = false,
+    List<DocumentTranslationRequest> requests = const [],
+  }) {
+    if (isLoading && requests.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_userRequests.isEmpty) {
+    if (requests.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _loadUserRequests,
+        onRefresh: () async {
+          _bloc.add(LoadUserRequests());
+        },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -905,20 +884,22 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     }
 
     return RefreshIndicator(
-      onRefresh: _loadUserRequests,
+      onRefresh: () async {
+        _bloc.add(LoadUserRequests());
+      },
       child: ListView.builder(
         padding: const EdgeInsets.all(AppSize.s16),
-        itemCount: _userRequests.length,
+        itemCount: requests.length,
         itemBuilder: (context, index) {
-          return _buildRequestCard(_userRequests[index]);
+          return _buildRequestCard(requests[index]);
         },
       ),
     );
   }
 
   Widget _buildRequestCard(DocumentTranslationRequest request) {
-    final statusColor = _getStatusColor(request.status);
-    final statusIcon = _getStatusIcon(request.status);
+    final statusColor = getStatusColor(request.status);
+    final statusIcon = getStatusIcon(request.status);
 
     return Card(
       margin: const EdgeInsets.only(bottom: AppSize.s12),
@@ -1027,7 +1008,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                       const SizedBox(width: 4),
                       Text(
                         // Use the label function here
-                        _getTranslationMethodLabel(request.translationMethod),
+                        getTranslationMethodLabel(request.translationMethod),
                         style: TextStyle(
                           fontSize: 13,
                           color: ColorManager.textSecondary,
@@ -1079,7 +1060,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _formatDate(request.createdAt),
+                        formatDt(request.createdAt),
                         style: TextStyle(
                           fontSize: 13,
                           color: ColorManager.textSecondary,
@@ -1096,58 +1077,12 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return Colors.green.shade700;
-      case 'accepted':
-        return Colors.blue.shade700;
-      case 'pending':
-        return Colors.orange.shade800;
-      case 'cancelled':
-        return Colors.red.shade700;
-      default:
-        return Colors.grey.shade600;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return Icons.check_circle_outline_rounded;
-      case 'accepted':
-        return Icons.hourglass_bottom_rounded;
-      case 'pending':
-        return Icons.schedule_rounded;
-      case 'cancelled':
-        return Icons.cancel_outlined;
-      default:
-        return Icons.help_outline_rounded;
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-    if (difference.inSeconds < 60) {
-      return 'Just now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
-  }
-
   void _showLanguagePicker(bool isFromLanguage) {
     if (_languages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Languages not loaded yet.')),
       );
-      _loadLanguages();
+      _bloc.add(LoadLanguages());
       return;
     }
 
@@ -1501,20 +1436,23 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     }
 
     if (!mounted) return;
-    setState(() => _isSubmitting = true);
-
-    try {
-      _lastSubmitAt = now;
-      String? uploadedFileUrl;
-
-      if (_selectedMethod != 'text' && _pickedFilePath != null) {
-        uploadedFileUrl = await _uploadFile(_pickedFilePath!, _pickedFileName);
-        if (uploadedFileUrl == null && mounted) {
-          throw Exception('File upload failed. Please try again.');
+    String? uploadedUrl;
+    String? mimeType;
+    if (_pickedFilePath != null) {
+      setState(() => _isUploading = true);
+      try {
+        uploadedUrl = await _uploadFile(_pickedFilePath!, _pickedFileName);
+        if (_pickedFileName != null) {
+          mimeType = _getMimeTypeFromExtension(
+            _pickedFileName!.split('.').last,
+          );
         }
+      } finally {
+        if (mounted) setState(() => _isUploading = false);
       }
-
-      await instance<DocumentTranslationService>().createRequest(
+    }
+    _bloc.add(
+      SubmitRequest(
         fromLanguage: _selectedFromLanguage!.name,
         toLanguage: _selectedToLanguage!.name,
         specialization: _selectedSpecialization,
@@ -1528,36 +1466,11 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                 ? null
                 : _commentController.text.trim(),
         translationMethod: _selectedMethod,
-        fileUrl: uploadedFileUrl,
-        fileType: null,
-        fileName: null,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Translation request submitted successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _clearForm();
-        await _loadUserRequests();
-        _tabController.animateTo(1);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error submitting request: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
+        fileUrl: uploadedUrl,
+        fileType: mimeType,
+        fileName: _pickedFileName,
+      ),
+    );
   }
 
   Future<String?> _uploadFile(String path, String? fileName) async {
@@ -1581,7 +1494,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
       final objectPath =
           'requests/${user.id}/$dateStr/${DateTime.now().millisecondsSinceEpoch}_$safeName';
 
-      String bucket = 'doucment';
+      String bucket = 'documents';
       String fallbackBucket = 'documents';
 
       try {
@@ -1685,15 +1598,15 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: _getStatusColor(request.status).withOpacity(0.1),
+                        color: getStatusColor(request.status).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(AppSize.s12),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            _getStatusIcon(request.status),
-                            color: _getStatusColor(request.status),
+                            getStatusIcon(request.status),
+                            color: getStatusColor(request.status),
                             size: 16,
                           ),
                           const SizedBox(width: 8),
@@ -1701,7 +1614,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                             request.status.toUpperCase(),
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: _getStatusColor(request.status),
+                              color: getStatusColor(request.status),
                               fontSize: 12,
                             ),
                           ),
@@ -1721,7 +1634,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                   _buildDetailRow(
                     Icons.calendar_today_outlined,
                     'Requested On',
-                    _formatDate(request.createdAt),
+                    formatDt(request.createdAt),
                   ),
                   if (request.specialization != null)
                     _buildDetailRow(
@@ -1748,7 +1661,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                   if (request.text != null && request.text!.isNotEmpty)
                     _buildSelectableTextBox(request.text!, isOriginal: true),
                   if (request.fileUrl != null)
-                    _buildFileLinkBox(
+                    SharedFileLinkBox(
                       context: context,
                       fileUrl: request.fileUrl!,
                       fileName: request.fileName,
@@ -1775,7 +1688,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                         isOriginal: false,
                       ),
                     if (request.translatedFileUrl != null)
-                      _buildFileLinkBox(
+                      SharedFileLinkBox(
                         context: context,
                         fileUrl: request.translatedFileUrl!,
                         fileName: "Translated File",
@@ -1902,67 +1815,6 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  Widget _buildFileLinkBox({
-    required BuildContext context,
-    required String fileUrl,
-    String? fileName,
-    String? method,
-    required bool isOriginal,
-  }) {
-    // --- **FIX:** Use _getMethodIcon to get the icon based on method string ---
-    IconData fileIcon = _getMethodIcon(method);
-    // -------------------------------------------------------------------------
-    Color fileColor = isOriginal ? Colors.blue.shade700 : Colors.green.shade700;
-    String defaultLabel =
-        isOriginal
-            ? _getTranslationMethodLabel(method)
-            : "Translated File"; // Use label function
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: fileColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(AppSize.s8),
-        border: Border.all(color: fileColor.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(fileIcon, color: fileColor, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              fileName ??
-                  defaultLabel, // Use filename if available, else the generated label
-              style: TextStyle(fontWeight: FontWeight.w500, color: fileColor),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              visualDensity: VisualDensity.compact,
-              foregroundColor: fileColor,
-            ),
-            onPressed: () {
-              FileUtility.openFilePreview(
-                context,
-                fileUrl,
-                method,
-                fileName,
-                null,
-              );
-            },
-            child: Text(
-              isOriginal ? 'View' : 'Open',
-            ), // Changed 'Download' to 'Open' for clarity
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _confirmAndDeleteRequest(
     DocumentTranslationRequest request,
   ) async {
@@ -1996,37 +1848,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
 
     if (confirmed == true) {
-      await _deleteRequest(request);
-    }
-  }
-
-  Future<void> _deleteRequest(DocumentTranslationRequest request) async {
-    if (!mounted) return;
-
-    try {
-      await instance<DocumentTranslationService>().deleteRequest(request.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Request "${request.title ?? 'Untitled Request'}" deleted.',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        // No need to manually remove, _loadUserRequests will refresh the list from DB
-        await _loadUserRequests(); // Refresh list after deletion
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting request: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _bloc.add(DeleteRequest(request.id));
     }
   }
 
