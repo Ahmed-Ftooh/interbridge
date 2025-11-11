@@ -234,10 +234,7 @@ class _MainViewState extends State<MainView> {
           );
           break;
         case 'call':
-          targetScreen = EnhancedCallScreen(
-            channelId: requestId,
-            chatBloc: chatBloc,
-          );
+          targetScreen = EnhancedCallScreen(channelId: requestId);
           break;
         default:
           log('Unknown screen type: $currentScreen');

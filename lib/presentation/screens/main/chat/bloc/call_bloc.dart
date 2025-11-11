@@ -17,7 +17,11 @@ class StartCall extends CallEvent {
   StartCall({required this.channelId, required this.localUid});
 }
 
-class EndCall extends CallEvent {}
+class EndCall extends CallEvent {
+  final bool isRemote;
+  // Default to false, meaning it's a local hangup unless specified otherwise
+  EndCall({this.isRemote = false});
+}
 
 class ToggleMute extends CallEvent {}
 
@@ -94,7 +98,10 @@ class CallOngoing extends CallState {
   }
 }
 
-class CallEnded extends CallState {}
+class CallEnded extends CallState {
+  final bool isRemote;
+  CallEnded({this.isRemote = false});
+}
 
 /// ===== BLoC =====
 class CallBloc extends Bloc<CallEvent, CallState> {
@@ -111,6 +118,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   CallBloc({required this.service, ChatBloc? chatBloc})
     : _chatBloc = chatBloc,
       super(CallIdle()) {
+    // This is where the error appeared
     on<StartCall>(_onStartCall);
     on<EndCall>(_onEndCall);
     on<ToggleMute>(_onToggleMute);
@@ -324,8 +332,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
+  // ############ THIS IS THE FIX ############
+  // The logic inside _onEndCall has been reordered.
+  // The __CALL_ENDED__ message is now sent *before*
+  // leaving the channel and emitting the CallEnded state.
+  // In: lib/presentation/screens/main/chat/bloc/call_bloc.dart
+  // REPLACE the _onEndCall method with this new version:
+
   Future<void> _onEndCall(EndCall e, Emitter<CallState> emit) async {
-    log('Ending call...');
+    log('Ending call... (isRemote: ${e.isRemote})');
     _timer?.cancel();
     _timer = null;
 
@@ -333,30 +348,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     Duration? callDuration;
     if (_startedAt != null) {
       callDuration = DateTime.now().difference(_startedAt!);
-      // Here you can save the call duration to your database
       await _recordCallDuration(callDuration);
     }
 
     _startedAt = null;
     _remoteUids.clear();
 
-    // Send call ended notification to chat BEFORE leaving channel
-    if (_chatBloc != null && !_chatBloc.isClosed && state is CallOngoing) {
-      final ongoingState = state as CallOngoing;
-      try {
-        log('Sending call ended message to chat...');
-        _chatBloc.add(
-          SendCallStateMessage(
-            requestId: ongoingState.channelId,
-            callState: '__CALL_ENDED__',
-          ),
-        );
-        // Wait a moment for the message to be sent
-        await Future.delayed(const Duration(milliseconds: 500));
-      } catch (e) {
-        log('Error sending call ended message: $e');
-      }
-    }
+    // --- THIS IS THE CHANGE ---
+    // We NO LONGER try to send a ChatBloc message from here.
+    // The UI (enhanced_call_view) will handle that.
+    // We just leave the channel and emit the final state.
+    // This logic now runs for BOTH local and remote hangups.
 
     try {
       log('Leaving Agora channel...');
@@ -365,10 +367,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     } catch (e) {
       log('Error leaving channel: $e');
     } finally {
+      // We pass the `isRemote` flag to the UI.
       log('Emitting CallEnded state');
-      emit(CallEnded());
+      emit(CallEnded(isRemote: e.isRemote)); // <-- MODIFIED
     }
   }
+  // ############ END OF FIX ############
 
   Future<void> _onToggleMute(ToggleMute e, Emitter<CallState> emit) async {
     _muted = !_muted;

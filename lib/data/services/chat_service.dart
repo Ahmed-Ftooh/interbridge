@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:developer';
 import 'supabase_service.dart';
+import 'dart:io';
 
 class ChatService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -77,7 +78,12 @@ class ChatService {
     }
   }
 
-  Future<void> sendMessage(String requestId, String content) async {
+  Future<void> sendMessage(
+    String requestId,
+    String content, {
+    String messageType = 'text',
+    String? attachmentUrl, // This will now be the STORAGE PATH
+  }) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
 
@@ -86,9 +92,10 @@ class ChatService {
         'request_id': requestId,
         'sender_id': userId,
         'content': content,
+        'message_type': messageType,
+        'attachment_url': attachmentUrl, // Storing the path, not a URL
       });
     } catch (e) {
-      // If the table doesn't exist, provide a helpful error message
       if (e.toString().contains('relation "chat_messages" does not exist')) {
         throw Exception(
           'Chat functionality is not set up yet. Please contact support to enable chat features.',
@@ -97,6 +104,66 @@ class ChatService {
       rethrow;
     }
   }
+
+  // --- MODIFIED: uploadChatAttachment ---
+  Future<String> uploadChatAttachment(
+    File file,
+    String fileName,
+    String messageType, // 'image', 'audio', 'file'
+  ) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+
+    final fileBytes = await file.readAsBytes();
+    final fileExt = fileName.split('.').last.toLowerCase();
+
+    // The 'name' of the object in storage
+    final storagePath =
+        'chat_attachments/$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+    String contentType;
+    switch (messageType) {
+      case 'image':
+        contentType = 'image/$fileExt';
+        break;
+      case 'audio':
+        // --- THIS IS THE FIX ---
+        // .m4a files must use the 'audio/mp4' content type
+        contentType = (fileExt == 'm4a') ? 'audio/mp4' : 'audio/$fileExt';
+        log('Uploading audio with contentType: $contentType');
+        break;
+      // --- END OF FIX ---
+      default:
+        contentType = 'application/octet-stream';
+    }
+
+    await _supabase.storage
+        .from('chat_attachments')
+        .uploadBinary(
+          storagePath,
+          fileBytes,
+          fileOptions: FileOptions(contentType: contentType, upsert: false),
+        );
+
+    log('File uploaded to path: $storagePath');
+    // --- FIX: Return the storage path, NOT a public URL ---
+    return storagePath;
+  }
+  // --- END OF MODIFICATION ---
+
+  // --- NEW METHOD: createSignedUrl ---
+  Future<String> createSignedUrl(String path) async {
+    try {
+      final response = await _supabase.storage
+          .from('chat_attachments')
+          .createSignedUrl(path, 60 * 60); // 1 hour expiry
+      return response;
+    } catch (e) {
+      log('Error creating signed URL: $e');
+      rethrow;
+    }
+  }
+  // --- END OF NEW METHOD ---
 
   RealtimeChannel subscribeToMessages(
     String requestId,
@@ -122,8 +189,6 @@ class ChatService {
             ..subscribe();
       return channel;
     } catch (e) {
-      // If subscription fails (e.g., table doesn't exist), return a dummy channel
-      // This prevents the app from crashing when chat features aren't set up yet
       return _supabase.channel('chat_dummy_$requestId');
     }
   }

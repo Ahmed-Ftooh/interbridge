@@ -6,6 +6,8 @@ import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'dart:io'; // <-- ADDED
+import 'dart:developer'; // <-- ADDED
 
 // EVENTS
 abstract class ChatEvent {}
@@ -15,11 +17,35 @@ class LoadMessages extends ChatEvent {
   LoadMessages(this.requestId);
 }
 
+// --- MODIFIED SendMessage Event ---
 class SendMessage extends ChatEvent {
   final String requestId;
   final String content;
-  SendMessage({required this.requestId, required this.content});
+  final String messageType;
+  final String? attachmentUrl;
+  SendMessage({
+    required this.requestId,
+    required this.content,
+    this.messageType = 'text',
+    this.attachmentUrl,
+  });
 }
+// --- END OF MODIFICATION ---
+
+// --- NEW Event: UploadAndSendAttachment ---
+class UploadAndSendAttachment extends ChatEvent {
+  final String requestId;
+  final File file;
+  final String fileName;
+  final String messageType; // 'image', 'audio', 'file'
+  UploadAndSendAttachment({
+    required this.requestId,
+    required this.file,
+    required this.fileName,
+    required this.messageType,
+  });
+}
+// --- END OF NEW Event ---
 
 class SendCallStateMessage extends ChatEvent {
   final String requestId;
@@ -50,7 +76,25 @@ class ChatLoading extends ChatState {}
 class ChatLoaded extends ChatState {
   final List<Map<String, dynamic>> messages;
   final bool inCall;
-  ChatLoaded({required this.messages, this.inCall = false});
+  final bool isUploading; // <-- ADDED
+  ChatLoaded({
+    required this.messages,
+    this.inCall = false,
+    this.isUploading = false, // <-- ADDED
+  });
+
+  // <-- ADDED copyWith method ---
+  ChatLoaded copyWith({
+    List<Map<String, dynamic>>? messages,
+    bool? inCall,
+    bool? isUploading,
+  }) {
+    return ChatLoaded(
+      messages: messages ?? this.messages,
+      inCall: inCall ?? this.inCall,
+      isUploading: isUploading ?? this.isUploading,
+    );
+  }
 }
 
 class ChatError extends ChatState {
@@ -76,6 +120,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({required this.service}) : super(ChatInitial()) {
     on<LoadMessages>(_onLoadMessages);
     on<SendMessage>(_onSendMessage);
+    on<UploadAndSendAttachment>(_onUploadAndSendAttachment); // <-- ADDED
     on<SendCallStateMessage>(_onSendCallStateMessage);
     on<NewIncomingMessage>(_onNewIncomingMessage);
     on<StartVoiceCall>(_onStartVoiceCall);
@@ -100,13 +145,66 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
+  // --- MODIFIED _onSendMessage ---
   Future<void> _onSendMessage(SendMessage e, Emitter<ChatState> emit) async {
     try {
-      await service.sendMessage(e.requestId, e.content);
+      await service.sendMessage(
+        e.requestId,
+        e.content,
+        messageType: e.messageType,
+        attachmentUrl: e.attachmentUrl,
+      );
     } catch (err) {
       emit(ChatError(ErrorHandler.handleError(err, context: 'SendMessage')));
     }
   }
+  // --- END OF MODIFICATION ---
+
+  // --- NEW HANDLER: _onUploadAndSendAttachment ---
+  Future<void> _onUploadAndSendAttachment(
+    UploadAndSendAttachment e,
+    Emitter<ChatState> emit,
+  ) async {
+    if (state is! ChatLoaded) return;
+    final currentState = state as ChatLoaded;
+
+    try {
+      // Emit loading state
+      emit(currentState.copyWith(isUploading: true));
+
+      // 1. Upload the file
+      final attachmentUrl = await service.uploadChatAttachment(
+        e.file,
+        e.fileName,
+        e.messageType,
+      );
+
+      // 2. Send the message with the URL
+      add(
+        SendMessage(
+          requestId: e.requestId,
+          content: e.fileName, // Use file name as content
+          messageType: e.messageType,
+          attachmentUrl: attachmentUrl,
+        ),
+      );
+
+      // Emit loaded state (isUploading will be reset by the time messages reload)
+    } catch (err) {
+      log("Error in _onUploadAndSendAttachment: $err");
+      emit(
+        ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+      );
+      // Restore previous state on error
+      emit(currentState.copyWith(isUploading: false));
+    } finally {
+      // Ensure loading is turned off
+      if (state is ChatLoaded) {
+        emit((state as ChatLoaded).copyWith(isUploading: false));
+      }
+    }
+  }
+  // --- END OF NEW HANDLER ---
 
   Future<void> _onSendCallStateMessage(
     SendCallStateMessage e,
@@ -171,7 +269,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     final updated = List<Map<String, dynamic>>.from(current.messages)
       ..add(newMessage);
-    emit(ChatLoaded(messages: updated, inCall: current.inCall));
+
+    emit(
+      ChatLoaded(
+        messages: updated,
+        inCall: current.inCall,
+        isUploading: current.isUploading, // <-- Pass the uploading state
+      ),
+    );
   }
 
   Future<void> _onStartVoiceCall(
@@ -188,7 +293,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         onJoinChannelSuccess: (connection, elapsed) {
           if (state is ChatLoaded) {
             final loaded = state as ChatLoaded;
-            emit(ChatLoaded(messages: loaded.messages, inCall: true));
+            emit(
+              ChatLoaded(
+                messages: loaded.messages,
+                inCall: true,
+                isUploading: loaded.isUploading, // <-- Pass the uploading state
+              ),
+            );
           }
           emit(ChatCallStarted(e.channelId, e.uid));
         },
@@ -212,7 +323,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
     if (state is ChatLoaded) {
       final loaded = state as ChatLoaded;
-      emit(ChatLoaded(messages: loaded.messages, inCall: false));
+      emit(
+        ChatLoaded(
+          messages: loaded.messages,
+          inCall: false,
+          isUploading: loaded.isUploading, // <-- Pass the uploading state
+        ),
+      );
     }
     emit(ChatCallEnded());
   }

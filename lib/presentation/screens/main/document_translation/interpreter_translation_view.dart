@@ -1,3 +1,4 @@
+// lib/presentation/screens/main/document_translation/interpreter_translation_view.dart
 import 'dart:developer';
 import 'dart:io';
 
@@ -14,6 +15,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'shared/helpers.dart';
 import 'shared/shared_file_link_box.dart';
+
+// --- ADDED IMPORTS FOR IN-LINE VIEWERS ---
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+// ------------------------------------------
 
 class InterpreterTranslationView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -38,22 +43,51 @@ class _InterpreterTranslationViewState
   late TranslationCacheService _cacheService;
   String? _uploadedTranslatedFileUrl;
 
+  // --- ADDED: State for handling secure file URLs ---
+  String? _resolvedFileUrl;
+  bool _isLoadingUrl = true;
+  // --------------------------------------------------
+
   @override
   void initState() {
     super.initState();
     _cacheService = instance<TranslationCacheService>();
+    _initializeContent();
+  }
 
+  Future<void> _initializeContent() async {
     _cacheActiveTranslation();
 
+    // Load cached text
     if (widget.cachedTranslationText != null &&
         widget.cachedTranslationText!.isNotEmpty) {
       _translatedTextController.text = widget.cachedTranslationText!;
     } else if (widget.request.text != null && widget.request.text!.isNotEmpty) {
       _translatedTextController.text = widget.request.text!;
     }
+
+    // --- NEW: Resolve the file URL (get a signed URL if needed) ---
+    if (widget.request.fileUrl != null) {
+      try {
+        final url = await _resolveFileUrl(widget.request.fileUrl!);
+        if (mounted) {
+          setState(() {
+            _resolvedFileUrl = url;
+          });
+        }
+      } catch (e) {
+        log("Error resolving file URL: $e");
+        // Handle error (e.g., show a snackbar or set an error state)
+      }
+    }
+    if (mounted) {
+      setState(() => _isLoadingUrl = false);
+    }
+    // -------------------------------------------------------------
   }
 
   Future<void> _cacheActiveTranslation() async {
+    // ... (This function remains unchanged)
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
@@ -69,6 +103,7 @@ class _InterpreterTranslationViewState
   }
 
   Future<void> _submitTranslation() async {
+    // ... (This function remains unchanged)
     if ((_translatedTextController.text.trim().isEmpty) &&
         (_uploadedTranslatedFileUrl == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -119,6 +154,7 @@ class _InterpreterTranslationViewState
   }
 
   Future<void> _pickAndUploadTranslatedFile() async {
+    // ... (This function remains unchanged)
     try {
       final result = await FilePicker.platform.pickFiles(allowMultiple: false);
       if (result == null || result.files.single.path == null) return;
@@ -207,11 +243,50 @@ class _InterpreterTranslationViewState
     }
   }
 
+  // --- ADDED: Helper method to resolve Supabase URL ---
+  Future<String> _resolveFileUrl(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      // Check if it's a Supabase storage URL
+      if (!uri.path.contains('/storage/v1/object/')) return url;
+
+      final segments = uri.pathSegments;
+      final objectIndex = segments.indexOf('object');
+      if (objectIndex == -1 || objectIndex + 2 >= segments.length) return url;
+
+      String bucket;
+      List<String> pathParts;
+      final visibilityOrBucket = segments[objectIndex + 1];
+
+      if (visibilityOrBucket == 'public' || visibilityOrBucket == 'sign') {
+        if (objectIndex + 3 >= segments.length) return url; // Invalid path
+        bucket = segments[objectIndex + 2];
+        pathParts = segments.sublist(objectIndex + 3);
+      } else {
+        bucket = visibilityOrBucket;
+        pathParts = segments.sublist(objectIndex + 2);
+      }
+
+      if (bucket.isEmpty || pathParts.isEmpty) return url;
+      final objectPath = pathParts.join('/');
+
+      // Generate a short-lived signed URL
+      final client = Supabase.instance.client;
+      final res = await client.storage
+          .from(bucket)
+          .createSignedUrl(objectPath, const Duration(minutes: 60).inSeconds);
+      return res;
+    } catch (e) {
+      log("Error signing URL: $e");
+      return url; // Fallback to original URL
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Translate Document'),
+        title: Text(widget.request.title ?? 'Translate Document'),
         backgroundColor: ColorManager.primary2,
         foregroundColor: Colors.white,
         actions: [
@@ -275,18 +350,7 @@ class _InterpreterTranslationViewState
                           color: ColorManager.textSecondary,
                         ),
                       ),
-                      if (widget.request.fileUrl != null &&
-                          widget.request.translationMethod != 'voice') ...[
-                        // --- CHANGED: Don't show this link for voice, as the player is in the body ---
-                        const SizedBox(height: AppSize.s8),
-                        SharedFileLinkBox(
-                          context: context,
-                          fileUrl: widget.request.fileUrl!,
-                          fileName: widget.request.fileName,
-                          method: widget.request.translationMethod,
-                          isOriginal: true,
-                        ),
-                      ],
+                      // --- REMOVED: SharedFileLinkBox from header ---
                     ],
                   ),
                 ),
@@ -300,247 +364,364 @@ class _InterpreterTranslationViewState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Original text section
-                  if (widget.request.text != null &&
-                      widget.request.text!.isNotEmpty) ...[
-                    Text(
-                      'Original Text (${widget.request.fromLanguage}):',
-                      style: TextStyle(
-                        fontSize: AppSize.s16,
-                        fontWeight: FontWeight.bold,
-                        color: ColorManager.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSize.s12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSize.s16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(AppSize.s12),
-                        border: Border.all(
-                          color: ColorManager.greyMedium,
-                          width: 1,
-                        ),
-                      ),
-                      child: SelectableText(
-                        // Made text selectable
-                        widget.request.text!,
-                        style: TextStyle(
-                          fontSize: AppSize.s14,
-                          height: 1.5,
-                          color: ColorManager.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSize.s24),
-                  ],
-
-                  // --- *** THIS IS THE KEY CHANGE *** ---
-                  // Original File / Player section
-                  if (widget.request.fileUrl != null &&
-                      widget.request.translationMethod != 'text') ...[
-                    Text(
-                      'Original File:',
-                      style: TextStyle(
-                        fontSize: AppSize.s16,
-                        fontWeight: FontWeight.bold,
-                        color: ColorManager.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSize.s12),
-
-                    // Conditionally show the audio player OR the file button
-                    if (widget.request.translationMethod == 'voice')
-                      EmbeddedAudioPlayer(
-                        url: widget.request.fileUrl!,
-                        fileName: widget.request.fileName,
-                      )
-                    else // This is for PDF, Image, etc.
-                      SharedFileLinkBox(
-                        context: context,
-                        fileUrl: widget.request.fileUrl!,
-                        fileName: widget.request.fileName,
-                        method: widget.request.translationMethod,
-                        isOriginal: true,
-                      ),
-
-                    const SizedBox(height: AppSize.s24),
-                  ],
-                  // --- *** END OF KEY CHANGE *** ---
-
-                  // Translation section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Your Translation (${widget.request.toLanguage}):',
-                        style: TextStyle(
-                          fontSize: AppSize.s16,
-                          fontWeight: FontWeight.bold,
-                          color: ColorManager.textPrimary,
-                        ),
-                      ),
-                      if (_translatedTextController.text.isNotEmpty)
-                        TextButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(
-                                text: _translatedTextController.text,
-                              ),
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Translation copied to clipboard!',
-                                ),
-                                backgroundColor: Colors.green,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.copy, size: 16),
-                          label: const Text('Copy'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: ColorManager.primary2,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSize.s12),
-                  TextField(
-                    controller: _translatedTextController,
-                    maxLines: 8,
-                    decoration: InputDecoration(
-                      hintText: 'Enter your translation here...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSize.s12),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppSize.s12),
-                        borderSide: BorderSide(
-                          color: ColorManager.primary2,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                      _cacheService.updateTranslationText(value);
-                    },
-                  ),
-                  const SizedBox(height: AppSize.s20),
-                  if (_uploadedTranslatedFileUrl != null) ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green),
-                        const SizedBox(width: AppSize.s8),
-                        Expanded(
-                          child: Text(
-                            'Translated file attached',
-                            style: TextStyle(color: ColorManager.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSize.s20),
-                  ],
+                  // --- NEW: Source Content Viewer ---
+                  _buildSourceContent(),
                   const SizedBox(height: AppSize.s24),
-                  // Instructions
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSize.s16),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(AppSize.s12),
-                      border: Border.all(
-                        color: Colors.amber.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: Colors.amber[700],
-                              size: AppSize.s20,
-                            ),
-                            const SizedBox(width: AppSize.s8),
-                            Text(
-                              'Translation Guidelines',
-                              style: TextStyle(
-                                fontSize: AppSize.s14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.amber[700],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppSize.s8),
-                        Text(
-                          '• Provide accurate and natural translation\n'
-                          '• Maintain the original meaning and tone\n'
-                          '• Use appropriate terminology for the specialization\n'
-                          '• You can provide text translation or upload a file',
-                          style: TextStyle(
-                            fontSize: AppSize.s12,
-                            color: Colors.amber[700],
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+
+                  // --- Translation Input Area ---
+                  _buildTranslationInput(),
+                  const SizedBox(height: AppSize.s24),
+
+                  // --- Instructions Area ---
+                  _buildInstructions(),
                 ],
               ),
             ),
           ),
           // Submit button
-          Container(
-            padding: const EdgeInsets.all(AppSize.s20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                top: BorderSide(color: ColorManager.greyMedium, width: 1),
-              ),
+          _buildSubmitButton(),
+        ],
+      ),
+    );
+  }
+
+  // --- NEW: Helper for all source content (text, pdf, image, voice) ---
+  Widget _buildSourceContent() {
+    final bool hasText =
+        widget.request.text != null && widget.request.text!.isNotEmpty;
+    final bool hasFile =
+        widget.request.fileUrl != null &&
+        widget.request.translationMethod != 'text';
+
+    if (!hasText && !hasFile) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('No source content provided for this request.'),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Original Text Section (if it exists)
+        if (hasText) ...[
+          Text(
+            'Original Text (${widget.request.fromLanguage}):',
+            style: TextStyle(
+              fontSize: AppSize.s16,
+              fontWeight: FontWeight.bold,
+              color: ColorManager.textPrimary,
             ),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitTranslation,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.primary2,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: AppSize.s16),
-                ),
-                child:
-                    _isSubmitting
-                        ? const SizedBox(
-                          height: AppSize.s20,
-                          width: AppSize.s20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                        : const Text(
-                          'Submit Translation',
-                          style: TextStyle(
-                            fontSize: AppSize.s16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+          ),
+          const SizedBox(height: AppSize.s12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSize.s16),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(AppSize.s12),
+              border: Border.all(color: ColorManager.greyMedium, width: 1),
+            ),
+            child: SelectableText(
+              widget.request.text!,
+              style: TextStyle(
+                fontSize: AppSize.s14,
+                height: 1.5,
+                color: ColorManager.textSecondary,
               ),
             ),
           ),
+          if (hasFile) const SizedBox(height: AppSize.s24), // Spacer
         ],
+
+        // 2. Original File Viewer Section (if it exists)
+        if (hasFile) ...[
+          Text(
+            'Original File:',
+            style: TextStyle(
+              fontSize: AppSize.s16,
+              fontWeight: FontWeight.bold,
+              color: ColorManager.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppSize.s12),
+          _buildSourceFileViewer(), // The actual file viewer
+        ],
+      ],
+    );
+  }
+
+  // --- NEW: Helper widget to show the correct file viewer ---
+  Widget _buildSourceFileViewer() {
+    if (_isLoadingUrl) {
+      return Container(
+        height: 200, // Give some space for the loader
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppSize.s12),
+          border: Border.all(color: ColorManager.greyMedium, width: 1),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_resolvedFileUrl == null) {
+      return Container(
+        height: 100,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppSize.s12),
+          border: Border.all(color: Colors.red, width: 1),
+        ),
+        child: const Center(
+          child: Text(
+            'Error: Could not load file URL.',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      );
+    }
+
+    final method = widget.request.translationMethod?.toLowerCase();
+
+    // Constrain the height of visual viewers
+    const double viewerHeight = 400;
+    final decoration = BoxDecoration(
+      borderRadius: BorderRadius.circular(AppSize.s12),
+      border: Border.all(color: ColorManager.greyMedium, width: 1),
+    );
+
+    switch (method) {
+      case 'voice':
+        // Use your existing audio player
+        return EmbeddedAudioPlayer(
+          url: _resolvedFileUrl!, // Use the resolved URL
+          fileName: widget.request.fileName,
+        );
+
+      case 'image':
+        return Container(
+          width: double.infinity,
+          height: viewerHeight,
+          decoration: decoration,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(
+              AppSize.s12 - 1,
+            ), // Clip to inner radius
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(
+                _resolvedFileUrl!,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(child: CircularProgressIndicator());
+                },
+                errorBuilder: (context, error, stack) {
+                  return const Center(
+                    child: const Icon(
+                      Icons.error_outline,
+                      color: Colors.red,
+                      size: 40,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+
+      case 'pdf':
+      case 'document':
+        return Container(
+          width: double.infinity,
+          height: viewerHeight,
+          decoration: decoration,
+          child: SfPdfViewer.network(
+            _resolvedFileUrl!,
+            canShowPageLoadingIndicator: true,
+          ),
+        );
+
+      default:
+        // Fallback for any other type, show the link box
+        return SharedFileLinkBox(
+          context: context,
+          fileUrl: _resolvedFileUrl!,
+          fileName: widget.request.fileName,
+          method: widget.request.translationMethod,
+          isOriginal: true,
+        );
+    }
+  }
+
+  // --- NEW: Helper for the translation input area ---
+  Widget _buildTranslationInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Your Translation (${widget.request.toLanguage}):',
+              style: TextStyle(
+                fontSize: AppSize.s16,
+                fontWeight: FontWeight.bold,
+                color: ColorManager.textPrimary,
+              ),
+            ),
+            if (_translatedTextController.text.isNotEmpty)
+              TextButton.icon(
+                onPressed: () {
+                  Clipboard.setData(
+                    ClipboardData(text: _translatedTextController.text),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Translation copied to clipboard!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copy'),
+                style: TextButton.styleFrom(
+                  foregroundColor: ColorManager.primary2,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSize.s12),
+        TextField(
+          controller: _translatedTextController,
+          maxLines: 8,
+          minLines: 5, // Give it a minimum size
+          decoration: InputDecoration(
+            hintText: 'Enter your translation here...',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSize.s12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppSize.s12),
+              borderSide: BorderSide(color: ColorManager.primary2, width: 2),
+            ),
+          ),
+          onChanged: (value) {
+            setState(() {}); // Rebuild to show/hide copy button
+            _cacheService.updateTranslationText(value);
+          },
+        ),
+        const SizedBox(height: AppSize.s20),
+        if (_uploadedTranslatedFileUrl != null) ...[
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: AppSize.s8),
+              Expanded(
+                child: Text(
+                  'Translated file attached',
+                  style: TextStyle(color: ColorManager.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- NEW: Helper for the instructions box ---
+  Widget _buildInstructions() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSize.s16),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppSize.s12),
+        border: Border.all(color: Colors.amber.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Colors.amber[700],
+                size: AppSize.s20,
+              ),
+              const SizedBox(width: AppSize.s8),
+              Text(
+                'Translation Guidelines',
+                style: TextStyle(
+                  fontSize: AppSize.s14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSize.s8),
+          Text(
+            '• Provide accurate and natural translation\n'
+            '• Maintain the original meaning and tone\n'
+            '• Use appropriate terminology for the specialization\n'
+            '• You can provide text translation or upload a file',
+            style: TextStyle(
+              fontSize: AppSize.s12,
+              color: Colors.amber[700],
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- NEW: Helper for the bottom submit button ---
+  Widget _buildSubmitButton() {
+    return Container(
+      padding: const EdgeInsets.all(AppSize.s20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: ColorManager.greyMedium, width: 1),
+        ),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _isSubmitting ? null : _submitTranslation,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: ColorManager.primary2,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: AppSize.s16),
+          ),
+          child:
+              _isSubmitting
+                  ? const SizedBox(
+                    height: AppSize.s20,
+                    width: AppSize.s20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                  : const Text(
+                    'Submit Translation',
+                    style: TextStyle(
+                      fontSize: AppSize.s16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+        ),
       ),
     );
   }

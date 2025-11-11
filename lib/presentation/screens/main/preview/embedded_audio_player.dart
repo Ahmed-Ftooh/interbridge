@@ -41,7 +41,11 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
     try {
       await _audioPlayer.setSourceUrl(widget.url);
     } catch (e) {
-      // Handle error (e.g., show a snackbar)
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading audio: $e')));
+      }
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -49,8 +53,10 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
   Future<void> _togglePlayPause() async {
     if (_playerState == PlayerState.playing) {
       await _audioPlayer.pause();
-    } else {
+    } else if (_playerState == PlayerState.paused) {
       await _audioPlayer.resume();
+    } else {
+      await _audioPlayer.play(UrlSource(widget.url));
     }
   }
 

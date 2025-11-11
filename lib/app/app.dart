@@ -12,15 +12,9 @@ import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 
 class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
   // named constructor
-  const MyApp._internal();
-
-  final int appState = 0;
-
-  static final MyApp _instance =
-      const MyApp._internal(); // singleton or single instance
-
-  factory MyApp() => _instance; // factory
 
   @override
   MyAppState createState() => MyAppState();

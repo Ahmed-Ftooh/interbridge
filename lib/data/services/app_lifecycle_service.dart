@@ -45,7 +45,7 @@ class AppLifecycleService {
             interpreterId: interpreterId,
           );
         case 'call':
-          return EnhancedCallScreen(channelId: requestId, chatBloc: chatBloc);
+          return EnhancedCallScreen(channelId: requestId);
         default:
           log('Unknown screen type: $currentScreen');
           return null;

@@ -1,8 +1,6 @@
 import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/data/services/call_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
@@ -10,37 +8,23 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/services/call_state_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// 1. SIMPLIFIED WIDGET: It no longer creates a BLoC
 class EnhancedCallScreen extends StatelessWidget {
   final String channelId;
-  final ChatBloc chatBloc; // Pass the chat bloc to enable communication
 
-  const EnhancedCallScreen({
-    super.key,
-    required this.channelId,
-    required this.chatBloc,
-  });
+  const EnhancedCallScreen({super.key, required this.channelId});
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create:
-          (_) => CallBloc(
-            service: CallService(),
-            chatBloc: chatBloc, // Pass chat bloc to call bloc
-          ),
-      child: _EnhancedCallScreenBody(channelId: channelId, chatBloc: chatBloc),
-    );
+    // We removed the BlocProvider wrapper from here
+    return _EnhancedCallScreenBody(channelId: channelId);
   }
 }
 
 class _EnhancedCallScreenBody extends StatefulWidget {
   final String channelId;
-  final ChatBloc chatBloc;
 
-  const _EnhancedCallScreenBody({
-    required this.channelId,
-    required this.chatBloc,
-  });
+  const _EnhancedCallScreenBody({required this.channelId});
 
   @override
   State<_EnhancedCallScreenBody> createState() =>
@@ -50,43 +34,29 @@ class _EnhancedCallScreenBody extends StatefulWidget {
 class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   DateTime? _callStartTime;
   Duration _callDuration = Duration.zero;
-  CallBloc? _callBloc; // Store reference to CallBloc
+  // 2. REMOVED CallBloc reference
 
   @override
   void initState() {
     super.initState();
-    // Build a stable int UID from the authenticated user UUID
-    final myUid = _uidFromUuid(
-      Supabase.instance.client.auth.currentUser?.id ?? '',
-    );
-    context.read<CallBloc>().add(
-      StartCall(channelId: widget.channelId, localUid: myUid),
-    );
+    // 3. REMOVED StartCall dispatch. This is now done in ChatView.
     _saveSessionState();
-    // Notify call state manager that call is starting
+    // Notify call state manager that call UI is active
     CallStateManager().startCall(widget.channelId);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Store reference to CallBloc for safe use in dispose()
-    _callBloc = context.read<CallBloc>();
-  }
+  // 4. REMOVED didChangeDependencies
 
   @override
   void dispose() {
-    // Notify call state manager that call is ending
-    CallStateManager().endCall();
-    // Clean up call resources when the screen is disposed
-    if (mounted && _callBloc != null) {
-      _callBloc!.add(EndCall());
-    }
+    // 5. REMOVED EndCall dispatch.
+    // The call persists in the background.
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // These BLoCs are now read from the MultiBlocProvider we set up
     return BlocListener<ChatBloc, ChatState>(
       listener: (context, chatState) {
         // Listen for call ended messages from chat
@@ -104,13 +74,32 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         }
       },
       child: BlocConsumer<CallBloc, CallState>(
+        // In chat/enhanced_call_view.dart
         listener: (context, callState) {
-          // Listen for call state changes from chat messages
+          // Listen for call state changes
           if (callState is CallEnded) {
             // Notify call state manager that call ended
             CallStateManager().endCall();
-            // Simply navigate back to chat screen instead of showing feedback
-            Navigator.of(context).pop();
+
+            // --- THIS IS THE NEW LOGIC ---
+            // If the call was ended LOCALLY (by this user),
+            // send the notification message to the chat.
+            if (callState.isRemote == false) {
+              log('Local hangup detected. Sending __CALL_ENDED__ message.');
+              try {
+                context.read<ChatBloc>().add(
+                  SendCallStateMessage(
+                    requestId: widget.channelId,
+                    callState: '__CALL_ENDED__',
+                  ),
+                );
+              } catch (e) {
+                log('Error sending call ended message from UI: $e');
+              }
+            }
+            // --- END OF NEW LOGIC ---
+
+            // ChatView will now handle popping this screen.
           } else if (callState is CallError) {
             // Show error dialog and then pop back
             showDialog(
@@ -157,6 +146,11 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
             _callDuration = DateTime.now().difference(_callStartTime!);
           }
 
+          // Reset start time if call is not ongoing
+          if (callState is! CallOngoing) {
+            _callStartTime = null;
+          }
+
           return Scaffold(
             backgroundColor: ColorManager.primary2Dark,
             body: Stack(
@@ -177,18 +171,15 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                             color: ColorManager.white,
                           ),
                           onPressed: () {
-                            // End the call first if it's ongoing
-                            if (callState is CallOngoing) {
-                              context.read<CallBloc>().add(EndCall());
-                            }
-                            // Then navigate back
+                            // 6. CHANGED: This just pops the screen.
+                            // The call continues in the background.
                             Navigator.of(context).maybePop();
                           },
                         ),
                         IconButton(
                           icon: Icon(Icons.chat, color: ColorManager.white),
                           onPressed: () {
-                            // Navigate back to chat screen while keeping call active
+                            // This was correct: returns to chat.
                             Navigator.of(context).pop();
                           },
                         ),
@@ -358,6 +349,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       );
     }
 
+    // Default: Show "Call Ended" or idle state
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
