@@ -3,6 +3,7 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/call_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
+import 'dart:developer';
 
 class CallFeedbackDialog extends StatefulWidget {
   final String requestId;
@@ -31,16 +32,23 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
     setState(() => _isSubmitting = true);
 
     try {
+      final ratingInt = _rating.toInt();
+      final commentsText = _commentController.text.trim();
+
+      log('Submitting feedback:');
+      log('  RequestId: ${widget.requestId}');
+      log('  Rating: $ratingInt');
+      log('  Comments: ${commentsText.isEmpty ? "none" : commentsText}');
+
       await instance<CallService>().submitCallFeedback(
         channelId: widget.requestId,
-        rating: _rating.toInt(),
-        comments:
-            _commentController.text.trim().isEmpty
-                ? null
-                : _commentController.text.trim(),
-        callExperience: '',
-        connectionQuality: '',
+        rating: ratingInt,
+        comments: commentsText.isEmpty ? null : commentsText,
+        callExperience: 'satisfied', // Default value
+        connectionQuality: 'good', // Default value
       );
+
+      log('Feedback submitted successfully');
 
       if (mounted) {
         Navigator.of(context).pop(); // Close dialog
@@ -51,12 +59,15 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      log('Error submitting feedback: $e');
+      log('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error submitting feedback: $e'),
+            content: Text('Error submitting feedback: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

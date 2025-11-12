@@ -131,77 +131,15 @@ class _MainViewState extends State<MainView> {
           interpreterId: response['accepted_by'] as String,
           currentScreen: 'chat', // Move directly to chat
         );
-
-        // Show restoration dialog
-        _showSessionRestorationDialog();
-      } else {
-        log('Request still pending, showing restoration dialog');
-        _showSessionRestorationDialog();
       }
+
+      // Automatically restore session without showing dialog
+      await _restoreSession();
     } catch (e) {
       log('Error checking request status: $e');
-      // If there's an error, still show the restoration dialog
-      _showSessionRestorationDialog();
+      // If there's an error, still try to restore session
+      await _restoreSession();
     }
-  }
-
-  void _showSessionRestorationDialog() async {
-    // Get session info to show more context
-    final session = await SessionService.getSession();
-    final isRequestAccepted =
-        session != null &&
-        (session['currentScreen'] == 'chat' ||
-            session['currentScreen'] == 'call');
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            title: Row(
-              children: [
-                Icon(
-                  isRequestAccepted ? Icons.check_circle : Icons.restore,
-                  color: isRequestAccepted ? Colors.green : Colors.blue,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isRequestAccepted ? 'Request Accepted!' : 'Restore Session',
-                ),
-              ],
-            ),
-            content: Text(
-              isRequestAccepted
-                  ? 'Your request has been accepted! Would you like to start the session?'
-                  : 'You have an active session. Would you like to continue where you left off?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  await SessionService.clearSession();
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: const Text('Start Fresh'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _restoreSession();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isRequestAccepted ? Colors.green : Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(
-                  isRequestAccepted ? 'Start Session' : 'Continue Session',
-                ),
-              ),
-            ],
-          ),
-    );
   }
 
   Future<void> _restoreSession() async {
@@ -220,17 +158,17 @@ class _MainViewState extends State<MainView> {
 
       log('Restoring session: $currentScreen for request: $requestId');
 
-      // Create chat bloc for the session
-      final chatBloc = ChatBloc(service: instance<ChatService>());
-
       Widget targetScreen;
 
       switch (currentScreen) {
         case 'chat':
-          targetScreen = ChatView(
-            requestId: requestId,
-            requesterId: requesterId,
-            interpreterId: interpreterId,
+          targetScreen = BlocProvider(
+            create: (_) => ChatBloc(service: instance<ChatService>()),
+            child: ChatView(
+              requestId: requestId,
+              requesterId: requesterId,
+              interpreterId: interpreterId,
+            ),
           );
           break;
         case 'call':
@@ -242,9 +180,11 @@ class _MainViewState extends State<MainView> {
       }
 
       if (mounted) {
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => targetScreen));
+        // Use pushAndRemoveUntil to make chat the main screen and clear navigation stack
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => targetScreen),
+          (route) => false, // Remove all previous routes
+        );
       }
     } catch (e) {
       log('Error restoring session: $e');

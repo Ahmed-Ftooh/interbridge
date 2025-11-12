@@ -176,13 +176,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                             Navigator.of(context).maybePop();
                           },
                         ),
-                        IconButton(
-                          icon: Icon(Icons.chat, color: ColorManager.white),
-                          onPressed: () {
-                            // This was correct: returns to chat.
-                            Navigator.of(context).pop();
-                          },
-                        ),
+
                         // End Session button
                         PopupMenuButton<String>(
                           icon: Icon(
@@ -527,9 +521,5 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
             ],
           ),
     );
-  }
-
-  int _uidFromUuid(String uuid) {
-    return uuid.hashCode.abs();
   }
 }

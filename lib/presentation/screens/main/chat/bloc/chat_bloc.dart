@@ -147,14 +147,66 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   // --- MODIFIED _onSendMessage ---
   Future<void> _onSendMessage(SendMessage e, Emitter<ChatState> emit) async {
+    log('SendMessage event received: ${e.content}');
+    log('Current state: ${state.runtimeType}');
+
+    // If state is not ChatLoaded, load messages first
+    ChatLoaded currentState;
+    if (state is ChatLoaded) {
+      currentState = state as ChatLoaded;
+      log('State is ChatLoaded, proceeding with send...');
+    } else {
+      log(
+        'State is not ChatLoaded (${state.runtimeType}), loading messages first...',
+      );
+      try {
+        emit(ChatLoading());
+        final messages = await service.fetchMessages(e.requestId);
+        currentState = ChatLoaded(messages: messages);
+        emit(currentState);
+        log('Messages loaded, proceeding with send...');
+
+        // Subscribe to listen for new messages if not already subscribed
+        _msgChannel?.unsubscribe();
+        _msgChannel = service.subscribeToMessages(e.requestId, (newRow) {
+          add(NewIncomingMessage(newRow));
+        });
+      } catch (err) {
+        log('Error loading messages: $err');
+        emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
+        return;
+      }
+    }
+
     try {
-      await service.sendMessage(
+      log('Sending message to service...');
+      final newMessage = await service.sendMessage(
         e.requestId,
         e.content,
         messageType: e.messageType,
         attachmentUrl: e.attachmentUrl,
       );
-    } catch (err) {
+      log('Message sent successfully, adding to UI...');
+
+      // Optimistically add the new message to the UI immediately
+      final updatedMessages = List<Map<String, dynamic>>.from(
+        currentState.messages,
+      )..add(newMessage);
+      final newMessageId = newMessage['id']?.toString();
+      if (newMessageId != null) {
+        _seenMessageIds.add(newMessageId);
+      }
+      emit(
+        ChatLoaded(
+          messages: updatedMessages,
+          inCall: currentState.inCall,
+          isUploading: currentState.isUploading,
+        ),
+      );
+      log('Message added to UI successfully');
+    } catch (err, stackTrace) {
+      log('Error in _onSendMessage: $err');
+      log('Stack trace: $stackTrace');
       emit(ChatError(ErrorHandler.handleError(err, context: 'SendMessage')));
     }
   }
@@ -165,43 +217,112 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     UploadAndSendAttachment e,
     Emitter<ChatState> emit,
   ) async {
-    if (state is! ChatLoaded) return;
-    final currentState = state as ChatLoaded;
+    log('=== UploadAndSendAttachment event received ===');
+    log('RequestId: ${e.requestId}');
+    log('FileName: ${e.fileName}');
+    log('MessageType: ${e.messageType}');
+    log('File path: ${e.file.path}');
+    log('Current state type: ${state.runtimeType}');
+
+    // If state is not ChatLoaded, load messages first
+    ChatLoaded currentState;
+    if (state is ChatLoaded) {
+      currentState = state as ChatLoaded;
+      log('State is ChatLoaded, proceeding with upload...');
+    } else {
+      log(
+        'State is not ChatLoaded (${state.runtimeType}), loading messages first...',
+      );
+      try {
+        emit(ChatLoading());
+        final messages = await service.fetchMessages(e.requestId);
+        currentState = ChatLoaded(messages: messages);
+        emit(currentState);
+        log('Messages loaded, proceeding with upload...');
+
+        // Subscribe to listen for new messages if not already subscribed
+        _msgChannel?.unsubscribe();
+        _msgChannel = service.subscribeToMessages(e.requestId, (newRow) {
+          add(NewIncomingMessage(newRow));
+        });
+      } catch (err) {
+        log('Error loading messages: $err');
+        emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
+        return;
+      }
+    }
 
     try {
+      // Check if file exists
+      final fileExists = await e.file.exists();
+      log('File exists check: $fileExists');
+      if (!fileExists) {
+        throw Exception('File does not exist at path: ${e.file.path}');
+      }
+
       // Emit loading state
+      log('Emitting loading state...');
       emit(currentState.copyWith(isUploading: true));
 
       // 1. Upload the file
+      log('Starting file upload for voice message: ${e.fileName}');
+      log('File size: ${await e.file.length()} bytes');
       final attachmentUrl = await service.uploadChatAttachment(
         e.file,
         e.fileName,
         e.messageType,
       );
+      log('File uploaded successfully to: $attachmentUrl');
 
-      // 2. Send the message with the URL
-      add(
-        SendMessage(
-          requestId: e.requestId,
-          content: e.fileName, // Use file name as content
-          messageType: e.messageType,
-          attachmentUrl: attachmentUrl,
+      // 2. Send the message with the URL - await it directly instead of adding event
+      log('Sending message with attachment URL: $attachmentUrl');
+      final newMessage = await service.sendMessage(
+        e.requestId,
+        e.fileName, // Use file name as content
+        messageType: e.messageType,
+        attachmentUrl: attachmentUrl,
+      );
+      log('Message sent successfully to Supabase');
+
+      // Optimistically add the new message to the UI immediately
+      final updatedMessages = List<Map<String, dynamic>>.from(
+        currentState.messages,
+      )..add(newMessage);
+      final newMessageId = newMessage['id']?.toString();
+      if (newMessageId != null) {
+        _seenMessageIds.add(newMessageId);
+      }
+      emit(
+        ChatLoaded(
+          messages: updatedMessages,
+          inCall: currentState.inCall,
+          isUploading: false,
         ),
       );
-
-      // Emit loaded state (isUploading will be reset by the time messages reload)
-    } catch (err) {
-      log("Error in _onUploadAndSendAttachment: $err");
-      emit(
-        ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
-      );
-      // Restore previous state on error
-      emit(currentState.copyWith(isUploading: false));
-    } finally {
-      // Ensure loading is turned off
-      if (state is ChatLoaded) {
-        emit((state as ChatLoaded).copyWith(isUploading: false));
+      log('=== UploadAndSendAttachment completed successfully ===');
+    } catch (err, stackTrace) {
+      log("=== ERROR in _onUploadAndSendAttachment ===");
+      log("Error: $err");
+      log("Error type: ${err.runtimeType}");
+      log("Error details: ${err.toString()}");
+      log("Stack trace: $stackTrace");
+      // Restore previous state on error - reload messages to get current state
+      try {
+        final messages = await service.fetchMessages(e.requestId);
+        emit(ChatLoaded(messages: messages, isUploading: false));
+        // Emit error state so the listener can show it to the user
+        // Note: This will be received by the listener, then the builder will see ChatError
+        // but the chat_view handles this by checking if state is ChatLoaded first
+        emit(
+          ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+        );
+      } catch (e) {
+        // If we can't reload messages, just emit error state
+        emit(
+          ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+        );
       }
+      log("=== Error handled, state restored ===");
     }
   }
   // --- END OF NEW HANDLER ---
@@ -264,6 +385,22 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           'profile_image': null,
           'role': 'user',
         };
+      }
+    }
+
+    final attachmentPath = newMessage['attachment_url'] as String?;
+    final messageType = newMessage['message_type'] as String?;
+    if (attachmentPath != null &&
+        (messageType == 'image' ||
+            messageType == 'audio' ||
+            messageType == 'file') &&
+        newMessage['attachment_signed_url'] == null) {
+      try {
+        newMessage['attachment_signed_url'] = await service.createSignedUrl(
+          attachmentPath,
+        );
+      } catch (error) {
+        log('Failed to prefetch signed URL: $error');
       }
     }
 

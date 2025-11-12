@@ -78,7 +78,7 @@ class ChatService {
     }
   }
 
-  Future<void> sendMessage(
+  Future<Map<String, dynamic>> sendMessage(
     String requestId,
     String content, {
     String messageType = 'text',
@@ -88,14 +88,89 @@ class ChatService {
     if (userId == null) throw Exception('Not authenticated');
 
     try {
-      await _supabase.from('chat_messages').insert({
+      log('Sending message to Supabase:');
+      log('  requestId: $requestId');
+      log('  content: $content');
+      log('  messageType: $messageType');
+      log('  attachmentUrl: $attachmentUrl');
+
+      final insertPayload = {
         'request_id': requestId,
         'sender_id': userId,
         'content': content,
         'message_type': messageType,
-        'attachment_url': attachmentUrl, // Storing the path, not a URL
-      });
+        'attachment_url': attachmentUrl,
+      };
+
+      Map<String, dynamic> result =
+          await _supabase
+              .from('chat_messages')
+              .insert(insertPayload)
+              .select('*')
+              .single();
+
+      log('Message inserted successfully');
+
+      // Process the result to ensure proper format
+      // Ensure essential fields are present even if Supabase omits them in the response
+      result['sender_id'] ??= userId;
+      result['request_id'] ??= requestId;
+      result['message_type'] ??= messageType;
+      if (attachmentUrl != null) {
+        result['attachment_url'] ??= attachmentUrl;
+      }
+
+      if (attachmentUrl != null) {
+        try {
+          final signedUrl = await createSignedUrl(attachmentUrl);
+          result['attachment_signed_url'] = signedUrl;
+        } catch (e) {
+          log('Unable to prefetch signed URL: $e');
+        }
+      }
+
+      final userProfile = result['user_profiles'] as Map<String, dynamic>?;
+      if (userProfile == null || userProfile['username'] == null) {
+        // Try to fetch user profile manually
+        try {
+          final profile = await _supabaseService.getUserProfile(userId);
+          if (profile != null) {
+            result['user_profiles'] = {
+              'username': profile.username,
+              'profile_image': _supabaseService.getProfileImageUrl(
+                profile.profileImage,
+              ),
+              'role': profile.role,
+            };
+          } else {
+            result['user_profiles'] = {
+              'username': 'User',
+              'profile_image': null,
+              'role': 'user',
+            };
+          }
+        } catch (e) {
+          log('Error fetching user profile: $e');
+          result['user_profiles'] = {
+            'username': 'User',
+            'profile_image': null,
+            'role': 'user',
+          };
+        }
+      } else {
+        // Ensure profile image URL is properly formatted
+        final profileImage = userProfile['profile_image'] as String?;
+        if (profileImage != null && profileImage.isNotEmpty) {
+          userProfile['profile_image'] = _supabaseService.getProfileImageUrl(
+            profileImage,
+          );
+        }
+      }
+
+      return result;
     } catch (e) {
+      log('Error sending message to Supabase: $e');
+      log('Error type: ${e.runtimeType}');
       if (e.toString().contains('relation "chat_messages" does not exist')) {
         throw Exception(
           'Chat functionality is not set up yet. Please contact support to enable chat features.',
@@ -114,7 +189,16 @@ class ChatService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
 
+    // Check if file exists
+    if (!await file.exists()) {
+      log('Error: File does not exist at path: ${file.path}');
+      throw Exception('File does not exist: ${file.path}');
+    }
+
+    log('Reading file bytes for: $fileName (path: ${file.path})');
     final fileBytes = await file.readAsBytes();
+    log('File size: ${fileBytes.length} bytes');
+
     final fileExt = fileName.split('.').last.toLowerCase();
 
     // The 'name' of the object in storage
@@ -137,17 +221,25 @@ class ChatService {
         contentType = 'application/octet-stream';
     }
 
-    await _supabase.storage
-        .from('chat_attachments')
-        .uploadBinary(
-          storagePath,
-          fileBytes,
-          fileOptions: FileOptions(contentType: contentType, upsert: false),
-        );
+    try {
+      log('Uploading to storage path: $storagePath');
+      await _supabase.storage
+          .from('chat_attachments')
+          .uploadBinary(
+            storagePath,
+            fileBytes,
+            fileOptions: FileOptions(contentType: contentType, upsert: false),
+          );
 
-    log('File uploaded to path: $storagePath');
-    // --- FIX: Return the storage path, NOT a public URL ---
-    return storagePath;
+      log('File uploaded successfully to path: $storagePath');
+      // --- FIX: Return the storage path, NOT a public URL ---
+      return storagePath;
+    } catch (e) {
+      log('Error uploading file to Supabase storage: $e');
+      log('Storage path attempted: $storagePath');
+      log('File size: ${fileBytes.length} bytes, Content type: $contentType');
+      rethrow;
+    }
   }
   // --- END OF MODIFICATION ---
 

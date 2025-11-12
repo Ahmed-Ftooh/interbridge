@@ -25,6 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:developer'; // For logging
 // --- THIS IS THE PDF FIX ---
 import 'package:interbridge/presentation/screens/main/preview/pdf_preview_screen.dart';
+import 'package:interbridge/presentation/screens/main/preview/image_preview_screen.dart';
 // --- END OF FIX ---
 
 class ChatView extends StatefulWidget {
@@ -619,8 +620,21 @@ class _ChatViewState extends State<ChatView> {
       builder: (context) {
         return _RecordingSheet(
           onSend: (file, fileName) {
+            log('onSend callback called with file: $fileName');
+            log('File path: ${file.path}');
+            try {
+              final exists = file.existsSync();
+              log('File exists: $exists');
+            } catch (e) {
+              log('Error checking file existence: $e');
+            }
+            log('RequestId: ${widget.requestId}');
             if (mounted) {
-              context.read<ChatBloc>().add(
+              log('Widget is mounted, adding UploadAndSendAttachment event');
+              final bloc = context.read<ChatBloc>();
+              log('ChatBloc instance: ${bloc.runtimeType}');
+              log('Current bloc state: ${bloc.state.runtimeType}');
+              bloc.add(
                 UploadAndSendAttachment(
                   requestId: widget.requestId,
                   file: file,
@@ -628,6 +642,9 @@ class _ChatViewState extends State<ChatView> {
                   messageType: 'audio',
                 ),
               );
+              log('UploadAndSendAttachment event added to bloc');
+            } else {
+              log('ERROR: Widget is not mounted, cannot send attachment');
             }
           },
         );
@@ -659,9 +676,14 @@ class _ChatBubbleState extends State<_ChatBubble> {
     super.initState();
     _messageType = widget.message['message_type'] ?? 'text';
     _attachmentPath = widget.message['attachment_url'];
+    final existingSignedUrl = widget.message['attachment_signed_url'];
+    if (existingSignedUrl is String && existingSignedUrl.isNotEmpty) {
+      _signedUrl = existingSignedUrl;
+    }
 
     // If it's a file type that needs a signed URL, fetch it
-    if ((_messageType == 'image' ||
+    if (_signedUrl == null &&
+        (_messageType == 'image' ||
             _messageType == 'audio' ||
             _messageType == 'file') &&
         _attachmentPath != null) {
@@ -727,30 +749,53 @@ class _ChatBubbleState extends State<_ChatBubble> {
               const SizedBox(width: 8),
             ],
             Flexible(
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: widget.isMe ? Colors.blue : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!widget.isMe) ...[
-                      Text(
-                        username,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: widget.isMe ? Colors.white70 : Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                    ],
-                    _buildMessageContent(context),
-                  ],
-                ),
+              child: Builder(
+                builder: (context) {
+                  final messageType = widget.message['message_type'] ?? 'text';
+                  final isImage = messageType == 'image';
+
+                  return Container(
+                    padding:
+                        isImage ? EdgeInsets.zero : const EdgeInsets.all(10),
+                    decoration:
+                        isImage
+                            ? null
+                            : BoxDecoration(
+                              color:
+                                  widget.isMe
+                                      ? Colors.blue
+                                      : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                    child:
+                        isImage
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: _buildMessageContent(context),
+                            )
+                            : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!widget.isMe) ...[
+                                  Text(
+                                    username,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          widget.isMe
+                                              ? Colors.white70
+                                              : Colors.black54,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                ],
+                                _buildMessageContent(context),
+                              ],
+                            ),
+                  );
+                },
               ),
             ),
           ],
@@ -786,20 +831,38 @@ class _ChatBubbleState extends State<_ChatBubble> {
     switch (_messageType) {
       case 'image':
         if (url == null) return const Text('[Image not available]');
-        return ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 250, maxHeight: 250),
-          child: Image.network(
-            url,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
-            },
-            errorBuilder: (context, error, stack) {
-              return const Icon(Icons.broken_image);
-            },
+        final heroTag = 'chat_image_${widget.message['id'] ?? url ?? content}';
+        return GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder:
+                    (_) => ImagePreviewScreen(
+                      imageUrl: url,
+                      heroTag: heroTag,
+                      fileName: content,
+                    ),
+              ),
+            );
+          },
+          child: Hero(
+            tag: heroTag,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 250, maxHeight: 250),
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                },
+                errorBuilder: (context, error, stack) {
+                  return const Icon(Icons.broken_image);
+                },
+              ),
+            ),
           ),
         );
 
@@ -978,9 +1041,18 @@ class _RecordingSheetState extends State<_RecordingSheet> {
   void _sendRecording() {
     if (_filePath != null) {
       final file = File(_filePath!);
-      final fileName = _filePath!.split('/').last;
+      // Use path separator that works on all platforms
+      final fileName = _filePath!.split(Platform.pathSeparator).last;
+      log('Sending voice recording: $fileName from path: $_filePath');
       widget.onSend(file, fileName);
       Navigator.of(context).pop();
+    } else {
+      log('Error: _filePath is null when trying to send recording');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Recording file not found')),
+        );
+      }
     }
   }
 
