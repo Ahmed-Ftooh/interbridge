@@ -39,6 +39,16 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
     });
   }
 
+  @override
+  void didUpdateWidget(InterpreterHomeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // This is called when the widget is rebuilt (e.g., returning from chat)
+    // Reload jobs to ensure fresh data
+    if (mounted) {
+      _safeAddToJobsBloc(LoadAvailableJobs());
+    }
+  }
+
   Future<void> _refreshJobs() async {
     _safeAddToJobsBloc(RefreshJobs());
     // Optionally await bloc state change here if you want
@@ -131,7 +141,8 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                 listener: (context, state) {
                   // ✅ Navigate when a job is accepted
                   if (state is InterpreterJobAccepted) {
-                    // Use push instead of pushReplacement to allow going back
+                    // Use pushAndRemoveUntil to prevent going back to this screen
+                    // from chat with the old jobs list
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
@@ -145,20 +156,28 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                               ),
                             ),
                       ),
-                      (route) => false,
+                      (route) =>
+                          false, // Clear stack, so back goes to main home
                     );
                   }
 
                   // ✅ Reset button states on load or error
                   if (state is InterpreterJobLoaded ||
                       state is InterpreterJobError) {
-                    setState(() {
-                      isProcessingJob = false;
-                      processingJobId = null;
-                    });
+                    if (mounted) {
+                      setState(() {
+                        isProcessingJob = false;
+                        processingJobId = null;
+                      });
+                    }
                   }
                 },
                 builder: (context, state) {
+                  // Handle the accepted state by showing loading until jobs are reloaded
+                  if (state is InterpreterJobAccepted) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
                   if (state is InterpreterJobLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -217,6 +236,12 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(color: ColorManager.grey),
                               textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: AppSize.s16),
+                            OutlinedButton.icon(
+                              onPressed: _refreshJobs,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Refresh'),
                             ),
                           ],
                         ),

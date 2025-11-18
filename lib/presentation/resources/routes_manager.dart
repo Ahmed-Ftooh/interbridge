@@ -17,6 +17,9 @@ import 'package:interbridge/presentation/screens/splash/splash_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/request_waiting_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
+import 'package:interbridge/presentation/screens/legal/privacy_policy_view.dart';
+import 'package:interbridge/presentation/screens/legal/terms_of_service_view.dart';
+import 'package:interbridge/presentation/screens/main/setting/change_password_view.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -36,6 +39,9 @@ class Routes {
   static const String requestWaiting = "/requestWaiting";
   static const String accepteddocument = "/accepteddocument";
   static const String documentTranslation = "/documentTranslation";
+  static const String privacyPolicy = "/privacyPolicy";
+  static const String termsOfService = "/termsOfService";
+  static const String changePassword = "/changePassword";
 }
 
 class RouteGenerator {
@@ -120,6 +126,12 @@ class RouteGenerator {
         return MaterialPageRoute(
           builder: (_) => const DocumentTranslationView(),
         );
+      case Routes.privacyPolicy:
+        return MaterialPageRoute(builder: (_) => const PrivacyPolicyView());
+      case Routes.termsOfService:
+        return MaterialPageRoute(builder: (_) => const TermsOfServiceView());
+      case Routes.changePassword:
+        return MaterialPageRoute(builder: (_) => const ChangePasswordView());
       default:
         return unDefinedRoute();
     }

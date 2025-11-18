@@ -14,6 +14,10 @@ import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
+  // Global navigator key for notification navigation
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   // named constructor
 
   @override
@@ -40,6 +44,7 @@ class MyAppState extends State<MyApp> {
         BlocProvider<ChatBloc>(create: (_) => instance<ChatBloc>()),
       ],
       child: MaterialApp(
+        navigatorKey: MyApp.navigatorKey,
         debugShowCheckedModeBanner: false,
         onGenerateRoute: RouteGenerator.getRoute,
         initialRoute: Routes.splashRoute,

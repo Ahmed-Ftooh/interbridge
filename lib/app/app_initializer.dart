@@ -7,6 +7,8 @@ import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/firebase_service.dart';
 import 'package:interbridge/core/network_service.dart';
 import 'package:interbridge/core/error_service.dart';
+import 'package:interbridge/data/services/notification_handler.dart';
+import 'package:interbridge/app/app.dart';
 
 class AppInitializer {
   static Future<void> initialize() async {
@@ -85,23 +87,11 @@ class AppInitializer {
         ),
         // Initialize Error Service (no network calls)
         ErrorService().initialize(),
-        // Initialize Network Service (with timeout)
-        NetworkService().initialize().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () {
-            // Continue with initialization even if network check fails
-            log('Network service initialization timed out, continuing...');
-          },
-        ),
       ]);
 
-      // Initialize Firebase after other services are ready (with timeout)
-      await instance<FirebaseService>().initialize().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          log('Firebase initialization timed out, continuing...');
-        },
-      );
+      // OPTIMIZED: Initialize Firebase and Network Service in background
+      // These are not critical for app startup and can complete after the app launches
+      _initializeNonCriticalServices();
 
       // Listen for Supabase auth deep-link redirects to handle password reset
       // and email verification inside the app.
@@ -121,11 +111,50 @@ class AppInitializer {
           log('Auth event: tokenRefreshed');
         }
       });
+
+      log('App initialized successfully');
     } catch (e) {
       // Log error but don't crash the app
       log('Error during app initialization: $e');
       // You might want to show a user-friendly error screen instead
       rethrow;
     }
+  }
+
+  // OPTIMIZED: Non-blocking initialization for services not needed at startup
+  static void _initializeNonCriticalServices() {
+    // Run in background without blocking app launch
+    Future.microtask(() async {
+      try {
+        // Initialize Network Service with short timeout
+        await NetworkService().initialize().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {
+            log('Network service initialization timed out, continuing...');
+          },
+        );
+      } catch (e) {
+        log('Network service initialization failed: $e');
+      }
+
+      try {
+        // Initialize Firebase after other services are ready with timeout
+        await instance<FirebaseService>().initialize().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            log('Firebase initialization timed out, continuing...');
+          },
+        );
+
+        // Initialize notification handler after Firebase is ready
+        final notificationHandler = NotificationHandler(
+          navigatorKey: MyApp.navigatorKey,
+        );
+        await notificationHandler.initialize();
+        log('Notification handler initialized successfully');
+      } catch (e) {
+        log('Firebase initialization failed: $e');
+      }
+    });
   }
 }

@@ -34,7 +34,7 @@ class AppStateRestorationService {
       }
 
       log('Found cached translation: ${cachedTranslation.request.id}');
-      
+
       // Show dialog to ask user if they want to continue
       final shouldRestore = await _showRestoreDialog(
         context,
@@ -45,8 +45,8 @@ class AppStateRestorationService {
         await _restoreTranslationScreen(context, cachedTranslation);
         return true;
       } else {
-        // User chose not to restore, clear the cache
-        await _cacheService.clearCache();
+        // User chose not to restore right now, but keep the cache
+        // so they don't lose progress - they can restore later
         return false;
       }
     } catch (e) {
@@ -69,62 +69,77 @@ class AppStateRestorationService {
             children: [
               Icon(Icons.restore, color: Colors.blue),
               SizedBox(width: 8),
-              Text('Continue Translation?'),
+              Expanded(
+                child: Text(
+                  'Continue Translation?',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'You have an unfinished translation session:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'You have an unfinished translation session:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${request.fromLanguage} → ${request.toLanguage}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.blue.withValues(alpha: 0.3),
                     ),
-                    if (request.specialization != null) ...[
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${request.fromLanguage} → ${request.toLanguage}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (request.specialization != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Specialization: ${request.specialization}',
+                          style: TextStyle(
+                            color: Colors.blue[700],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       Text(
-                        'Specialization: ${request.specialization}',
-                        style: TextStyle(color: Colors.blue[700], fontSize: 14),
+                        'Started: ${_formatDateTime(request.createdAt)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                       ),
                     ],
-                    const SizedBox(height: 4),
-                    Text(
-                      'Started: ${_formatDateTime(request.createdAt)}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Would you like to continue where you left off?',
-                style: TextStyle(fontSize: 14),
-              ),
-            ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Would you like to continue where you left off? Your progress is always saved.',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text(
-                'Start Fresh',
+                'Not Now',
                 style: TextStyle(color: Colors.grey),
               ),
             ),

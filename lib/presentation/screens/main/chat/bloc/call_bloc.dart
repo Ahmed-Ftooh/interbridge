@@ -6,7 +6,7 @@ import 'package:interbridge/data/services/call_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:interbridge/core/error_handler.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
+import 'package:interbridge/presentation/services/call_state_manager.dart';
 
 /// ===== Events =====
 abstract class CallEvent {}
@@ -106,8 +106,6 @@ class CallEnded extends CallState {
 /// ===== BLoC =====
 class CallBloc extends Bloc<CallEvent, CallState> {
   final CallService service;
-  final ChatBloc? _chatBloc; // Reference to chat bloc for sending notifications
-
   RtcEngine? _engine;
   Timer? _timer;
   DateTime? _startedAt;
@@ -115,9 +113,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   bool _speakerOn = true;
   final Set<int> _remoteUids = {};
 
-  CallBloc({required this.service, ChatBloc? chatBloc})
-    : _chatBloc = chatBloc,
-      super(CallIdle()) {
+  CallBloc({required this.service}) : super(CallIdle()) {
     // This is where the error appeared
     on<StartCall>(_onStartCall);
     on<EndCall>(_onEndCall);
@@ -131,6 +127,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   Future<void> _onStartCall(StartCall e, Emitter<CallState> emit) async {
     try {
+      // Notify global call state immediately so chat banner updates
+      CallStateManager().startCall(e.channelId);
+
       // 1) Check mic permission (should already be granted at login)
       log('Checking microphone permission...');
       final mic = await Permission.microphone.status;
@@ -367,6 +366,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     } catch (e) {
       log('Error leaving channel: $e');
     } finally {
+      // Ensure global call banner clears for everyone
+      CallStateManager().endCall();
       // We pass the `isRemote` flag to the UI.
       log('Emitting CallEnded state');
       emit(CallEnded(isRemote: e.isRemote)); // <-- MODIFIED

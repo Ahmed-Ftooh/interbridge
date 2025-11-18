@@ -37,6 +37,7 @@ class _MainViewState extends State<MainView> {
   AppError? error;
   late final SupabaseService _supabaseService;
   int currentIndex = 0;
+  List<Widget>? _pages; // Keep tab pages alive
 
   @override
   void initState() {
@@ -64,6 +65,7 @@ class _MainViewState extends State<MainView> {
             userProfile = profile;
             isLoading = false;
             error = null;
+            _pages = _buildPages();
           });
         }
       } else {
@@ -77,6 +79,7 @@ class _MainViewState extends State<MainView> {
               userAction: 'Please log in again.',
               isRetryable: false,
             );
+            _pages = _buildPages();
           });
         }
       }
@@ -86,6 +89,7 @@ class _MainViewState extends State<MainView> {
         setState(() {
           isLoading = false;
           error = ErrorHandler.handleError(e, context: 'LoadUserProfile');
+          _pages = _buildPages();
         });
       }
     }
@@ -158,6 +162,13 @@ class _MainViewState extends State<MainView> {
 
       log('Restoring session: $currentScreen for request: $requestId');
 
+      // Don't restore if screen is 'waiting_request' - the request might have been accepted
+      // The _checkIfRequestWasAccepted already handled updating the session if needed
+      if (currentScreen == 'waiting_request') {
+        log('Skipping restore for waiting_request - already checked status');
+        return;
+      }
+
       Widget targetScreen;
 
       switch (currentScreen) {
@@ -199,22 +210,20 @@ class _MainViewState extends State<MainView> {
     }
   }
 
-  Widget _buildCurrentPage() {
+  List<Widget> _buildPages() {
     if (isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading your profile...'),
-          ],
-        ),
-      );
+      // Build lightweight placeholders while loading
+      return const [
+        SizedBox.shrink(),
+        SizedBox.shrink(),
+        SizedBox.shrink(),
+        SizedBox.shrink(),
+      ];
     }
 
     if (error != null) {
-      return ErrorDisplayWidget(
+      // Show the same error page for all indices
+      final errorWidget = ErrorDisplayWidget(
         error: error!,
         onRetry:
             error!.isRetryable
@@ -228,34 +237,29 @@ class _MainViewState extends State<MainView> {
                 : null,
         title: 'Failed to load profile',
       );
+      return [errorWidget, errorWidget, errorWidget, errorWidget];
     }
 
     final isInterpreter = userProfile?.role == 'interpreter';
     log(
       'DEBUG: User role: ${userProfile?.role}, isInterpreter: $isInterpreter',
     );
-
-    switch (currentIndex) {
-      case 0:
-        return isInterpreter
-            ? BlocProvider(
-              create: (context) => instance<InterpreterJobBloc>(),
-              child: const InterpreterHomeView(),
-            )
-            : const RequesterHomeView();
-      case 1:
-        return isInterpreter
-            ? const InterpreterDashboardView()
-            : const DocumentTranslationView();
-      case 2:
-        return const ProfileView();
-      case 3:
-        return const SettingView();
-      default:
-        return isInterpreter
-            ? const InterpreterHomeView()
-            : const RequesterHomeView();
-    }
+    return [
+      if (isInterpreter)
+        BlocProvider(
+          key: const PageStorageKey('interpreter_home_bloc_holder'),
+          create: (context) => instance<InterpreterJobBloc>(),
+          child: const InterpreterHomeView(),
+        )
+      else
+        const RequesterHomeView(),
+      if (isInterpreter)
+        const InterpreterDashboardView()
+      else
+        const DocumentTranslationView(),
+      const ProfileView(),
+      const SettingView(),
+    ];
   }
 
   List<BottomNavigationBarItem> _getNavigationItems() {
@@ -282,7 +286,13 @@ class _MainViewState extends State<MainView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _buildCurrentPage(),
+      body: Builder(
+        builder: (_) {
+          final pages = _pages ?? _buildPages();
+          // Keep tabs alive and preserve state
+          return IndexedStack(index: currentIndex, children: pages);
+        },
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [

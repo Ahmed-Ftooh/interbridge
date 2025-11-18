@@ -12,8 +12,8 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 const serviceAccount = {
   "type": "service_account",
   "project_id": "interbridge-6e3b8",
-  "private_key_id": "191c126ddb3ba9232b3080150a309f6a8daa1c19",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDpg6hPprhNPE7P\nvQJWyT+72p0RHxLIVtH/nN99/RCsQr1sVeuFYsflZs2pI44DBgyGQALGCr3v1Dgc\nZ5z6dMyYiJB9MlQTPdL33ytLcQBHKkoQVLvhPcFdVSJ711R2xZCxtfa7mJaWaBRU\nEAD/8EPMJCDvFkuHm3iCZxfKaMyARRr3qm1durtUYl4fVJuABaq3y24Lie08BFU4\nhmtXSsMDSFDZQtv3Hg7/LKiGLjB+QTWEcDuzsa8QDABrbL6fj6aVz/Cqx3E/ttUC\n7eZB8zQ/xjfjHs+Uv3pMH+YImB6V/26SmA3wuSBWsazTGOKY6vacb0vNbWpilQJ1\nObwQ4bAlAgMBAAECggEAMr3yOASxbc8aDRg0RumKWObDVLIc4b3D+jh7dCQmmFgU\nU1NET4LMjzPMouFf/ZY16IJGWASDi3bhDoMRYHc68jZSt3HVRS0dB9HN1aHjfpNY\n7r2K6gICX6adTK3Y48pAi+1PhSo+JsbNDAtCPFtYUCbVpT6CASCuih+e0tP9BC4V\n0KrdyZv13VAdZiKi207TXtCy4hcQBC6nWuwCnWZD2R+tWYtfSXpHPRnD3a0DeeMU\nHo/sOUOqDZEusqdPqImDfyD39KkEL9YSaDbp2tiejAT8HYG5XtSD6oOK1p5qv7w9\nEMVGUDm8M94qQmOMgrOVp5dvsE/QWfajvxKzOULggQKBgQD0xIKqC7l1vqienptK\nRGoSuS5Q1IxqxNtlrL+le9+b6KdV/7w+2RlYNDjqk95+ah/UiGz5CQcZnMXaofik\nwaJ7zRv8IgquM4mbYePJuWcVS2V0UZ7rE1IIKS3Xmk+yi79l2B0rZZ6JqbBOUs/K\nFwX8zj2U+Wu09lwNCkM9OHXIIQKBgQD0OvHcqId9+LQJaq8yYvaq0nsSjwVhnlFx\nz0VQ7p6Pd5xQxbP4jBhLl+9216wy4V+YNsbBk2ObmBEz5rf95gfX4kZaNu2IxWrc\ngcFJ0eZkAgfHbKawBdxYkuAgsRiZOslJVcC9O89HPu4Yp0LzHL2C8XZFRs/icHcN\nzH57CP3XhQKBgDegSUm37GgT8mJKDWStc6XZq+r2wwqovmu2/L7xDfpyv0TOH8vw\nrs/a3myBOnlkSOOWNZ3LLW/mrxhm4wkecHzOOmPsoJzCXa2Qa6I2nnS6c84hloo6\nE9SC90YebapYFCFjIg3wxDzo8YZ7T3nQDa5MeLZYkN/JdVYJVQqewDXBAoGAfiU7\n61b4tK4Sf5Kk7weClHSmsM1CYEtfkcMW8FhveXa0PFwBOu1RVyogu2dmP9l8gKg6\nPJ2eIy2GJSKUAgYgIvdykwIv6ibdrQswBKrvrtQFpJGP/vbn+q/SJ9CQ/gQJF2G9\nbYBI7WmpnP43bE556/o/tkR+91xTgcMPyQi54+kCgYEAvWwlTtuiXXeQ45ujOLXL\n1BXY48eZYnr9Q+/InpQEtgGSe9nIKttNlsl12+eETBTDc9ZDZdDdOovZiVgDyv8b\n47AjqwwxwVGN4/RV4aSwqnaxkM3CfRvhmMHNjOPGprGfn2M0eLZLwzmS9bfuIWFk\nFF9yLMqcGUTFz2ZgCf5yn/o=\n-----END PRIVATE KEY-----\n",
+  "private_key_id": "936b8bc0c418f5b2ed8a4b9dd7feac3505ce0394",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDKeJvRStwnqJ35\ns6Hty3SdD5BVyy5pcodCXtBiHWK8le9FTzj0T0ModTg5rnvofhu0+jsnTKFPkUVY\nO1xLxdiW8/j6QAEcAwx38FesqX9LKNlbiRORXBchWIqPuOjewxCVdYrj3CtzURDG\nt4zotCyPmFvLDu7mpLTmL0M2FUPRPaBHjSMWvgsSIJflgSaKlo2ZLDw3p+c+kM9a\nSvDOcgDm4Q67e6LDGQGEVjg7l3gQHk546AXIendHcTQo62rohlN1L3p/+AzDpxau\nDqHIyPw0grcoG5GJGY1aE5M5sG/d6K4RHAcak3NMcw2ExcETaJSpVIaTMiXdnJEb\n3n52j3XtAgMBAAECggEAHe+7SjTBXHPH99WhiaFdeqOEecry79BpQ1z1fqxNnwik\nOiE+kJDvoxnB2HV+CKAsxJODD4p7B2K5WBRezy1PmvIzy/yOrW+d9lXpALSHB7vg\nd3JLHGD7YojO4/U5KUa6Ov8ILCyvl/tSea9F/Fo3hHvIhruMgzmzLZ2rWGHIhzVL\nphXjEHCKQabTXxyGr0+78CQduGDzvnAu+DWKtM58ez4OYg2lQ0FQ+l7daKFWwK3K\n3TtfVwFAyGi/PE+L6/KYo3mlAnKbcaaQlmnsqqeho3U1hItdlFQJfoiVAgmiMfzz\nEKnOm6auQPpcKWKO5dJ8TAE3uQC5eTizxB1cz0RkWQKBgQD/8wxSQ9bcDq2eKF/v\n9bLPbwUeKRu13xenGyRZ3Or0zCybVfBawWpkMdOHUCWryjPP8AAM9To6Jvendqid\n6JGA8jTkxpcXYUEZrHDZ4+KuTqWQtD+4sMLMm1tFwOlsN2/onS0LrmG9u97Qs4PG\neMM0kU1hishTfw0D8dnyqf8/cwKBgQDKgtq3MFTAUBaj/AJ3hhV7sqHCDYakQkF7\nTDAulEoyXb34tDgUXC2hgTkzBSgoeZO/E2Ni6fSiG/Fyxxx8sxA6z9nCebgXWjVR\nd+gzdPsdXSZOFmr7WzqKyEgWPV7dTMaFXuGHFnT5eHf98mvEK8FgWFg0j7g4gbGA\nCepQZH5dHwKBgQCyDEtn9tVCo9tXCFMkxFCtSFfREVu7ewQjNRhmgu3XeSkWrgPT\nvnTaWmcB3Fk4ViMQ5a3DVdw5k9332u2VW7HMd7Ef7J4yn28AAxtGF+caxo8aSKmD\nO0NnvjMSJQ68PxxUPvKVC6vmpwhrOlXS/TMeIG4qCrcsjldphRbOXj+3zQKBgHta\nmb9cQUOjhSb+KsKDejKO7Nk3Q/xqH1jrX63/xfJIB5+mp0I/o8vs2tqpGX0OEWEi\nfjeSKuFUBA7WGhQbPpeUZCCB5BDVcgTd9SLi7tNEGkEWhrP1LgO7W62wVEiYq5Qx\n505R747GQtD9CYfE31XAenoJ0T0aQvSrFX9Ct3YhAoGAfggUzjlN+D+t4tHb/TRa\n576tcBkuzv5Y+tlv+v5aRqgijZKdbjLrEe0IlGhYJR5WsCySaFTrGWNLbos1ja0C\n4SdGKdIrNZPqRzFMRN21QmiBc50Jwx8kqq13AhhRqkelWkNwGMvWx+qXbwdzyWub\nmPpe745UBTbHZxM68+fir3g=\n-----END PRIVATE KEY-----\n",
   "client_email": "firebase-adminsdk-fbsvc@interbridge-6e3b8.iam.gserviceaccount.com",
   "client_id": "114403210611062404525",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -36,44 +36,73 @@ function base64urlEncode(data: Uint8Array): string {
 
 // Helper: Create JWT for Google OAuth2
 async function createAccessToken() {
-  if (!serviceAccount) {
-    throw new Error("Firebase service account not available");
+  try {
+    if (!serviceAccount) {
+      throw new Error("Firebase service account not available");
+    }
+
+    console.log("Creating access token...");
+    const header = { alg: "RS256", typ: "JWT" };
+    const iat = Math.floor(Date.now() / 1000);
+    const exp = iat + 3600; // 1 hour
+    const payload = {
+      iss: serviceAccount.client_email,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat,
+      exp,
+    };
+    
+    console.log("JWT payload:", payload);
+    
+    const enc = (obj: object) => base64urlEncode(new TextEncoder().encode(JSON.stringify(obj)));
+    const toSign = `${enc(header)}.${enc(payload)}`;
+    
+    console.log("Importing private key...");
+    let key;
+    try {
+      key = await crypto.subtle.importKey(
+        "pkcs8",
+        str2ab(serviceAccount.private_key),
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      console.log("Private key imported successfully");
+    } catch (keyError) {
+      console.error("Failed to import private key:", keyError);
+      throw new Error(`Key import failed: ${keyError.message}`);
+    }
+    
+    console.log("Signing JWT...");
+    const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(toSign));
+    const jwt = `${toSign}.${base64urlEncode(new Uint8Array(sig))}`;
+    
+    console.log("JWT created, exchanging for access token...");
+    // Exchange JWT for access token
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }),
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Failed to get access token. Status:", res.status);
+      console.error("Error response:", errorText);
+      throw new Error(`Failed to get access token: ${res.status} - ${errorText}`);
+    }
+    
+    const tokenResponse = await res.json();
+    console.log("Access token obtained successfully");
+    return tokenResponse.access_token;
+  } catch (error) {
+    console.error("Error in createAccessToken:", error);
+    throw error;
   }
-
-  const header = { alg: "RS256", typ: "JWT" };
-  const iat = Math.floor(Date.now() / 1000);
-  const exp = iat + 3600; // 1 hour
-  const payload = {
-    iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    iat,
-    exp,
-  };
-  const enc = (obj: object) => base64urlEncode(new TextEncoder().encode(JSON.stringify(obj)));
-  const toSign = `${enc(header)}.${enc(payload)}`;
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    str2ab(serviceAccount.private_key),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(toSign));
-  const jwt = `${toSign}.${base64urlEncode(new Uint8Array(sig))}`;
-
-  // Exchange JWT for access token
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  if (!res.ok) throw new Error("Failed to get access token");
-  const { access_token } = await res.json();
-  return access_token;
 }
 
 // Helper: Convert PEM to ArrayBuffer
@@ -198,8 +227,17 @@ Deno.serve(async (req) => {
     }
 
     // Get access token
-    const accessToken = await createAccessToken();
-    console.log("Got Firebase access token");
+    console.log("Attempting to get Firebase access token...");
+    let accessToken;
+    try {
+      accessToken = await createAccessToken();
+      console.log("Successfully obtained Firebase access token");
+    } catch (tokenError) {
+      console.error("Failed to create access token:", tokenError);
+      console.error("Token error details:", tokenError.message);
+      console.error("Token error stack:", tokenError.stack);
+      throw new Error(`Failed to get access token: ${tokenError.message}`);
+    }
 
     // Send notification to each token (FCM HTTP v1 does not support multicast in one call)
     let successCount = 0, failureCount = 0, errors = [];

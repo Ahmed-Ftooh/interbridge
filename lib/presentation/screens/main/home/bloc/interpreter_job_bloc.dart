@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
@@ -111,10 +112,13 @@ class InterpreterJobBloc
     Emitter<InterpreterJobState> emit,
   ) async {
     try {
+      log('Refreshing jobs...');
       final jobs = await _jobService.getAvailableJobs();
+      log('Refreshed jobs: ${jobs.length} found');
 
       emit(InterpreterJobLoaded(jobs: jobs, totalJobs: jobs.length));
     } catch (e) {
+      log('Error refreshing jobs: $e');
       emit(InterpreterJobError(e.toString()));
     }
   }

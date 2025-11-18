@@ -12,6 +12,8 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/data/services/interpreter_request_service.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
+import 'package:interbridge/data/services/session_service.dart';
+import 'dart:developer';
 
 class RequestWaitingView extends StatefulWidget {
   final String fromLanguageId;
@@ -33,7 +35,8 @@ class RequestWaitingView extends StatefulWidget {
   State<RequestWaitingView> createState() => _RequestWaitingViewState();
 }
 
-class _RequestWaitingViewState extends State<RequestWaitingView> {
+class _RequestWaitingViewState extends State<RequestWaitingView>
+    with WidgetsBindingObserver {
   final SupabaseClient _client = Supabase.instance.client;
   RealtimeChannel? _channel;
   InterpreterRequest? _request;
@@ -42,7 +45,15 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startFlow();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkRequestStatus();
+    }
   }
 
   Future<void> _startFlow() async {
@@ -61,6 +72,20 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
         _isCreating = false;
       });
 
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Save session as 'waiting' - will be cleared when request is accepted
+      await SessionService.saveSession(
+        requestId: request.id,
+        requesterId: currentUserId,
+        interpreterId: '', // Empty until accepted
+        currentScreen: 'waiting_request',
+      );
+      log('Session saved for request waiting: ${request.id}');
+
       // 2) Subscribe to updates for this request (Supabase v2 API)
       _channel =
           _client.channel('rq_${request.id}')
@@ -73,12 +98,22 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
                 column: 'id',
                 value: request.id,
               ),
-              callback: (payload) {
+              callback: (payload) async {
                 final newRow = payload.newRecord;
                 final status = newRow['status']?.toString();
                 if (status == 'accepted') {
                   final interpreterId = newRow['accepted_by'].toString();
                   final requesterId = newRow['requester_id'].toString();
+
+                  // Update session to chat BEFORE navigating
+                  await SessionService.saveSession(
+                    requestId: request.id,
+                    requesterId: requesterId,
+                    interpreterId: interpreterId,
+                    currentScreen: 'chat',
+                  );
+                  log('Session updated to chat for request: ${request.id}');
+
                   if (mounted) {
                     Navigator.pushAndRemoveUntil(
                       context,
@@ -111,11 +146,60 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_channel != null) {
       _client.removeChannel(_channel!);
       _channel?.unsubscribe();
     }
     super.dispose();
+  }
+
+  Future<void> _checkRequestStatus() async {
+    final currentRequest = _request;
+    if (currentRequest == null) return;
+    try {
+      final response =
+          await _client
+              .from('interpreter_requests')
+              .select('status, accepted_by, requester_id')
+              .eq('id', currentRequest.id)
+              .maybeSingle();
+
+      if (response == null) return;
+
+      final status = response['status']?.toString();
+      if (status != 'accepted') return;
+
+      final interpreterId = response['accepted_by']?.toString();
+      final requesterId = response['requester_id']?.toString();
+      if (interpreterId == null || requesterId == null) return;
+
+      await SessionService.saveSession(
+        requestId: currentRequest.id,
+        requesterId: requesterId,
+        interpreterId: interpreterId,
+        currentScreen: 'chat',
+      );
+
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder:
+              (_) => BlocProvider(
+                create: (_) => ChatBloc(service: ChatService()),
+                child: ChatView(
+                  requestId: currentRequest.id,
+                  requesterId: requesterId,
+                  interpreterId: interpreterId,
+                ),
+              ),
+        ),
+        (route) => false,
+      );
+    } catch (e) {
+      log('Error checking request status: $e');
+    }
   }
 
   @override
@@ -155,7 +239,14 @@ class _RequestWaitingViewState extends State<RequestWaitingView> {
                   ),
                 const SizedBox(height: AppSize.s24),
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () async {
+                    // Clear session when user cancels
+                    await SessionService.clearSession();
+                    log('Session cleared - user cancelled request');
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
                   child: const Text('Cancel'),
                 ),
               ],

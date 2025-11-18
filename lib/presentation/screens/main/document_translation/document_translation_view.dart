@@ -1,4 +1,5 @@
 // lib/presentation/screens/main/document_translation/document_translation_view.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -12,6 +13,8 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 // Import FileUtility for preview
 import 'package:flutter_bloc/flutter_bloc.dart'; // <-- Add bloc import
 import 'bloc/document_translation_bloc.dart';
@@ -19,6 +22,7 @@ import 'bloc/document_translation_event.dart';
 import 'bloc/document_translation_state.dart';
 import 'shared/helpers.dart';
 import 'shared/shared_file_link_box.dart';
+import 'package:interbridge/presentation/widgets/language_pair_selector.dart';
 
 class DocumentTranslationView extends StatefulWidget {
   const DocumentTranslationView({super.key});
@@ -60,6 +64,12 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
   String? _pickedFileName;
   int? _pickedFileSize;
   bool _isUploading = false;
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  bool _isRecording = false;
+  Duration _recordDuration = Duration.zero;
+  Timer? _recordTimer;
+  String? _recordedFilePath;
+  String? _currentRecordingPath;
 
   // Other state
   DateTime? _lastSubmitAt;
@@ -175,6 +185,145 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
+  Future<void> _handleMethodSelection(String method) async {
+    if (_selectedMethod == method) return;
+    if (_selectedMethod == 'voice') {
+      await _stopRecording(saveClip: false);
+      _clearRecordedClip();
+    }
+    if (_isRecording) {
+      await _stopRecording(saveClip: false);
+    }
+    setState(() {
+      _selectedMethod = method;
+      if (method == 'text') {
+        _clearSelectedFile();
+      } else {
+        _textController.clear();
+        _clearSelectedFile();
+      }
+    });
+  }
+
+  void _clearSelectedFile() {
+    _pickedFilePath = null;
+    _pickedFileName = null;
+    _pickedFileSize = null;
+    _recordedFilePath = null;
+  }
+
+  void _clearRecordedClip() {
+    _recordedFilePath = null;
+    _currentRecordingPath = null;
+    _recordDuration = Duration.zero;
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        if (mounted) {
+          _showSnackBar('Microphone permission required to record audio.');
+        }
+        return;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final path =
+          '${tempDir.path}/translation_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      _currentRecordingPath = path;
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          sampleRate: 44100,
+          bitRate: 128000,
+        ),
+        path: path,
+      );
+      setState(() {
+        _isRecording = true;
+        _recordDuration = Duration.zero;
+      });
+      _recordTimer?.cancel();
+      _recordTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => setState(() {
+          _recordDuration += const Duration(seconds: 1);
+        }),
+      );
+    } catch (e) {
+      _showSnackBar('Unable to start recording: $e', isError: true);
+    }
+  }
+
+  Future<void> _stopRecording({bool saveClip = true}) async {
+    final stillRecording = await _audioRecorder.isRecording();
+    if (!_isRecording && !stillRecording) {
+      return;
+    }
+    try {
+      final path = await _audioRecorder.stop();
+      _recordTimer?.cancel();
+      final resolvedPath = path ?? _currentRecordingPath;
+      if (!mounted) return;
+      if (!saveClip) {
+        if (resolvedPath != null) {
+          final file = File(resolvedPath);
+          if (await file.exists()) await file.delete();
+        }
+        setState(() {
+          _isRecording = false;
+          _recordDuration = Duration.zero;
+          _currentRecordingPath = null;
+        });
+        return;
+      }
+      if (resolvedPath == null) {
+        setState(() {
+          _isRecording = false;
+          _recordDuration = Duration.zero;
+          _currentRecordingPath = null;
+        });
+        return;
+      }
+
+      final file = File(resolvedPath);
+      if (!await file.exists()) {
+        setState(() {
+          _isRecording = false;
+          _recordDuration = Duration.zero;
+          _currentRecordingPath = null;
+        });
+        return;
+      }
+
+      final size = await file.length();
+      setState(() {
+        _pickedFilePath = resolvedPath;
+        _pickedFileName = resolvedPath.split(Platform.pathSeparator).last;
+        _pickedFileSize = size;
+        _recordedFilePath = resolvedPath;
+        _isRecording = false;
+        _recordDuration = Duration.zero;
+        _currentRecordingPath = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+        _recordDuration = Duration.zero;
+        _currentRecordingPath = null;
+      });
+      _showSnackBar('Unable to stop recording: $e', isError: true);
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   Widget _buildMethodSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,21 +358,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     };
 
     return InkWell(
-      onTap: () {
-        if (_selectedMethod != method) {
-          setState(() {
-            _selectedMethod = method;
-            if (method == 'text' || _pickedFilePath != null) {
-              _pickedFilePath = null;
-              _pickedFileName = null;
-              _pickedFileSize = null;
-            }
-            if (method != 'text') {
-              _textController.clear();
-            }
-          });
-        }
-      },
+      onTap: () => _handleMethodSelection(method),
       borderRadius: BorderRadius.circular(AppSize.s12),
       child: Container(
         width:
@@ -273,165 +408,12 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
   }
 
   Widget _buildLanguageSelection({required List<Language> langs}) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSize.s16),
-        side: BorderSide(color: ColorManager.greyLight),
-      ),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSize.s20),
-        child: Column(
-          children: [
-            InkWell(
-              onTap: () => _showLanguagePicker(true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSize.s16,
-                  vertical: AppSize.s12,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: ColorManager.greyMedium),
-                  borderRadius: BorderRadius.circular(AppSize.s12),
-                  color: Colors.grey.shade50,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.language,
-                      color: ColorManager.primary2,
-                      size: 20,
-                    ),
-                    const SizedBox(width: AppSize.s12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'From',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: ColorManager.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _selectedFromLanguage?.name ?? 'Select language',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight:
-                                  _selectedFromLanguage != null
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                              color:
-                                  _selectedFromLanguage != null
-                                      ? ColorManager.textPrimary
-                                      : ColorManager.textSecondary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: ColorManager.textSecondary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSize.s8),
-              child: Center(
-                child: IconButton(
-                  onPressed:
-                      (_selectedFromLanguage != null ||
-                              _selectedToLanguage != null)
-                          ? () => setState(() {
-                            final temp = _selectedFromLanguage;
-                            _selectedFromLanguage = _selectedToLanguage;
-                            _selectedToLanguage = temp;
-                          })
-                          : null,
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: ColorManager.primary2.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.swap_vert,
-                      color: ColorManager.primary2,
-                      size: 24,
-                    ),
-                  ),
-                  tooltip: 'Swap Languages',
-                ),
-              ),
-            ),
-            InkWell(
-              onTap: () => _showLanguagePicker(false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSize.s16,
-                  vertical: AppSize.s12,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: ColorManager.greyMedium),
-                  borderRadius: BorderRadius.circular(AppSize.s12),
-                  color: Colors.grey.shade50,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.language,
-                      color: ColorManager.primary2,
-                      size: 20,
-                    ),
-                    const SizedBox(width: AppSize.s12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'To',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: ColorManager.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _selectedToLanguage?.name ?? 'Select language',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight:
-                                  _selectedToLanguage != null
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                              color:
-                                  _selectedToLanguage != null
-                                      ? ColorManager.textPrimary
-                                      : ColorManager.textSecondary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: ColorManager.textSecondary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return LanguagePairSelector(
+      languages: langs,
+      fromLanguage: _selectedFromLanguage,
+      toLanguage: _selectedToLanguage,
+      onFromChanged: (lang) => setState(() => _selectedFromLanguage = lang),
+      onToChanged: (lang) => setState(() => _selectedToLanguage = lang),
     );
   }
 
@@ -485,9 +467,125 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           ),
         ),
       );
-    } else {
-      return _buildFileUploadCard();
     }
+
+    if (_selectedMethod == 'voice') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildVoiceRecorderCard(),
+          const SizedBox(height: AppSize.s16),
+          _buildFileUploadCard(),
+        ],
+      );
+    }
+
+    return _buildFileUploadCard();
+  }
+
+  Widget _buildVoiceRecorderCard() {
+    final hasRecordedClip =
+        _recordedFilePath != null && _recordedFilePath == _pickedFilePath;
+    final isRecording = _isRecording;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSize.s16),
+        side: BorderSide(color: ColorManager.greyLight),
+      ),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSize.s20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.mic_none_outlined, color: ColorManager.primary2),
+                const SizedBox(width: AppSize.s12),
+                Expanded(
+                  child: Text(
+                    'Record a voice note',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSize.s12),
+            Text(
+              'Capture up to a few minutes of audio without leaving the app. Tap stop to attach the clip automatically.',
+              style: TextStyle(color: ColorManager.textSecondary),
+            ),
+            const SizedBox(height: AppSize.s16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        isRecording
+                            ? () => _stopRecording(saveClip: true)
+                            : _startRecording,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isRecording ? Colors.red : ColorManager.primary2,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSize.s14,
+                      ),
+                    ),
+                    icon: Icon(isRecording ? Icons.stop : Icons.mic),
+                    label: Text(
+                      isRecording ? 'Stop & attach' : 'Start recording',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                ),
+                if (hasRecordedClip)
+                  Padding(
+                    padding: const EdgeInsets.only(left: AppSize.s12),
+                    child: Icon(
+                      Icons.check_circle,
+                      color: ColorManager.primary2,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSize.s8),
+            Text(
+              isRecording
+                  ? 'Recording… ${_formatDuration(_recordDuration)}'
+                  : hasRecordedClip
+                  ? 'Recorded clip ready—see the file preview below.'
+                  : 'No recording yet. You can also upload an existing audio file.',
+              style: TextStyle(
+                color:
+                    isRecording
+                        ? Colors.red.shade600
+                        : ColorManager.textSecondary,
+                fontWeight: isRecording ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            if (hasRecordedClip)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _clearSelectedFile();
+                    });
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Discard recording'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildFileUploadCard() {
@@ -594,6 +692,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                   _pickedFilePath = null;
                   _pickedFileName = null;
                   _pickedFileSize = null;
+                  _recordedFilePath = null;
                 }),
             icon: const Icon(Icons.close_rounded),
             color: Colors.red.shade700,
@@ -830,6 +929,16 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
               : 'Submit Translation Request',
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
+      ),
+    );
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : ColorManager.primary2,
       ),
     );
   }
@@ -1077,221 +1186,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  void _showLanguagePicker(bool isFromLanguage) {
-    if (_languages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Languages not loaded yet.')),
-      );
-      _bloc.add(LoadLanguages());
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            String searchQuery = '';
-            List<Language> filteredLanguages =
-                _languages.where((lang) {
-                  return lang.name.toLowerCase().contains(
-                    searchQuery.toLowerCase(),
-                  );
-                }).toList();
-
-            return DraggableScrollableSheet(
-              initialChildSize: 0.8,
-              minChildSize: 0.5,
-              maxChildSize: 0.95,
-              builder: (context, scrollController) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(AppSize.s20),
-                      topRight: Radius.circular(AppSize.s20),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, -2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(
-                          top: AppSize.s12,
-                          bottom: AppSize.s8,
-                        ),
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: ColorManager.greyMedium,
-                          borderRadius: BorderRadius.circular(AppSize.s2),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSize.s20,
-                          AppSize.s8,
-                          AppSize.s8,
-                          AppSize.s12,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Select ${isFromLanguage ? "Source" : "Target"} Language',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              icon: const Icon(Icons.close),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSize.s20,
-                          vertical: AppSize.s8,
-                        ),
-                        child: TextField(
-                          onChanged: (value) {
-                            setModalState(() {
-                              searchQuery = value;
-                              filteredLanguages =
-                                  _languages.where((lang) {
-                                    return lang.name.toLowerCase().contains(
-                                      searchQuery.toLowerCase(),
-                                    );
-                                  }).toList();
-                            });
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Search language...',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(AppSize.s20),
-                              borderSide: BorderSide(
-                                color: ColorManager.greyMedium,
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(AppSize.s20),
-                              borderSide: BorderSide(
-                                color: ColorManager.greyMedium,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(AppSize.s20),
-                              borderSide: BorderSide(
-                                color: ColorManager.primary2,
-                              ),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: AppSize.s16,
-                              vertical: AppSize.s10,
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child:
-                            filteredLanguages.isEmpty
-                                ? Center(
-                                  child: Text(
-                                    'No languages found for "$searchQuery"',
-                                  ),
-                                )
-                                : ListView.builder(
-                                  controller: scrollController,
-                                  itemCount: filteredLanguages.length,
-                                  itemBuilder: (context, index) {
-                                    final language = filteredLanguages[index];
-                                    final bool isCurrentlySelected =
-                                        isFromLanguage
-                                            ? _selectedFromLanguage?.id ==
-                                                language.id
-                                            : _selectedToLanguage?.id ==
-                                                language.id;
-
-                                    return ListTile(
-                                      leading: Icon(
-                                        Icons.language,
-                                        color:
-                                            isCurrentlySelected
-                                                ? ColorManager.primary2
-                                                : ColorManager.textSecondary,
-                                      ),
-                                      title: Text(
-                                        language.name,
-                                        style: TextStyle(
-                                          fontWeight:
-                                              isCurrentlySelected
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
-                                          color:
-                                              isCurrentlySelected
-                                                  ? ColorManager.primary2
-                                                  : ColorManager.textPrimary,
-                                        ),
-                                      ),
-                                      trailing:
-                                          isCurrentlySelected
-                                              ? Icon(
-                                                Icons.check_circle,
-                                                color: ColorManager.primary2,
-                                                size: 20,
-                                              )
-                                              : null,
-                                      onTap: () {
-                                        setState(() {
-                                          if (isFromLanguage) {
-                                            _selectedFromLanguage = language;
-                                            if (_selectedToLanguage?.id ==
-                                                language.id) {
-                                              _selectedToLanguage = null;
-                                            }
-                                          } else {
-                                            _selectedToLanguage = language;
-                                            if (_selectedFromLanguage?.id ==
-                                                language.id) {
-                                              _selectedFromLanguage = null;
-                                            }
-                                          }
-                                        });
-                                        Navigator.of(context).pop();
-                                      },
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: AppSize.s24,
-                                          ),
-                                    );
-                                  },
-                                ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
+  // Legacy picker method removed in favor of reusable LanguagePairSelector.
 
   Future<void> _pickFile() async {
     FileType fileType;
@@ -1316,6 +1211,9 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     }
 
     try {
+      if (_isRecording) {
+        await _stopRecording(saveClip: false);
+      }
       final result = await FilePicker.platform.pickFiles(
         type: fileType,
         allowedExtensions: allowedExtensions,
@@ -1366,6 +1264,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           _pickedFilePath = file.path;
           _pickedFileName = file.name;
           _pickedFileSize = fileSize;
+          _recordedFilePath = null;
+          _currentRecordingPath = null;
         });
       } else {
         if (mounted) {
@@ -1390,6 +1290,10 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           duration: Duration(seconds: 2),
         ),
       );
+      return;
+    }
+    if (_isRecording) {
+      _showSnackBar('Please stop the recording before submitting.');
       return;
     }
     if (_selectedFromLanguage == null || _selectedToLanguage == null) {
@@ -1565,6 +1469,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     _titleController.clear();
     _textController.clear();
     _commentController.clear();
+    _recordTimer?.cancel();
+    _audioRecorder.stop();
     if (mounted) {
       setState(() {
         _selectedFromLanguage = null;
@@ -1574,6 +1480,10 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
         _pickedFilePath = null;
         _pickedFileName = null;
         _pickedFileSize = null;
+        _recordedFilePath = null;
+        _currentRecordingPath = null;
+        _isRecording = false;
+        _recordDuration = Duration.zero;
       });
     }
   }
@@ -1854,6 +1764,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
 
   @override
   void dispose() {
+    _recordTimer?.cancel();
+    _audioRecorder.dispose();
     _tabController.dispose();
     _titleController.dispose();
     _textController.dispose();

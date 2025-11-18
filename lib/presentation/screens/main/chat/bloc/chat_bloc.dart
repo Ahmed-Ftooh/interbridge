@@ -14,7 +14,8 @@ abstract class ChatEvent {}
 
 class LoadMessages extends ChatEvent {
   final String requestId;
-  LoadMessages(this.requestId);
+  final bool silent; // If true, don't show loading indicator
+  LoadMessages(this.requestId, {this.silent = false});
 }
 
 // --- MODIFIED SendMessage Event ---
@@ -129,19 +130,63 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   Future<void> _onLoadMessages(LoadMessages e, Emitter<ChatState> emit) async {
     try {
-      emit(ChatLoading());
+      // Only show loading if not silent (initial load)
+      if (!e.silent) {
+        emit(ChatLoading());
+      }
 
       // Load existing messages from the database
       final messages = await service.fetchMessages(e.requestId);
+      log('Loaded ${messages.length} messages from database');
+
+      // For silent polling, only update if we have new messages
+      if (e.silent && state is ChatLoaded) {
+        final currentState = state as ChatLoaded;
+        final currentMessageIds =
+            currentState.messages.map((m) => m['id']?.toString()).toSet();
+        final newMessages =
+            messages.where((m) {
+              final id = m['id']?.toString();
+              return id != null && !currentMessageIds.contains(id);
+            }).toList();
+
+        // If no new messages, don't emit anything (keep UI stable)
+        if (newMessages.isEmpty) {
+          log('Silent poll: No new messages, keeping current state');
+          return;
+        }
+
+        log(
+          'Silent poll: Found ${newMessages.length} new messages, updating UI',
+        );
+      }
+
+      // Track all loaded message IDs to prevent duplicates from real-time subscription
+      for (final msg in messages) {
+        final id = msg['id']?.toString();
+        if (id != null) {
+          _seenMessageIds.add(id);
+        }
+      }
+
       emit(ChatLoaded(messages: messages));
 
-      // Subscribe to listen for new messages
+      // Always ensure we have an active real-time subscription
       _msgChannel?.unsubscribe();
       _msgChannel = service.subscribeToMessages(e.requestId, (newRow) {
+        log('Real-time message received via subscription: ${newRow['id']}');
         add(NewIncomingMessage(newRow));
       });
+
+      log(
+        'Subscribed to real-time messages for request: ${e.requestId} (silent=${e.silent})',
+      );
     } catch (err) {
-      emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
+      log('Error loading messages: $err');
+      // Only emit error if not silent polling
+      if (!e.silent) {
+        emit(ChatError(ErrorHandler.handleError(err, context: 'LoadMessages')));
+      }
     }
   }
 
@@ -162,6 +207,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       try {
         emit(ChatLoading());
         final messages = await service.fetchMessages(e.requestId);
+
+        // Track all loaded message IDs
+        for (final msg in messages) {
+          final id = msg['id']?.toString();
+          if (id != null) {
+            _seenMessageIds.add(id);
+          }
+        }
+
         currentState = ChatLoaded(messages: messages);
         emit(currentState);
         log('Messages loaded, proceeding with send...');
@@ -236,6 +290,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       try {
         emit(ChatLoading());
         final messages = await service.fetchMessages(e.requestId);
+
+        // Track all loaded message IDs
+        for (final msg in messages) {
+          final id = msg['id']?.toString();
+          if (id != null) {
+            _seenMessageIds.add(id);
+          }
+        }
+
         currentState = ChatLoaded(messages: messages);
         emit(currentState);
         log('Messages loaded, proceeding with upload...');
@@ -283,6 +346,22 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         attachmentUrl: attachmentUrl,
       );
       log('Message sent successfully to Supabase');
+      log('Signed URL in newMessage: ${newMessage['attachment_signed_url']}');
+
+      // Verify signed URL was generated
+      if (newMessage['attachment_signed_url'] == null) {
+        log('WARNING: Signed URL not generated, fetching manually...');
+        try {
+          newMessage['attachment_signed_url'] = await service.createSignedUrl(
+            attachmentUrl,
+          );
+          log(
+            'Manually fetched signed URL: ${newMessage['attachment_signed_url']}',
+          );
+        } catch (e) {
+          log('ERROR: Failed to fetch signed URL manually: $e');
+        }
+      }
 
       // Optimistically add the new message to the UI immediately
       final updatedMessages = List<Map<String, dynamic>>.from(
@@ -332,8 +411,31 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     try {
-      await service.sendMessage(e.requestId, e.callState);
+      log('Sending call state message: ${e.callState}');
+      final newMessage = await service.sendMessage(e.requestId, e.callState);
+      log('Call state message sent successfully');
+
+      // Update the UI immediately (like in SendMessage)
+      if (state is ChatLoaded) {
+        final currentState = state as ChatLoaded;
+        final updatedMessages = List<Map<String, dynamic>>.from(
+          currentState.messages,
+        )..add(newMessage);
+        final newMessageId = newMessage['id']?.toString();
+        if (newMessageId != null) {
+          _seenMessageIds.add(newMessageId);
+        }
+        emit(
+          ChatLoaded(
+            messages: updatedMessages,
+            inCall: currentState.inCall,
+            isUploading: currentState.isUploading,
+          ),
+        );
+        log('Call state message added to UI immediately');
+      }
     } catch (err) {
+      log('Error sending call state message: $err');
       emit(
         ChatError(
           ErrorHandler.handleError(err, context: 'SendCallStateMessage'),
@@ -348,17 +450,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     if (state is! ChatLoaded) return;
     final id = e.raw['id']?.toString();
-    if (id != null && _seenMessageIds.contains(id)) return;
+    if (id != null && _seenMessageIds.contains(id)) {
+      log('Skipping duplicate message: $id');
+      return;
+    }
     if (id != null) _seenMessageIds.add(id);
 
     final current = (state as ChatLoaded);
     final newMessage = Map<String, dynamic>.from(e.raw);
+    log(
+      'Processing new incoming message: $id, type: ${newMessage['message_type']}',
+    );
 
     // Check if the message has user profile data
     if (newMessage['user_profiles'] == null &&
         newMessage['sender_id'] != null) {
       try {
         // Fetch user profile for the sender
+        log('Fetching user profile for sender: ${newMessage['sender_id']}');
         final userProfile = await _supabaseService.getUserProfile(
           newMessage['sender_id'],
         );
@@ -370,6 +479,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             ),
             'role': userProfile.role,
           };
+          log('User profile fetched: ${userProfile.username}');
         } else {
           // Fallback if profile not found
           newMessage['user_profiles'] = {
@@ -377,9 +487,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             'profile_image': null,
             'role': 'user',
           };
+          log('User profile not found, using fallback');
         }
       } catch (error) {
         // Fallback if there's an error fetching profile
+        log('Error fetching user profile: $error');
         newMessage['user_profiles'] = {
           'username': 'User',
           'profile_image': null,
@@ -388,6 +500,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
 
+    // CRITICAL FIX: Fetch signed URL for attachment messages
     final attachmentPath = newMessage['attachment_url'] as String?;
     final messageType = newMessage['message_type'] as String?;
     if (attachmentPath != null &&
@@ -396,17 +509,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             messageType == 'file') &&
         newMessage['attachment_signed_url'] == null) {
       try {
-        newMessage['attachment_signed_url'] = await service.createSignedUrl(
-          attachmentPath,
-        );
+        log('Fetching signed URL for attachment: $attachmentPath');
+        final signedUrl = await service.createSignedUrl(attachmentPath);
+        newMessage['attachment_signed_url'] = signedUrl;
+        log('Signed URL fetched successfully');
       } catch (error) {
         log('Failed to prefetch signed URL: $error');
+        // Don't block message delivery if signed URL fails
       }
     }
 
     final updated = List<Map<String, dynamic>>.from(current.messages)
       ..add(newMessage);
 
+    log('Emitting updated chat state with new message');
     emit(
       ChatLoaded(
         messages: updated,

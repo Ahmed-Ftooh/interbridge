@@ -44,11 +44,12 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => _ChatViewState();
 }
 
-class _ChatViewState extends State<ChatView> {
+class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   final _input = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   String? _handledInviteMessageId;
   String? _handledCallEndedMessageId;
+  // Timer removed - no longer polling, real-time subscription handles all messages
 
   int _uidFromUuid(String uuid) {
     return uuid.hashCode.abs();
@@ -57,15 +58,35 @@ class _ChatViewState extends State<ChatView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     context.read<ChatBloc>().add(LoadMessages(widget.requestId));
     _saveSessionState();
+
+    // REMOVED: Polling is no longer needed because real-time subscription
+    // in ChatBloc already handles new messages including voice messages.
+    // The 5-second polling was causing unnecessary load and the real-time
+    // subscription should catch all messages immediately.
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Timer is no longer used, so no need to cancel
     _input.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _handleAppResume();
+    }
+  }
+
+  void _handleAppResume() {
+    if (!mounted) return;
+    context.read<ChatBloc>().add(LoadMessages(widget.requestId, silent: true));
   }
 
   void _scrollToBottom() {
@@ -670,6 +691,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
   bool _errorLoadingUrl = false;
   late final String _messageType;
   late final String? _attachmentPath;
+  int _signedUrlRetryCount = 0;
+  static const int _maxSignedUrlRetries = 3;
 
   @override
   void initState() {
@@ -692,6 +715,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
   }
 
   Future<void> _getSignedUrl() async {
+    final attachmentPath = _attachmentPath;
+    if (attachmentPath == null) return;
     if (_isLoadingUrl) return;
     setState(() {
       _isLoadingUrl = true;
@@ -699,21 +724,31 @@ class _ChatBubbleState extends State<_ChatBubble> {
     });
 
     try {
-      final url = await instance<ChatService>().createSignedUrl(
-        _attachmentPath!,
-      );
+      final url = await instance<ChatService>().createSignedUrl(attachmentPath);
       if (mounted) {
         setState(() {
           _signedUrl = url;
           _isLoadingUrl = false;
+          _signedUrlRetryCount = 0;
         });
       }
     } catch (e) {
       log('Error getting signed URL for $_attachmentPath: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingUrl = false;
-          _errorLoadingUrl = true;
+      if (!mounted) return;
+
+      final shouldRetry = _signedUrlRetryCount < _maxSignedUrlRetries;
+      _signedUrlRetryCount += 1;
+
+      setState(() {
+        _isLoadingUrl = false;
+        _errorLoadingUrl = !shouldRetry;
+      });
+
+      if (shouldRetry) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _getSignedUrl();
+          }
         });
       }
     }
@@ -753,20 +788,29 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 builder: (context) {
                   final messageType = widget.message['message_type'] ?? 'text';
                   final isImage = messageType == 'image';
+                  final isAudio = messageType == 'audio';
+                  final isFile = messageType == 'file';
+
+                  // For media types (image/audio/file), don't apply the outer blue/grey bubble
+                  // because the inner widget has its own styled container. This avoids the
+                  // "all blue" look on the sender side for audio messages.
+                  final useOuterBubble = !(isImage || isAudio || isFile);
 
                   return Container(
                     padding:
-                        isImage ? EdgeInsets.zero : const EdgeInsets.all(10),
+                        useOuterBubble
+                            ? const EdgeInsets.all(10)
+                            : EdgeInsets.zero,
                     decoration:
-                        isImage
-                            ? null
-                            : BoxDecoration(
+                        useOuterBubble
+                            ? BoxDecoration(
                               color:
                                   widget.isMe
                                       ? Colors.blue
                                       : Colors.grey.shade300,
                               borderRadius: BorderRadius.circular(10),
-                            ),
+                            )
+                            : null,
                     child:
                         isImage
                             ? ClipRRect(
@@ -816,11 +860,19 @@ class _ChatBubbleState extends State<_ChatBubble> {
       );
     }
     if (_errorLoadingUrl) {
-      return Text(
-        '[Error loading attachment]',
-        style: TextStyle(
-          color: widget.isMe ? Colors.white70 : Colors.red.shade700,
-          fontStyle: FontStyle.italic,
+      return GestureDetector(
+        onTap: () {
+          if (!_isLoadingUrl) {
+            _signedUrlRetryCount = 0;
+            _getSignedUrl();
+          }
+        },
+        child: Text(
+          '[Error loading attachment - tap to retry]',
+          style: TextStyle(
+            color: widget.isMe ? Colors.white70 : Colors.red.shade700,
+            fontStyle: FontStyle.italic,
+          ),
         ),
       );
     }
@@ -869,8 +921,12 @@ class _ChatBubbleState extends State<_ChatBubble> {
       case 'audio':
         if (url == null) return const Text('[Audio not available]');
         return SizedBox(
-          width: 250,
-          child: EmbeddedAudioPlayer(url: url, fileName: content),
+          width: 260,
+          child: EmbeddedAudioPlayer(
+            url: url,
+            fileName: content,
+            isMe: widget.isMe,
+          ),
         );
 
       // --- THIS IS THE PDF FIX ---

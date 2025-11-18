@@ -5,7 +5,6 @@ import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
-import 'package:interbridge/presentation/services/call_state_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 1. SIMPLIFIED WIDGET: It no longer creates a BLoC
@@ -41,8 +40,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     super.initState();
     // 3. REMOVED StartCall dispatch. This is now done in ChatView.
     _saveSessionState();
-    // Notify call state manager that call UI is active
-    CallStateManager().startCall(widget.channelId);
   }
 
   // 4. REMOVED didChangeDependencies
@@ -78,9 +75,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         listener: (context, callState) {
           // Listen for call state changes
           if (callState is CallEnded) {
-            // Notify call state manager that call ended
-            CallStateManager().endCall();
-
             // --- THIS IS THE NEW LOGIC ---
             // If the call was ended LOCALLY (by this user),
             // send the notification message to the chat.

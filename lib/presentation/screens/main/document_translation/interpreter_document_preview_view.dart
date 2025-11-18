@@ -188,6 +188,26 @@ class _InterpreterDocumentPreviewViewState
                       ],
                     ),
                   ),
+                  if (widget.request.title != null &&
+                      widget.request.title!.isNotEmpty) ...[
+                    const SizedBox(height: AppSize.s16),
+                    Text(
+                      'Request title',
+                      style: TextStyle(
+                        fontSize: AppSize.s14,
+                        fontWeight: FontWeight.bold,
+                        color: ColorManager.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s8),
+                    Text(
+                      widget.request.title!,
+                      style: TextStyle(
+                        fontSize: AppSize.s16,
+                        color: ColorManager.textPrimary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: AppSize.s24),
                   // Document content
                   Padding(
@@ -245,6 +265,34 @@ class _InterpreterDocumentPreviewViewState
                             fileName: widget.request.fileName,
                             method: widget.request.translationMethod,
                             isOriginal: true,
+                          ),
+                          const SizedBox(height: AppSize.s24),
+                        ],
+
+                        if (widget.request.comment != null &&
+                            widget.request.comment!.isNotEmpty) ...[
+                          Text(
+                            'Requester note:',
+                            style: TextStyle(
+                              fontSize: AppSize.s18,
+                              fontWeight: FontWeight.bold,
+                              color: ColorManager.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: AppSize.s12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSize.s16),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(AppSize.s12),
+                            ),
+                            child: Text(
+                              widget.request.comment!,
+                              style: TextStyle(
+                                color: ColorManager.textSecondary,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: AppSize.s24),
                         ],

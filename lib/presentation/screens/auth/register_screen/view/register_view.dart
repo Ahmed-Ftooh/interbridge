@@ -10,6 +10,8 @@ import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_text_field_container.dart';
+import 'package:flutter/gestures.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/customButtom.dart';
 
@@ -332,7 +334,17 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                           style: TextStyle(
                                             color: ColorManager.primary2,
                                             fontWeight: FontWeight.w600,
+                                            decoration:
+                                                TextDecoration.underline,
                                           ),
+                                          recognizer:
+                                              TapGestureRecognizer()
+                                                ..onTap = () {
+                                                  Navigator.pushNamed(
+                                                    context,
+                                                    Routes.privacyPolicy,
+                                                  );
+                                                },
                                         ),
                                         const TextSpan(text: AppStrings.and),
                                         TextSpan(
@@ -340,7 +352,17 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                           style: TextStyle(
                                             color: ColorManager.primary2,
                                             fontWeight: FontWeight.w600,
+                                            decoration:
+                                                TextDecoration.underline,
                                           ),
+                                          recognizer:
+                                              TapGestureRecognizer()
+                                                ..onTap = () {
+                                                  Navigator.pushNamed(
+                                                    context,
+                                                    Routes.termsOfService,
+                                                  );
+                                                },
                                         ),
                                       ],
                                     ),

@@ -42,37 +42,58 @@ class NotificationHandler {
     final String? requesterId =
         data['requester_id']; // Make sure your function sends this!
 
-    log('Handling notification navigation: type=$type, requestId=$requestId');
+    log(
+      'Handling notification navigation: type=$type, requestId=$requestId, interpreterId=$interpreterId, requesterId=$requesterId',
+    );
 
     // --- THIS IS THE KEY LOGIC ---
-    if (type == 'REQUEST_ACCEPTED' &&
+    // Support both 'REQUEST_ACCEPTED' and 'request_accepted' (case-insensitive)
+    if ((type == 'REQUEST_ACCEPTED' || type == 'request_accepted') &&
         requestId != null &&
         interpreterId != null &&
         requesterId != null) {
-      // Get the navigator state
-      final navigator = navigatorKey.currentState;
-      if (navigator == null) {
-        log('Navigator state is null, cannot navigate');
-        return;
-      }
-
-      // Navigate to the ChatView, clearing the stack
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder:
-              (_) => BlocProvider(
-                create: (_) => ChatBloc(service: ChatService()),
-                child: ChatView(
-                  requestId: requestId,
-                  requesterId: requesterId,
-                  interpreterId: interpreterId,
-                ),
-              ),
-        ),
-        (route) => false, // This removes all previous routes
-      );
+      // Wait for navigator to be ready (especially important when app is starting)
+      _navigateWhenReady(requestId, requesterId, interpreterId);
     } else {
       log('Notification data was not a valid REQUEST_ACCEPTED type');
     }
+  }
+
+  void _navigateWhenReady(
+    String requestId,
+    String requesterId,
+    String interpreterId,
+  ) {
+    // Try to get navigator state
+    final navigator = navigatorKey.currentState;
+
+    if (navigator == null) {
+      log('Navigator not ready yet, waiting...');
+      // Wait a bit and try again (app might still be initializing)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _navigateWhenReady(requestId, requesterId, interpreterId);
+      });
+      return;
+    }
+
+    log('Navigator ready, navigating to chat screen');
+
+    // Navigate to the ChatView, clearing the entire stack
+    // This ensures the request waiting screen is removed
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder:
+            (_) => BlocProvider(
+              create: (_) => ChatBloc(service: ChatService()),
+              child: ChatView(
+                requestId: requestId,
+                requesterId: requesterId,
+                interpreterId: interpreterId,
+              ),
+            ),
+      ),
+      (route) =>
+          false, // Remove ALL previous routes including request waiting screen
+    );
   }
 }

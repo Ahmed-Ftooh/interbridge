@@ -1,5 +1,6 @@
 // lib/presentation/screens/main/document_translation/interpreter_translation_view.dart
 import 'dart:developer';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -19,6 +20,8 @@ import 'shared/shared_file_link_box.dart';
 // --- ADDED IMPORTS FOR IN-LINE VIEWERS ---
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 // ------------------------------------------
+import 'package:interbridge/data/services/translation_draft_repository.dart';
+import 'bloc/interpreter_draft_cubit.dart';
 
 class InterpreterTranslationView extends StatefulWidget {
   final DocumentTranslationRequest request;
@@ -42,6 +45,11 @@ class _InterpreterTranslationViewState
   bool _isSubmitting = false;
   late TranslationCacheService _cacheService;
   String? _uploadedTranslatedFileUrl;
+  Timer? _debounce;
+  late final InterpreterDraftCubit _draftCubit;
+  // Focus handling to hide submit button while typing
+  late FocusNode _translationFocusNode;
+  bool _showSubmitButton = true;
 
   // --- ADDED: State for handling secure file URLs ---
   String? _resolvedFileUrl;
@@ -52,6 +60,16 @@ class _InterpreterTranslationViewState
   void initState() {
     super.initState();
     _cacheService = instance<TranslationCacheService>();
+    _translatedTextController.addListener(_onTextChanged);
+    final user = Supabase.instance.client.auth.currentUser;
+    final repo = instance<TranslationDraftRepository>();
+    _draftCubit = InterpreterDraftCubit(
+      repo: repo,
+      requestId: widget.request.id,
+      interpreterId: user?.id ?? 'unknown',
+    );
+    _translationFocusNode = FocusNode();
+    _translationFocusNode.addListener(_handleTranslationFocusChange);
     _initializeContent();
   }
 
@@ -64,6 +82,13 @@ class _InterpreterTranslationViewState
       _translatedTextController.text = widget.cachedTranslationText!;
     } else if (widget.request.text != null && widget.request.text!.isNotEmpty) {
       _translatedTextController.text = widget.request.text!;
+    }
+
+    // Load server draft and hydrate controller if available
+    await _draftCubit.load();
+    if (mounted && _draftCubit.state.text.isNotEmpty) {
+      // Prefer server draft if it has content
+      _translatedTextController.text = _draftCubit.state.text;
     }
 
     // --- NEW: Resolve the file URL (get a signed URL if needed) ---
@@ -84,6 +109,22 @@ class _InterpreterTranslationViewState
       setState(() => _isLoadingUrl = false);
     }
     // -------------------------------------------------------------
+  }
+
+  void _onTextChanged() {
+    // Debounce autosave to reduce write pressure
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        await _cacheService.updateTranslationText(
+          _translatedTextController.text,
+        );
+        // Also queue server autosave
+        _draftCubit.queueAutosave(text: _translatedTextController.text);
+      } catch (e) {
+        log('Autosave failed: $e');
+      }
+    });
   }
 
   Future<void> _cacheActiveTranslation() async {
@@ -126,6 +167,14 @@ class _InterpreterTranslationViewState
                 : null,
         translatedFileUrl: _uploadedTranslatedFileUrl,
       );
+      // Clear server draft on submit
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        await instance<TranslationDraftRepository>().clearDraft(
+          requestId: widget.request.id,
+          interpreterId: user.id,
+        );
+      }
 
       if (mounted) {
         await _cacheService.clearCache();
@@ -227,6 +276,11 @@ class _InterpreterTranslationViewState
       final publicUrl = client.storage.from(bucket).getPublicUrl(objectPath);
 
       setState(() => _uploadedTranslatedFileUrl = publicUrl);
+      // Queue draft autosave with file URL
+      _draftCubit.queueAutosave(
+        text: _translatedTextController.text,
+        fileUrl: publicUrl,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Translated file uploaded'),
@@ -367,6 +421,11 @@ class _InterpreterTranslationViewState
                   // --- NEW: Source Content Viewer ---
                   _buildSourceContent(),
                   const SizedBox(height: AppSize.s24),
+                  if (widget.request.comment != null &&
+                      widget.request.comment!.isNotEmpty) ...[
+                    _buildRequesterNote(),
+                    const SizedBox(height: AppSize.s24),
+                  ],
 
                   // --- Translation Input Area ---
                   _buildTranslationInput(),
@@ -379,7 +438,7 @@ class _InterpreterTranslationViewState
             ),
           ),
           // Submit button
-          _buildSubmitButton(),
+          if (_showSubmitButton) _buildSubmitButton(),
         ],
       ),
     );
@@ -601,6 +660,7 @@ class _InterpreterTranslationViewState
         const SizedBox(height: AppSize.s12),
         TextField(
           controller: _translatedTextController,
+          focusNode: _translationFocusNode,
           maxLines: 8,
           minLines: 5, // Give it a minimum size
           decoration: InputDecoration(
@@ -685,6 +745,46 @@ class _InterpreterTranslationViewState
     );
   }
 
+  Widget _buildRequesterNote() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSize.s16),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(AppSize.s12),
+        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.sticky_note_2_outlined, color: Colors.blue),
+              const SizedBox(width: AppSize.s8),
+              Text(
+                'Requester note',
+                style: TextStyle(
+                  fontSize: AppSize.s14,
+                  fontWeight: FontWeight.bold,
+                  color: ColorManager.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSize.s12),
+          Text(
+            widget.request.comment!,
+            style: TextStyle(
+              fontSize: AppSize.s14,
+              color: ColorManager.textSecondary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- NEW: Helper for the bottom submit button ---
   Widget _buildSubmitButton() {
     return Container(
@@ -726,10 +826,23 @@ class _InterpreterTranslationViewState
     );
   }
 
+  void _handleTranslationFocusChange() {
+    // Hide the submit button when the translation field is focused
+    if (!mounted) return;
+    setState(() {
+      _showSubmitButton = !_translationFocusNode.hasFocus;
+    });
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
+    _translatedTextController.removeListener(_onTextChanged);
     _saveCurrentTranslation();
     _translatedTextController.dispose();
+    _translationFocusNode.removeListener(_handleTranslationFocusChange);
+    _translationFocusNode.dispose();
+    _draftCubit.close();
     super.dispose();
   }
 

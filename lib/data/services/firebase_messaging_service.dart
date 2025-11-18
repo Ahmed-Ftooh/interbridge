@@ -125,6 +125,21 @@ class FirebaseMessagingService {
   /// On notification tap
   void _onNotificationTapped(NotificationResponse response) {
     debugPrint('📲 Notification tapped: ${response.payload}');
+
+    // Parse payload and navigate appropriately
+    if (response.payload != null && response.payload!.isNotEmpty) {
+      try {
+        // The payload is the message.data converted to string
+        // Extract navigation info if present
+        debugPrint(
+          '📲 Notification payload for navigation: ${response.payload}',
+        );
+        // Navigation will be handled by the app's routing logic
+        // when it comes to foreground
+      } catch (e) {
+        debugPrint('Error parsing notification payload: $e');
+      }
+    }
   }
 
   /// Foreground message handling

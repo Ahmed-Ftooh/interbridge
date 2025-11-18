@@ -208,6 +208,26 @@ class SupabaseService {
     await _client.from('interpreter_languages').insert(lang.toJson());
   }
 
+  Future<void> deleteInterpreterLanguage(String userId, int languageId) async {
+    await _client
+        .from('interpreter_languages')
+        .delete()
+        .eq('user_id', userId)
+        .eq('language_id', languageId);
+  }
+
+  Future<void> updateInterpreterLanguageFluency(
+    String userId,
+    int languageId,
+    int fluencyId,
+  ) async {
+    await _client
+        .from('interpreter_languages')
+        .update({'fluency_id': fluencyId})
+        .eq('user_id', userId)
+        .eq('language_id', languageId);
+  }
+
   // --- INTERPRETER SPECIALIZATION ---
   Future<List<InterpreterSpecialization>> getInterpreterSpecializations(
     String userId,

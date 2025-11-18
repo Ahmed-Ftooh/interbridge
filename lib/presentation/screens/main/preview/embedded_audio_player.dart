@@ -7,8 +7,14 @@ import 'package:interbridge/presentation/resources/values_manager.dart';
 class EmbeddedAudioPlayer extends StatefulWidget {
   final String url;
   final String? fileName;
+  final bool isMe; // Adapt styling based on sender/receiver side
 
-  const EmbeddedAudioPlayer({super.key, required this.url, this.fileName});
+  const EmbeddedAudioPlayer({
+    super.key,
+    required this.url,
+    this.fileName,
+    this.isMe = false,
+  });
 
   @override
   State<EmbeddedAudioPlayer> createState() => _EmbeddedAudioPlayerState();
@@ -18,6 +24,8 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
   late AudioPlayer _audioPlayer;
   PlayerState _playerState = PlayerState.stopped;
   bool _isLoading = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
 
   @override
   void initState() {
@@ -30,6 +38,14 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
       if (mounted) {
         setState(() => _playerState = state);
       }
+    });
+
+    _audioPlayer.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _duration = d);
+    });
+
+    _audioPlayer.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _position = p);
     });
 
     // Set the source and handle initial loading
@@ -73,24 +89,58 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    // Neutral, modern card with subtle accent.
+    final Color accent = ColorManager.primary2;
+    final Color textPrimary =
+        widget.isMe ? Colors.white : ColorManager.textPrimary;
+    final Color textSecondary =
+        widget.isMe ? Colors.white70 : ColorManager.textSecondary;
+    final Color bg =
+        widget.isMe ? accent.withValues(alpha: 0.20) : Colors.white;
+    final BoxBorder? border =
+        widget.isMe
+            ? Border.all(color: accent.withValues(alpha: 0.25), width: 1)
+            : Border.all(
+              color: ColorManager.greyMedium.withValues(alpha: 0.25),
+              width: 1,
+            );
+
+    final double progress =
+        _duration.inMilliseconds == 0
+            ? 0
+            : (_position.inMilliseconds / _duration.inMilliseconds).clamp(
+              0.0,
+              1.0,
+            );
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
         horizontal: AppSize.s12,
-        vertical: AppSize.s8,
+        vertical: AppSize.s10,
       ),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(AppSize.s12),
-        border: Border.all(color: Colors.blue.withOpacity(0.2), width: 1),
+        color: bg,
+        borderRadius: BorderRadius.circular(AppSize.s14),
+        border: border,
+        boxShadow:
+            widget.isMe
+                ? null
+                : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
       ),
       child: Row(
         children: [
           // Play/Pause Button
           if (_isLoading)
             const SizedBox(
-              width: 40,
-              height: 40,
+              width: 42,
+              height: 42,
               child: Padding(
                 padding: EdgeInsets.all(8.0),
                 child: CircularProgressIndicator(strokeWidth: 2),
@@ -103,51 +153,79 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
                     ? Icons.pause_circle_filled
                     : Icons.play_circle_filled,
               ),
-              iconSize: 40,
-              color: ColorManager.primary2,
+              iconSize: 42,
+              color: accent,
               onPressed: _togglePlayPause,
             ),
 
-          // Stop Button
-          if (_playerState == PlayerState.playing ||
-              _playerState == PlayerState.paused)
-            IconButton(
-              icon: const Icon(Icons.stop_circle_outlined),
-              iconSize: 40,
-              color: ColorManager.textSecondary,
-              onPressed: _stop,
-            ),
+          const SizedBox(width: AppSize.s8),
 
-          const SizedBox(width: AppSize.s12),
-
-          // File Name
+          // Title + progress
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.fileName ?? 'Voice Recording',
-                  style: const TextStyle(
+                  widget.fileName ?? 'Voice message',
+                  style: TextStyle(
                     fontSize: AppSize.s14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.blue,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: AppSize.s4),
-                Text(
-                  'Tap to play',
-                  style: TextStyle(
-                    fontSize: AppSize.s12,
-                    color: Colors.blue.withOpacity(0.7),
+                const SizedBox(height: AppSize.s6),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: _isLoading ? null : progress,
+                    minHeight: 6,
+                    backgroundColor: (widget.isMe
+                            ? Colors.white
+                            : ColorManager.greyLight)
+                        .withValues(alpha: 0.4),
+                    valueColor: AlwaysStoppedAnimation<Color>(accent),
                   ),
+                ),
+                const SizedBox(height: AppSize.s6),
+                // Time row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDuration(_position),
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    Text(
+                      _formatDuration(_duration),
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+
+          // Stop button when applicable
+          if (_playerState == PlayerState.playing ||
+              _playerState == PlayerState.paused)
+            IconButton(
+              icon: Icon(Icons.stop_circle_outlined, color: textSecondary),
+              iconSize: 28,
+              onPressed: _stop,
+            ),
         ],
       ),
     );
+  }
+
+  String _formatDuration(Duration d) {
+    if (d == Duration.zero) return '0:00';
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(1, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }

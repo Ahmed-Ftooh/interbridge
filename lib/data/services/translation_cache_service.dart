@@ -109,6 +109,11 @@ class TranslationCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_translationTextKey, translationText);
+      // Refresh timestamp to extend cache validity on activity
+      await prefs.setInt(
+        _cacheTimestampKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (e) {
       log('Error updating translation text in cache: $e');
     }

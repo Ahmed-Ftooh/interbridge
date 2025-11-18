@@ -143,6 +143,16 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (request.title != null && request.title!.isNotEmpty) ...[
+              Text(
+                request.title!,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: AppSize.s12),
+            ],
             Row(
               children: [
                 Expanded(
@@ -250,6 +260,29 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: AppSize.s16),
+            ],
+
+            if (request.comment != null && request.comment!.isNotEmpty) ...[
+              const Text(
+                'Requester note:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: AppSize.s8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSize.s12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(AppSize.s8),
+                ),
+                child: Text(
+                  request.comment!,
+                  style: TextStyle(color: ColorManager.textSecondary),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(height: AppSize.s16),

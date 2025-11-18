@@ -372,6 +372,8 @@ class DocumentTranslationService {
           'from_language': request.fromLanguage,
           'to_language': request.toLanguage,
           'specialization': request.specialization ?? '',
+          'request_title': request.title ?? '',
+          'request_comment': request.comment ?? '',
           'type': 'document_translation_request', // For client-side routing
           'click_action':
               'FLUTTER_NOTIFICATION_CLICK', // Standard for FCM with Flutter

@@ -7,8 +7,13 @@ class ChatService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
 
-  Future<List<Map<String, dynamic>>> fetchMessages(String requestId) async {
-    log('Fetching messages for requestId: $requestId');
+  // OPTIMIZED: Add pagination support to prevent loading all messages at once
+  // Default limit is 100 messages to improve performance
+  Future<List<Map<String, dynamic>>> fetchMessages(
+    String requestId, {
+    int limit = 500,
+  }) async {
+    log('Fetching messages for requestId: $requestId (limit: $limit)');
     try {
       final res = await _supabase
           .from('chat_messages')
@@ -21,30 +26,35 @@ class ChatService {
             )
           ''')
           .eq('request_id', requestId)
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: false)
+          .limit(limit);
       log('Successfully fetched ${res.length} messages with user profiles');
 
       // Process messages to ensure proper username fallbacks and profile image URLs
-      return List<Map<String, dynamic>>.from(res).map((message) {
-        final userProfile = message['user_profiles'] as Map<String, dynamic>?;
-        if (userProfile == null || userProfile['username'] == null) {
-          // Provide fallback username based on sender_id
-          message['user_profiles'] = {
-            'username': 'User',
-            'profile_image': null,
-            'role': 'user',
-          };
-        } else {
-          // Ensure profile image URL is properly formatted
-          final profileImage = userProfile['profile_image'] as String?;
-          if (profileImage != null && profileImage.isNotEmpty) {
-            userProfile['profile_image'] = _supabaseService.getProfileImageUrl(
-              profileImage,
-            );
-          }
-        }
-        return message;
-      }).toList();
+      final messages =
+          List<Map<String, dynamic>>.from(res).map((message) {
+            final userProfile =
+                message['user_profiles'] as Map<String, dynamic>?;
+            if (userProfile == null || userProfile['username'] == null) {
+              // Provide fallback username based on sender_id
+              message['user_profiles'] = {
+                'username': 'User',
+                'profile_image': null,
+                'role': 'user',
+              };
+            } else {
+              // Ensure profile image URL is properly formatted
+              final profileImage = userProfile['profile_image'] as String?;
+              if (profileImage != null && profileImage.isNotEmpty) {
+                userProfile['profile_image'] = _supabaseService
+                    .getProfileImageUrl(profileImage);
+              }
+            }
+            return message;
+          }).toList();
+
+      // Return messages in chronological order after fetching the latest ones
+      return messages.reversed.toList();
     } catch (e) {
       log('Failed to fetch messages with user profiles: $e');
       // If the table doesn't exist or there's a foreign key issue,
@@ -54,20 +64,24 @@ class ChatService {
             .from('chat_messages')
             .select('*')
             .eq('request_id', requestId)
-            .order('created_at', ascending: true);
+            .order('created_at', ascending: false)
+            .limit(limit);
         log(
           'Successfully fetched ${res.length} messages without user profiles',
         );
 
         // Add fallback user profiles for messages without joins
-        return List<Map<String, dynamic>>.from(res).map((message) {
-          message['user_profiles'] = {
-            'username': 'User',
-            'profile_image': null,
-            'role': 'user',
-          };
-          return message;
-        }).toList();
+        final messages =
+            List<Map<String, dynamic>>.from(res).map((message) {
+              message['user_profiles'] = {
+                'username': 'User',
+                'profile_image': null,
+                'role': 'user',
+              };
+              return message;
+            }).toList();
+
+        return messages.reversed.toList();
       } catch (e2) {
         log('Failed to fetch messages even without user profiles: $e2');
         // If even the basic query fails, the table probably doesn't exist

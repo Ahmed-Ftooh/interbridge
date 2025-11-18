@@ -19,6 +19,7 @@ class InterpreterJobService {
         throw Exception('User must be authenticated');
       }
 
+      // Fetch languages assigned to interpreter so we only show relevant jobs
       final interpreterData = await _client
           .from('interpreter_languages')
           .select('language_id')
@@ -42,6 +43,18 @@ class InterpreterJobService {
 
       log('Interpreter languages: $languageIds');
 
+      // Fetch declined job ids to avoid showing them again
+      final declinedJobRows = await _client
+          .from('interpreter_declined_jobs')
+          .select('request_id')
+          .eq('interpreter_id', user.id);
+      final declinedJobIds =
+          declinedJobRows
+              .map((row) => row['request_id']?.toString())
+              .whereType<String>()
+              .toSet();
+      log('Declined job ids: $declinedJobIds');
+
       final response = await _client
           .from('interpreter_requests')
           .select('''
@@ -58,8 +71,17 @@ class InterpreterJobService {
       final requests =
           response.map((json) => InterpreterRequest.fromJson(json)).toList();
 
-      log('Found ${requests.length} available jobs');
-      return requests;
+      final filteredRequests =
+          declinedJobIds.isEmpty
+              ? requests
+              : requests
+                  .where((req) => !declinedJobIds.contains(req.id))
+                  .toList();
+
+      log(
+        'Found ${filteredRequests.length} available jobs after filtering declines',
+      );
+      return filteredRequests;
     } catch (e) {
       log('Error getting available jobs: $e');
       return [];
@@ -126,11 +148,11 @@ class InterpreterJobService {
       }
 
       // Add the job to the interpreter's declined jobs list
-      await _client.from('interpreter_declined_jobs').insert({
+      await _client.from('interpreter_declined_jobs').upsert({
         'interpreter_id': user.id,
         'request_id': requestId,
         'declined_at': DateTime.now().toIso8601String(),
-      });
+      }, onConflict: 'interpreter_id,request_id');
 
       log('Job declined by interpreter: $requestId');
     } catch (e) {
@@ -171,6 +193,7 @@ class InterpreterJobService {
           'data': {
             'request_id': requestId,
             'interpreter_id': interpreterId,
+            'requester_id': requesterId, // ✅ ADDED for navigation
             'type': 'request_accepted',
           },
           'tokens': requesterTokens,

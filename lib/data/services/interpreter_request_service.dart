@@ -49,8 +49,16 @@ class InterpreterRequestService {
 
       final request = InterpreterRequest.fromJson(response);
 
-      // Notify matching interpreters
-      await _sendNotificationsToMatchingInterpreters(request);
+      // Notify matching interpreters (with a small delay to ensure DB consistency)
+      // Run in background to not block the UI
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        try {
+          await _sendNotificationsToMatchingInterpreters(request);
+        } catch (e) {
+          log('Background notification failed: $e');
+          // Don't throw - notification failure shouldn't fail the request creation
+        }
+      });
 
       return request;
     } catch (e) {
@@ -289,11 +297,12 @@ extension InterpreterRequestAdmin on InterpreterRequestService {
       }
 
       // Verify ownership and status
-      final row = await _client
-          .from('interpreter_requests')
-          .select('requester_id, status')
-          .eq('id', requestId)
-          .single();
+      final row =
+          await _client
+              .from('interpreter_requests')
+              .select('requester_id, status')
+              .eq('id', requestId)
+              .single();
 
       if (row['requester_id'] != user.id) {
         throw Exception('You can only delete your own requests');
