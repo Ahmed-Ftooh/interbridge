@@ -7,6 +7,7 @@ import 'package:interbridge/presentation/screens/main/document_translation/inter
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/data/services/hidden_items_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'shared/shared_file_link_box.dart';
 
 class InterpreterAcceptedDocumentsView extends StatefulWidget {
@@ -18,15 +19,54 @@ class InterpreterAcceptedDocumentsView extends StatefulWidget {
 }
 
 class _InterpreterAcceptedDocumentsViewState
-    extends State<InterpreterAcceptedDocumentsView> {
+    extends State<InterpreterAcceptedDocumentsView>
+    with WidgetsBindingObserver {
   List<DocumentTranslationRequest> _acceptedRequests = [];
   bool _isLoading = false;
   String? _errorMessage;
+  RealtimeChannel? _subscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAcceptedRequests();
+    _subscribeToRealtime();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _subscription?.unsubscribe();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadAcceptedRequests();
+    }
+  }
+
+  @override
+  void didUpdateWidget(InterpreterAcceptedDocumentsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadAcceptedRequests();
+  }
+
+  void _subscribeToRealtime() {
+    _subscription =
+        Supabase.instance.client
+            .channel('public:document_translation_requests:accepted')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'document_translation_requests',
+              callback: (payload) {
+                _loadAcceptedRequests();
+              },
+            )
+            .subscribe();
   }
 
   Future<void> _loadAcceptedRequests() async {

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
+import 'dart:io'; // Add import
+
 class ImagePreviewScreen extends StatelessWidget {
   final String imageUrl;
+  final File? imageFile; // Add parameter
   final String heroTag;
   final String? fileName;
 
   const ImagePreviewScreen({
     super.key,
     required this.imageUrl,
+    this.imageFile, // Add to constructor
     required this.heroTag,
     this.fileName,
   });
@@ -29,23 +33,36 @@ class ImagePreviewScreen extends StatelessWidget {
           child: InteractiveViewer(
             minScale: 0.5,
             maxScale: 4,
-            child: Image.network(
-              imageUrl,
-              fit: BoxFit.contain,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                );
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.broken_image,
-                  color: Colors.white70,
-                  size: 64,
-                );
-              },
-            ),
+            child:
+                imageFile != null
+                    ? Image.file(
+                      imageFile!,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.broken_image,
+                          color: Colors.white70,
+                          size: 64,
+                        );
+                      },
+                    )
+                    : Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.broken_image,
+                          color: Colors.white70,
+                          size: 64,
+                        );
+                      },
+                    ),
           ),
         ),
       ),

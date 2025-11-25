@@ -49,7 +49,7 @@ class _InterpreterTranslationViewState
   late final InterpreterDraftCubit _draftCubit;
   // Focus handling to hide submit button while typing
   late FocusNode _translationFocusNode;
-  bool _showSubmitButton = true;
+  // bool _showSubmitButton = true; // Removed unused field
 
   // --- ADDED: State for handling secure file URLs ---
   String? _resolvedFileUrl;
@@ -69,7 +69,6 @@ class _InterpreterTranslationViewState
       interpreterId: user?.id ?? 'unknown',
     );
     _translationFocusNode = FocusNode();
-    _translationFocusNode.addListener(_handleTranslationFocusChange);
     _initializeContent();
   }
 
@@ -438,7 +437,7 @@ class _InterpreterTranslationViewState
             ),
           ),
           // Submit button
-          if (_showSubmitButton) _buildSubmitButton(),
+          _buildSubmitButton(),
         ],
       ),
     );
@@ -826,21 +825,12 @@ class _InterpreterTranslationViewState
     );
   }
 
-  void _handleTranslationFocusChange() {
-    // Hide the submit button when the translation field is focused
-    if (!mounted) return;
-    setState(() {
-      _showSubmitButton = !_translationFocusNode.hasFocus;
-    });
-  }
-
   @override
   void dispose() {
     _debounce?.cancel();
     _translatedTextController.removeListener(_onTextChanged);
     _saveCurrentTranslation();
     _translatedTextController.dispose();
-    _translationFocusNode.removeListener(_handleTranslationFocusChange);
     _translationFocusNode.dispose();
     _draftCubit.close();
     super.dispose();

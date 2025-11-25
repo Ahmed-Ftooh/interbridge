@@ -10,6 +10,7 @@ import 'package:interbridge/presentation/screens/main/home/interpreter_home_view
 import 'package:interbridge/presentation/screens/main/home/requester_home_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/profile_view.dart';
 import 'package:interbridge/presentation/screens/main/setting/setting_view.dart';
+import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/data/models/user_profile.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -39,6 +40,9 @@ class _MainViewState extends State<MainView> {
   int currentIndex = 0;
   List<Widget>? _pages; // Keep tab pages alive
 
+  bool get _isAdmin =>
+      userProfile?.role == 'admin' || userProfile?.role == 'superadmin';
+
   @override
   void initState() {
     super.initState();
@@ -49,16 +53,10 @@ class _MainViewState extends State<MainView> {
 
   Future<void> _loadUserProfile() async {
     try {
-      log('DEBUG: Starting to load user profile');
       final currentUser = _supabaseService.getCurrentUser();
-      log('DEBUG: Current user: ${currentUser?.id}');
 
       if (currentUser != null) {
-        log(
-          'DEBUG: Attempting to get user profile for user: ${currentUser.id}',
-        );
         final profile = await _supabaseService.getUserProfile(currentUser.id);
-        log('DEBUG: User profile loaded: ${profile?.role}');
 
         if (mounted) {
           setState(() {
@@ -69,7 +67,6 @@ class _MainViewState extends State<MainView> {
           });
         }
       } else {
-        log('DEBUG: No current user found');
         if (mounted) {
           setState(() {
             isLoading = false;
@@ -84,7 +81,6 @@ class _MainViewState extends State<MainView> {
         }
       }
     } catch (e) {
-      log('DEBUG: Error loading user profile: $e');
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -241,9 +237,7 @@ class _MainViewState extends State<MainView> {
     }
 
     final isInterpreter = userProfile?.role == 'interpreter';
-    log(
-      'DEBUG: User role: ${userProfile?.role}, isInterpreter: $isInterpreter',
-    );
+
     return [
       if (isInterpreter)
         BlocProvider(
@@ -285,6 +279,33 @@ class _MainViewState extends State<MainView> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_isAdmin) {
+      if (error != null) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Admin')),
+          body: ErrorDisplayWidget(
+            error: error!,
+            onRetry:
+                error!.isRetryable
+                    ? () {
+                      setState(() {
+                        isLoading = true;
+                        error = null;
+                      });
+                      _loadUserProfile();
+                    }
+                    : null,
+            title: 'Failed to load profile',
+          ),
+        );
+      }
+      return const AdminListScreen();
+    }
+
     return Scaffold(
       body: Builder(
         builder: (_) {

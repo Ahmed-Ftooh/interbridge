@@ -1,7 +1,9 @@
+import 'dart:async'; // Add this
 import 'dart:developer';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Add this
 
 // Events
 abstract class InterpreterJobEvent {}
@@ -49,12 +51,37 @@ class InterpreterJobError extends InterpreterJobState {
 class InterpreterJobBloc
     extends Bloc<InterpreterJobEvent, InterpreterJobState> {
   final InterpreterJobService _jobService = InterpreterJobService();
+  RealtimeChannel? _subscription;
 
   InterpreterJobBloc() : super(InterpreterJobInitial()) {
     on<LoadAvailableJobs>(_onLoadAvailableJobs);
     on<AcceptJob>(_onAcceptJob);
     on<DeclineJob>(_onDeclineJob);
     on<RefreshJobs>(_onRefreshJobs);
+
+    _subscribeToRealtime();
+  }
+
+  void _subscribeToRealtime() {
+    _subscription =
+        Supabase.instance.client
+            .channel('public:interpreter_requests')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'interpreter_requests',
+              callback: (payload) {
+                log('Realtime update received for interpreter_requests');
+                add(LoadAvailableJobs());
+              },
+            )
+            .subscribe();
+  }
+
+  @override
+  Future<void> close() {
+    _subscription?.unsubscribe();
+    return super.close();
   }
 
   Future<void> _onLoadAvailableJobs(
@@ -83,11 +110,12 @@ class InterpreterJobBloc
         emit(InterpreterJobAccepted(request));
       }
 
-      // Optionally reload jobs after acceptance
-      final jobs = await _jobService.getAvailableJobs();
-      emit(InterpreterJobLoaded(jobs: jobs, totalJobs: jobs.length));
+      // Reload jobs after acceptance (successful or not, to keep list fresh)
+      add(LoadAvailableJobs());
     } catch (e) {
       emit(InterpreterJobError(e.toString()));
+      // Also reload on error (e.g. if job was already taken)
+      add(LoadAvailableJobs());
     }
   }
 
@@ -99,11 +127,10 @@ class InterpreterJobBloc
       await _jobService.declineJob(event.requestId);
 
       // Reload jobs after declining
-      final jobs = await _jobService.getAvailableJobs();
-
-      emit(InterpreterJobLoaded(jobs: jobs, totalJobs: jobs.length));
+      add(LoadAvailableJobs());
     } catch (e) {
       emit(InterpreterJobError(e.toString()));
+      add(LoadAvailableJobs());
     }
   }
 

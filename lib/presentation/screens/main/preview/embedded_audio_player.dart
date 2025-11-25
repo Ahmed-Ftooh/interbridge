@@ -1,17 +1,20 @@
 // lib/previews/embedded_audio_player.dart
 import 'package:audioplayers/audioplayers.dart';
+import 'dart:io'; // Add import
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 
 class EmbeddedAudioPlayer extends StatefulWidget {
   final String url;
+  final File? localFile; // Add parameter
   final String? fileName;
   final bool isMe; // Adapt styling based on sender/receiver side
 
   const EmbeddedAudioPlayer({
     super.key,
     required this.url,
+    this.localFile, // Add to constructor
     this.fileName,
     this.isMe = false,
   });
@@ -55,7 +58,11 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
   Future<void> _setSource() async {
     if (mounted) setState(() => _isLoading = true);
     try {
-      await _audioPlayer.setSourceUrl(widget.url);
+      if (widget.localFile != null && widget.localFile!.existsSync()) {
+        await _audioPlayer.setSourceDeviceFile(widget.localFile!.path);
+      } else {
+        await _audioPlayer.setSourceUrl(widget.url);
+      }
     } catch (e) {
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(
@@ -72,7 +79,11 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
     } else if (_playerState == PlayerState.paused) {
       await _audioPlayer.resume();
     } else {
-      await _audioPlayer.play(UrlSource(widget.url));
+      if (widget.localFile != null && widget.localFile!.existsSync()) {
+        await _audioPlayer.play(DeviceFileSource(widget.localFile!.path));
+      } else {
+        await _audioPlayer.play(UrlSource(widget.url));
+      }
     }
   }
 
@@ -97,7 +108,7 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
         widget.isMe ? Colors.white70 : ColorManager.textSecondary;
     final Color bg =
         widget.isMe ? accent.withValues(alpha: 0.20) : Colors.white;
-    final BoxBorder? border =
+    final BoxBorder border =
         widget.isMe
             ? Border.all(color: accent.withValues(alpha: 0.25), width: 1)
             : Border.all(

@@ -240,6 +240,17 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
                 const SizedBox(height: AppSize.s24),
                 TextButton(
                   onPressed: () async {
+                    // Delete the request from database
+                    if (_request != null) {
+                      try {
+                        await InterpreterRequestService().deleteRequest(
+                          _request!.id,
+                        );
+                        log('Request deleted: ${_request!.id}');
+                      } catch (e) {
+                        log('Error deleting request: $e');
+                      }
+                    }
                     // Clear session when user cancels
                     await SessionService.clearSession();
                     log('Session cleared - user cancelled request');

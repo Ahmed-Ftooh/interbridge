@@ -1,8 +1,4 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -18,76 +14,15 @@ class VoiceCheckScreen extends StatefulWidget {
 }
 
 class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
-  final AudioRecorder _recorder = AudioRecorder();
-  bool _isRecording = false;
-  String? _filePath;
-  late String _prompt;
   File? _certificateFile;
   String? _certificatePath;
   AppError? _error;
-
-  static const List<String> _sentences = [
-    'As a professional interpreter, I understand the critical importance of accurate communication in medical settings where lives depend on precise translation.',
-    'The patient requires immediate attention from the cardiology team, and we need to ensure all medical terminology is correctly interpreted for the family.',
-    'Please speak clearly and at a moderate pace, as this recording will be used to assess your pronunciation, fluency, and professional speaking abilities.',
-    'Medical interpretation requires not only language proficiency but also cultural sensitivity and understanding of healthcare terminology and procedures.',
-    'In emergency situations, interpreters must remain calm, focused, and accurate while facilitating communication between healthcare providers and patients.',
-    'Professional medical interpreters undergo extensive training to handle complex medical terminology, cultural nuances, and ethical considerations in healthcare settings.',
-    'The interpretation process involves active listening, cultural mediation, and ensuring that both parties understand each other completely and accurately.',
-    'Healthcare providers rely on qualified interpreters to bridge language barriers and ensure patient safety, informed consent, and quality care delivery.',
-  ];
+  final TextEditingController _bioController = TextEditingController();
+  final TextEditingController _yearsController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _prompt = _sentences[Random().nextInt(_sentences.length)];
-  }
-
-  Future<void> _toggleRecord() async {
-    if (_isRecording) {
-      final path = await _recorder.stop();
-      setState(() {
-        _isRecording = false;
-        _filePath = path;
-      });
-      return;
-    }
-
-    final mic = await Permission.microphone.request();
-    if (!mic.isGranted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Microphone permission is required.')),
-        );
-      }
-      return;
-    }
-
-    final canRecord = await _recorder.hasPermission();
-    if (!canRecord) return;
-
-    final dir = await getTemporaryDirectory();
-    final output = File(
-      '${dir.path}/voice_check_${DateTime.now().millisecondsSinceEpoch}.m4a',
-    );
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        sampleRate: 44100,
-        bitRate: 128000,
-      ),
-      path: output.path,
-    );
-    setState(() {
-      _isRecording = true;
-      _filePath = null;
-    });
-  }
-
-  void _regeneratePrompt() {
-    setState(() {
-      _prompt = _sentences[Random().nextInt(_sentences.length)];
-    });
   }
 
   void _continue() {
@@ -95,11 +30,17 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
 
-    if (_filePath == null || _certificatePath == null) return;
+    if (_certificatePath == null) return;
     // Pass local paths to registration; uploads happen after signup
-    args['voiceSamplePath'] = _filePath;
-    args['voicePrompt'] = _prompt;
     args['certificatePath'] = _certificatePath;
+    final bio = _bioController.text.trim();
+    if (bio.isNotEmpty) {
+      args['bio'] = bio;
+    }
+    final years = int.tryParse(_yearsController.text.trim());
+    if (years != null) {
+      args['yearsExperience'] = years;
+    }
     Navigator.of(context).pushNamed(Routes.registerRoute, arguments: args);
   }
 
@@ -126,7 +67,8 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
 
   @override
   void dispose() {
-    _recorder.dispose();
+    _bioController.dispose();
+    _yearsController.dispose();
     super.dispose();
   }
 
@@ -145,145 +87,122 @@ class _VoiceCheckScreenState extends State<VoiceCheckScreen> {
       );
     }
 
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
-      appBar: AppBar(title: const Text('Voice Check')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Read this comprehensive sentence naturally to verify your professional speaking ability:',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-              decoration: BoxDecoration(
-                color: ColorManager.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
+      appBar: AppBar(title: const Text('Identity Verification')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Upload your certification (required)',
+                style: TextStyle(fontSize: 16),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _prompt,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _regeneratePrompt,
-                      child: const Text('New sentence'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Center(
-              child: Column(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _toggleRecord,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          _isRecording ? Colors.red : ColorManager.primary,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 20,
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Select Certificate (PDF or image)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    icon: Icon(
-                      _isRecording ? Icons.stop : Icons.mic,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      _isRecording ? 'Stop Recording' : 'Start Recording',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (_filePath != null)
-                    const Text(
-                      'Recorded. You can continue.',
-                      style: TextStyle(color: Colors.green),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Select Certificate (required)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _certificateFile != null
+                                  ? 'Selected: ${_certificateFile!.path.split('/').last}'
+                                  : 'No certificate selected',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _pickCertificate,
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text('Choose'),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
+                      if (_certificateFile == null)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            _certificateFile != null
-                                ? 'Selected: ${_certificateFile!.path.split('/').last}'
-                                : 'No certificate selected',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                            'Certificate is required to continue.',
+                            style: TextStyle(color: Colors.red, fontSize: 12),
                           ),
                         ),
-                        TextButton.icon(
-                          onPressed: _pickCertificate,
-                          icon: const Icon(Icons.upload_file),
-                          label: const Text('Choose'),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ),
-                    if (_certificateFile == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Certificate is required to continue.',
-                          style: TextStyle(color: Colors.red, fontSize: 12),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Professional Profile (optional)',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _bioController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Short bio',
+                          hintText: 'Tell requesters about your experience',
                         ),
                       ),
-                  ],
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _yearsController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Years of experience',
+                          hintText: 'e.g., 3',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed:
-                    _filePath != null && _certificateFile != null
-                        ? () {
-                          _certificatePath = _certificateFile!.path;
-                          _continue();
-                        }
-                        : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: ColorManager.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(color: Colors.white),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed:
+                      _certificateFile != null
+                          ? () {
+                            _certificatePath = _certificateFile!.path;
+                            _continue();
+                          }
+                          : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ColorManager.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -51,7 +51,8 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
 
   Future<void> _loadLanguages() async {
     try {
-      final languagesList = await SupabaseService().getLanguages();
+      final languagesList =
+          await SupabaseService().getSupportedInterpreterLanguages();
       setState(() {
         languages = languagesList;
         isLoadingLanguages = false;
@@ -170,6 +171,39 @@ class _RequesterHomeViewState extends State<RequesterHomeView> {
               border: Border.all(color: ColorManager.greyMedium, width: 1),
             ),
             child: const Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+
+    if (languages.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Language Pair',
+            style: TextStyle(
+              fontSize: AppSize.s18,
+              fontWeight: FontWeight.bold,
+              color: ColorManager.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppSize.s16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSize.s20),
+            decoration: BoxDecoration(
+              color: ColorManager.white,
+              borderRadius: BorderRadius.circular(AppSize.s12),
+              border: Border.all(color: ColorManager.greyMedium, width: 1),
+            ),
+            child: Text(
+              'No supported languages are available yet. Please check back soon.',
+              style: TextStyle(
+                color: ColorManager.textSecondary,
+                fontSize: AppSize.s14,
+              ),
+            ),
           ),
         ],
       );

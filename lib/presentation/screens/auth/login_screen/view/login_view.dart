@@ -5,13 +5,14 @@ import 'dart:developer';
 
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
 import 'package:interbridge/data/services/permission_service.dart';
+import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/simple_fade_animation.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
-import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/presentation/widgets/custom_button.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../view_Model/bloc/login_bloc.dart';
 import '../view_Model/bloc/login_event.dart';
@@ -122,6 +123,8 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                 // Navigate to main screen after a short delay
                 Future.delayed(const Duration(milliseconds: 200), () async {
                   if (mounted) {
+                    await PendingRegistrationService()
+                        .finalizePendingRegistration();
                     await _appPreferences.setLoginViewed();
                     await FirebaseMessagingService().initialize();
                     await _requestPermissionsAndNavigate();

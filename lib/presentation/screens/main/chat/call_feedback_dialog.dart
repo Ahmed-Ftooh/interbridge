@@ -94,7 +94,8 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
               direction: Axis.horizontal,
               allowHalfRating: false,
               itemCount: 5,
-              itemPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+              itemSize: 32.0, // Reduced size to fit in one line
+              itemPadding: const EdgeInsets.symmetric(horizontal: 2.0),
               itemBuilder:
                   (context, _) => Icon(Icons.star, color: Colors.amber[600]),
               onRatingUpdate: (rating) {

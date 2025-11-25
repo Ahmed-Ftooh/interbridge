@@ -6,6 +6,8 @@ import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_preview_view.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Add this
+import 'dart:developer'; // Add this
 
 class InterpreterDocumentView extends StatefulWidget {
   const InterpreterDocumentView({super.key});
@@ -19,11 +21,39 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
   List<DocumentTranslationRequest> _availableRequests = [];
   bool _isLoading = false;
   String? _errorMessage;
+  RealtimeChannel? _subscription;
 
   @override
   void initState() {
     super.initState();
     _loadAvailableRequests();
+    _subscribeToRealtime();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToRealtime() {
+    _subscription =
+        Supabase.instance.client
+            .channel('public:document_translation_requests')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'document_translation_requests',
+              callback: (payload) {
+                log(
+                  'Realtime update received for document_translation_requests',
+                );
+                if (mounted) {
+                  _loadAvailableRequests();
+                }
+              },
+            )
+            .subscribe();
   }
 
   Future<void> _loadAvailableRequests() async {
@@ -231,6 +261,8 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
                 child: Text(
                   request.text!,
                   style: const TextStyle(fontSize: 14),
+                  maxLines: 3, // Limit to 3 lines
+                  overflow: TextOverflow.ellipsis, // Show ellipsis if truncated
                 ),
               ),
               const SizedBox(height: AppSize.s16),

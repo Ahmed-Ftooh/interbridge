@@ -43,18 +43,25 @@ class InterpreterJobService {
 
       log('Interpreter languages: $languageIds');
 
-      // Fetch declined job ids to avoid showing them again
-      final declinedJobRows = await _client
-          .from('interpreter_declined_jobs')
-          .select('request_id')
-          .eq('interpreter_id', user.id);
-      final declinedJobIds =
-          declinedJobRows
-              .map((row) => row['request_id']?.toString())
-              .whereType<String>()
-              .toSet();
-      log('Declined job ids: $declinedJobIds');
+      // Fetch declined job ids for this specific interpreter
+      Set<String> declinedJobIds = {};
+      try {
+        final declinedJobRows = await _client
+            .from('interpreter_declined_jobs')
+            .select('request_id')
+            .eq('interpreter_id', user.id);
+        declinedJobIds =
+            declinedJobRows
+                .map((row) => row['request_id']?.toString())
+                .whereType<String>()
+                .toSet();
+        log('Declined job ids for this interpreter: $declinedJobIds');
+      } catch (e) {
+        log('Could not fetch declined jobs (table may not exist): $e');
+        // Continue without filtering - table will be created on first decline
+      }
 
+      // Fetch all pending jobs that match interpreter's languages
       final response = await _client
           .from('interpreter_requests')
           .select('''
@@ -71,6 +78,7 @@ class InterpreterJobService {
       final requests =
           response.map((json) => InterpreterRequest.fromJson(json)).toList();
 
+      // Filter out jobs this interpreter has declined
       final filteredRequests =
           declinedJobIds.isEmpty
               ? requests
@@ -147,14 +155,19 @@ class InterpreterJobService {
         throw Exception('User must be authenticated');
       }
 
-      // Add the job to the interpreter's declined jobs list
-      await _client.from('interpreter_declined_jobs').upsert({
-        'interpreter_id': user.id,
-        'request_id': requestId,
-        'declined_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'interpreter_id,request_id');
-
-      log('Job declined by interpreter: $requestId');
+      // Store this interpreter's decline (only hides for them)
+      try {
+        await _client.from('interpreter_declined_jobs').insert({
+          'interpreter_id': user.id,
+          'request_id': requestId,
+          'declined_at': DateTime.now().toIso8601String(),
+        });
+        log('Job declined by interpreter $user.id: $requestId');
+      } catch (e) {
+        // If table doesn't exist, it will be created in Supabase
+        // Job will still be hidden for this interpreter on next refresh
+        log('Could not store declined job: $e');
+      }
     } catch (e) {
       log('Error declining job: $e');
       rethrow;

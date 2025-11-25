@@ -295,7 +295,11 @@ class DocumentTranslationService {
 
           // Return the specialization-filtered list if not empty
           if (filteredProfiles.isNotEmpty) {
-            return filteredProfiles;
+            // Continue with additional capability filters below
+            // by updating interpreterProfiles to the filtered subset
+            interpreterProfiles
+              ..clear()
+              ..addAll(filteredProfiles);
           } else {
             log(
               'DEBUG: No interpreters found matching the specific specialization. Returning empty list.',
@@ -309,11 +313,71 @@ class DocumentTranslationService {
         }
       }
 
-      // Return profiles if no specialization was requested or if the filter didn't apply/failed
-      log(
-        'DEBUG: Returning ${interpreterProfiles.length} interpreter profiles (no specialization filter or fallback)',
-      );
-      return interpreterProfiles;
+      // Additional filter: require interpreters to have reading AND writing capability
+      try {
+        // Resolve skill IDs for reading and writing using loose name match
+        final readSkills = await _client
+            .from('skills')
+            .select('id,name')
+            .ilike('name', '%read%');
+        final writeSkills = await _client
+            .from('skills')
+            .select('id,name')
+            .ilike('name', '%writ%');
+
+        final readSkillIds = readSkills.map<int>((s) => s['id'] as int).toSet();
+        final writeSkillIds =
+            writeSkills.map<int>((s) => s['id'] as int).toSet();
+
+        if (readSkillIds.isEmpty || writeSkillIds.isEmpty) {
+          log(
+            'DEBUG: Read/Write skill IDs not found; skipping capability filter.',
+          );
+          log(
+            'DEBUG: Returning ${interpreterProfiles.length} interpreter profiles (no specialization filter or fallback)',
+          );
+          return interpreterProfiles;
+        }
+
+        final candidateUserIds =
+            interpreterProfiles.map((p) => p['user_id'] as String).toList();
+
+        // Fetch interpreter_skills for candidates and required skill sets
+        final skillsRows = await _client
+            .from('interpreter_skills')
+            .select('user_id, skill_id')
+            .inFilter('user_id', candidateUserIds);
+
+        final byUser = <String, Set<int>>{};
+        for (final row in skillsRows) {
+          final uid = row['user_id'] as String;
+          final sid = row['skill_id'] as int;
+          byUser.putIfAbsent(uid, () => <int>{}).add(sid);
+        }
+
+        bool hasBoth(Set<int> s) =>
+            s.any((id) => readSkillIds.contains(id)) &&
+            s.any((id) => writeSkillIds.contains(id));
+
+        final filteredByCapability =
+            interpreterProfiles.where((p) {
+              final uid = p['user_id'] as String;
+              final set = byUser[uid] ?? const <int>{};
+              return hasBoth(set);
+            }).toList();
+
+        log(
+          'DEBUG: Capability filter reduced interpreters from ${interpreterProfiles.length} to ${filteredByCapability.length}',
+        );
+
+        return filteredByCapability;
+      } catch (e) {
+        log('DEBUG: Error applying read/write capability filter: $e');
+        log(
+          'DEBUG: Returning ${interpreterProfiles.length} interpreter profiles (capability filter skipped)',
+        );
+        return interpreterProfiles;
+      }
     } catch (e) {
       log('Error finding matching interpreters: $e');
       return [];

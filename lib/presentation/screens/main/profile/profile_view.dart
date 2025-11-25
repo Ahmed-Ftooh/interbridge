@@ -6,10 +6,12 @@ import 'package:interbridge/data/models/fluency_level.dart';
 import 'package:interbridge/data/models/interpreter_language.dart';
 import 'package:interbridge/data/models/interpreter_skill.dart';
 import 'package:interbridge/data/models/interpreter_specialization.dart';
+import 'package:interbridge/data/models/interpreter_language_skill.dart';
 import 'package:interbridge/data/models/language.dart';
 import 'package:interbridge/data/models/skill.dart';
 import 'package:interbridge/data/models/specialization.dart';
 import 'package:interbridge/data/models/user_profile.dart';
+import 'package:interbridge/data/models/interpreter_details.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -27,6 +29,7 @@ class _ProfileViewState extends State<ProfileView> {
   final TextEditingController _usernameController = TextEditingController();
 
   UserProfile? _userProfile;
+  InterpreterDetails? _interpreterDetails;
   List<InterpreterLanguage> _interpreterLanguages = [];
   List<InterpreterSpecialization> _interpreterSpecializations = [];
   List<InterpreterSkill> _interpreterSkills = [];
@@ -34,6 +37,7 @@ class _ProfileViewState extends State<ProfileView> {
   List<Specialization> _specializations = [];
   List<Skill> _skills = [];
   List<FluencyLevel> _fluencyLevels = [];
+  Map<int, Set<int>> _languageSkillMap = {};
   String? _selectedGender;
   String? _userEmail;
 
@@ -75,6 +79,7 @@ class _ProfileViewState extends State<ProfileView> {
       }
 
       final profile = await _supabaseService.getUserProfile(user.id);
+      final details = await _supabaseService.getInterpreterDetails(user.id);
       final interpreterLanguages = await _supabaseService
           .getInterpreterLanguages(user.id);
       final interpreterSpecializations = await _supabaseService
@@ -82,6 +87,8 @@ class _ProfileViewState extends State<ProfileView> {
       final interpreterSkills = await _supabaseService.getInterpreterSkills(
         user.id,
       );
+      final languageSkillEntries = await _supabaseService
+          .getInterpreterLanguageSkills(user.id);
       final languages = await _supabaseService.getLanguages();
       final specializations = await _supabaseService.getSpecializations();
       final skills = await _supabaseService.getSkills();
@@ -90,6 +97,7 @@ class _ProfileViewState extends State<ProfileView> {
       if (!mounted) return;
       setState(() {
         _userProfile = profile;
+        _interpreterDetails = details;
         _interpreterLanguages = interpreterLanguages;
         _interpreterSpecializations = interpreterSpecializations;
         _interpreterSkills = interpreterSkills;
@@ -97,6 +105,7 @@ class _ProfileViewState extends State<ProfileView> {
         _specializations = specializations;
         _skills = skills;
         _fluencyLevels = fluencyLevels;
+        _languageSkillMap = _groupLanguageSkillEntries(languageSkillEntries);
         _selectedGender = _normalizeGender(profile?.gender);
         _usernameController.text = profile?.username ?? '';
         _userEmail = user.email;
@@ -390,6 +399,113 @@ class _ProfileViewState extends State<ProfileView> {
     }
   }
 
+  Future<void> _openLanguageSkillEditor(int languageId) async {
+    if (!_isInterpreter) return;
+    if (_skills.isEmpty) {
+      _showSnackBar('No skills catalog configured yet');
+      return;
+    }
+
+    final language = _languages.firstWhere(
+      (lang) => lang.id == languageId,
+      orElse: () => Language(id: languageId, name: 'Language $languageId'),
+    );
+
+    final currentSelection = Set<int>.from(
+      _languageSkillMap[languageId] ?? <int>{},
+    );
+
+    final result = await showModalBottomSheet<Set<int>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        final tempSelection = Set<int>.from(currentSelection);
+        return FractionallySizedBox(
+          heightFactor: 0.75,
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Padding(
+                padding: EdgeInsets.only(
+                  left: AppPadding.p20,
+                  right: AppPadding.p20,
+                  top: AppPadding.p20,
+                  bottom:
+                      MediaQuery.of(context).viewInsets.bottom + AppPadding.p20,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tag skills for ${language.name}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: AppSize.s8),
+                    Text(
+                      'These skills will appear when requesters view this language.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: ColorManager.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s16),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: _skills.length,
+                        separatorBuilder:
+                            (_, __) => const Divider(height: AppSize.s1),
+                        itemBuilder: (context, index) {
+                          final skill = _skills[index];
+                          return CheckboxListTile(
+                            value: tempSelection.contains(skill.id),
+                            onChanged: (value) {
+                              setModalState(() {
+                                if (value == true) {
+                                  tempSelection.add(skill.id);
+                                } else {
+                                  tempSelection.remove(skill.id);
+                                }
+                              });
+                            },
+                            title: Text(skill.name),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: AppSize.s16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: AppSize.s12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed:
+                                () => Navigator.of(context).pop(tempSelection),
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (result != null) {
+      await _persistLanguageSkillChanges(languageId, result);
+    }
+  }
+
   Future<void> _persistLanguageChanges(Map<int, int> desired) async {
     try {
       setState(() => _isSaving = true);
@@ -472,6 +588,33 @@ class _ProfileViewState extends State<ProfileView> {
     }
   }
 
+  Future<void> _persistLanguageSkillChanges(
+    int languageId,
+    Set<int> desiredIds,
+  ) async {
+    try {
+      setState(() => _isSaving = true);
+      final user = _supabaseService.getCurrentUser();
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      await _supabaseService.replaceInterpreterLanguageSkills(
+        user.id,
+        languageId,
+        desiredIds,
+      );
+
+      await _refreshInterpreterData();
+      _showSnackBar('Language skills updated');
+    } catch (e) {
+      _showSnackBar('Failed to update language skills: $e', isError: true);
+    } finally {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+    }
+  }
+
   Future<void> _refreshInterpreterData() async {
     final user = _supabaseService.getCurrentUser();
     if (user == null) return;
@@ -480,12 +623,15 @@ class _ProfileViewState extends State<ProfileView> {
     final specializations = await _supabaseService
         .getInterpreterSpecializations(user.id);
     final skills = await _supabaseService.getInterpreterSkills(user.id);
+    final languageSkillEntries = await _supabaseService
+        .getInterpreterLanguageSkills(user.id);
 
     if (!mounted) return;
     setState(() {
       _interpreterLanguages = languages;
       _interpreterSpecializations = specializations;
       _interpreterSkills = skills;
+      _languageSkillMap = _groupLanguageSkillEntries(languageSkillEntries);
     });
   }
 
@@ -573,8 +719,7 @@ class _ProfileViewState extends State<ProfileView> {
       backgroundColor: ColorManager.backgroundPrimary,
       appBar: AppBar(
         title: const Text('Profile'),
-        foregroundColor: ColorManager.primary2,
-        backgroundColor: ColorManager.backgroundPrimary,
+        foregroundColor: ColorManager.primary,
         elevation: 0,
       ),
       body: Column(
@@ -596,7 +741,7 @@ class _ProfileViewState extends State<ProfileView> {
                           _buildHeroCard(),
                           const SizedBox(height: AppSize.s20),
                           _buildSnapshotCard(),
-                          if (_interpreterSkills.isNotEmpty) ...[
+                          if (_isInterpreter) ...[
                             const SizedBox(height: AppSize.s20),
                             _buildSkillsCard(),
                           ],
@@ -711,23 +856,25 @@ class _ProfileViewState extends State<ProfileView> {
             ],
           ),
           const SizedBox(height: AppSize.s20),
-          Row(
-            children: [
-              _ProfileStat(
-                label: 'Languages',
-                value: _interpreterLanguages.length.toString(),
-              ),
-              _ProfileStat(
-                label: 'Specialties',
-                value: _interpreterSpecializations.length.toString(),
-              ),
-              _ProfileStat(
-                label: 'Skills',
-                value: _interpreterSkills.length.toString(),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSize.s20),
+          if (_isInterpreter) ...[
+            Row(
+              children: [
+                _ProfileStat(
+                  label: 'Languages',
+                  value: _interpreterLanguages.length.toString(),
+                ),
+                _ProfileStat(
+                  label: 'Specialties',
+                  value: _interpreterSpecializations.length.toString(),
+                ),
+                _ProfileStat(
+                  label: 'Skills',
+                  value: _interpreterSkills.length.toString(),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSize.s20),
+          ],
           Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -762,10 +909,12 @@ class _ProfileViewState extends State<ProfileView> {
       return _SectionCard(
         title: 'Interpreter snapshot',
         subtitle:
-            'Keep your language pairs and niches current so requesters can match like Tarjimly.',
+            'Keep your language pairs and specialties current so requesters can match you faster.',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildInterpreterBioSection(),
+            const SizedBox(height: AppSize.s20),
             _ChipGroup(
               title: 'Working languages',
               hint: 'Update languages to appear in search instantly.',
@@ -828,18 +977,140 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _buildSkillsCard() {
-    final skillChips =
-        _interpreterSkills.isEmpty
-            ? const [Chip(label: Text('No skills listed yet'))]
-            : _interpreterSkills
-                .map((skill) => Chip(label: Text(_skillName(skill.skillId))))
-                .toList();
+  Widget _buildInterpreterBioSection() {
+    final bio = _interpreterDetails?.bio;
+    final years = _interpreterDetails?.yearsExperience;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Professional summary',
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(color: ColorManager.textPrimary),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          (bio != null && bio.trim().isNotEmpty)
+              ? bio.trim()
+              : 'No bio provided yet.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: ColorManager.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(
+              Icons.workspace_premium,
+              size: 18,
+              color: ColorManager.primary2,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              years != null && years > 0
+                  ? '$years year${years == 1 ? '' : 's'} experience'
+                  : 'Experience not set',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: ColorManager.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
+  Widget _buildSkillsCard() {
     return _SectionCard(
       title: 'Skills & strengths',
-      subtitle: 'Your go-to abilities that requesters can count on.',
-      child: Wrap(spacing: 8, runSpacing: 8, children: skillChips),
+      subtitle: 'Tag skills for each language to show your expertise.',
+      child: _buildLanguageSkillMatrix(),
+    );
+  }
+
+  Widget _buildLanguageSkillMatrix() {
+    if (_interpreterLanguages.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          'Add working languages first to tag skills.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: ColorManager.textSecondary),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children:
+          _interpreterLanguages.map((lang) {
+            final skillIds = _languageSkillMap[lang.languageId] ?? <int>{};
+            final chips =
+                skillIds.isEmpty
+                    ? <Widget>[]
+                    : skillIds
+                        .map((id) => Chip(label: Text(_skillName(id))))
+                        .toList();
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: ColorManager.backgroundCard,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: ColorManager.primary.withOpacity(0.08),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 20,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _languageName(lang.languageId),
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_fluencyLevel(lang.fluencyId)} fluency',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: ColorManager.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed:
+                            () => _openLanguageSkillEditor(lang.languageId),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(
+                          skillIds.isEmpty ? 'Add skills' : 'Edit skills',
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (chips.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(spacing: 8, runSpacing: 8, children: chips),
+                  ],
+                ],
+              ),
+            );
+          }).toList(),
     );
   }
 
@@ -948,11 +1219,17 @@ class _ProfileViewState extends State<ProfileView> {
     }).toList();
   }
 
-  List<Widget> _buildSpecializationChips() {
-    if (_interpreterSpecializations.isEmpty) {
-      return const [Chip(label: Text('No specializations yet'))];
+  Map<int, Set<int>> _groupLanguageSkillEntries(
+    List<InterpreterLanguageSkill> entries,
+  ) {
+    final map = <int, Set<int>>{};
+    for (final entry in entries) {
+      map.putIfAbsent(entry.languageId, () => <int>{}).add(entry.skillId);
     }
+    return map;
+  }
 
+  List<Widget> _buildSpecializationChips() {
     return _interpreterSpecializations.map((spec) {
       return Chip(label: Text(_specializationName(spec.specializationId)));
     }).toList();
@@ -1176,7 +1453,24 @@ class _ChipGroup extends StatelessWidget {
             ),
           ),
         const SizedBox(height: AppSize.s12),
-        Wrap(spacing: 8, runSpacing: 8, children: chips),
+        if (chips.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: ColorManager.backgroundPrimary,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: ColorManager.primary.withOpacity(0.08)),
+            ),
+            child: Text(
+              hint ?? 'Nothing added yet.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: ColorManager.textSecondary,
+              ),
+            ),
+          )
+        else
+          Wrap(spacing: 8, runSpacing: 8, children: chips),
       ],
     );
   }

@@ -121,11 +121,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({required this.service}) : super(ChatInitial()) {
     on<LoadMessages>(_onLoadMessages);
     on<SendMessage>(_onSendMessage);
-    on<UploadAndSendAttachment>(_onUploadAndSendAttachment); // <-- ADDED
+    on<UploadAndSendAttachment>(_onUploadAndSendAttachment);
     on<SendCallStateMessage>(_onSendCallStateMessage);
     on<NewIncomingMessage>(_onNewIncomingMessage);
-    on<StartVoiceCall>(_onStartVoiceCall);
-    on<EndVoiceCall>(_onEndVoiceCall);
+    // Removed StartVoiceCall and EndVoiceCall handlers to avoid conflict with CallBloc
   }
 
   Future<void> _onLoadMessages(LoadMessages e, Emitter<ChatState> emit) async {
@@ -243,20 +242,27 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       log('Message sent successfully, adding to UI...');
 
       // Optimistically add the new message to the UI immediately
-      final updatedMessages = List<Map<String, dynamic>>.from(
-        currentState.messages,
-      )..add(newMessage);
-      final newMessageId = newMessage['id']?.toString();
-      if (newMessageId != null) {
-        _seenMessageIds.add(newMessageId);
+      if (state is ChatLoaded) {
+        final currentMessages = List<Map<String, dynamic>>.from(
+          (state as ChatLoaded).messages,
+        );
+        // Check if already exists (from realtime)
+        final existingIndex = currentMessages.indexWhere(
+          (m) => m['id'] == newMessage['id'],
+        );
+        if (existingIndex == -1) {
+          currentMessages.add(newMessage);
+        } else {
+          currentMessages[existingIndex] = newMessage;
+        }
+
+        final newMessageId = newMessage['id']?.toString();
+        if (newMessageId != null) {
+          _seenMessageIds.add(newMessageId);
+        }
+
+        emit((state as ChatLoaded).copyWith(messages: currentMessages));
       }
-      emit(
-        ChatLoaded(
-          messages: updatedMessages,
-          inCall: currentState.inCall,
-          isUploading: currentState.isUploading,
-        ),
-      );
       log('Message added to UI successfully');
     } catch (err, stackTrace) {
       log('Error in _onSendMessage: $err');
@@ -266,7 +272,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
   // --- END OF MODIFICATION ---
 
-  // --- NEW HANDLER: _onUploadAndSendAttachment ---
+  // --- NEW HANDLER: _onUploadAndSendAttachment with Retry Logic ---
   Future<void> _onUploadAndSendAttachment(
     UploadAndSendAttachment e,
     Emitter<ChatState> emit,
@@ -315,6 +321,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
 
+    // Create temporary message ID for optimistic update
+    final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
     try {
       // Check if file exists
       final fileExists = await e.file.exists();
@@ -323,61 +332,193 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         throw Exception('File does not exist at path: ${e.file.path}');
       }
 
-      // Emit loading state
-      log('Emitting loading state...');
-      emit(currentState.copyWith(isUploading: true));
+      final fileSize = await e.file.length();
+      log('File size: $fileSize bytes');
 
-      // 1. Upload the file
-      log('Starting file upload for voice message: ${e.fileName}');
-      log('File size: ${await e.file.length()} bytes');
-      final attachmentUrl = await service.uploadChatAttachment(
-        e.file,
-        e.fileName,
-        e.messageType,
+      // Create optimistic message for immediate UI feedback
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      final optimisticMessage = {
+        'id': tempMessageId,
+        'request_id': e.requestId,
+        'sender_id': currentUser?.id,
+        'content': e.fileName,
+        'message_type': e.messageType,
+        'created_at': DateTime.now().toIso8601String(),
+        'attachment_url': null,
+        'attachment_signed_url': null,
+        '_status': 'sending', // Custom field to track upload status
+        'user_profiles': {
+          'username': 'You',
+          'profile_image': null,
+          'role': 'user',
+        },
+        'local_path':
+            e.file.path, // <-- ADDED: Store local path for immediate display
+      };
+
+      // Add optimistic message to UI immediately
+      final messagesWithOptimistic = List<Map<String, dynamic>>.from(
+        currentState.messages,
+      )..add(optimisticMessage);
+
+      emit(
+        ChatLoaded(
+          messages: messagesWithOptimistic,
+          inCall: currentState.inCall,
+          isUploading: true,
+        ),
       );
-      log('File uploaded successfully to: $attachmentUrl');
+      log('Optimistic message added to UI');
 
-      // 2. Send the message with the URL - await it directly instead of adding event
-      log('Sending message with attachment URL: $attachmentUrl');
-      final newMessage = await service.sendMessage(
-        e.requestId,
-        e.fileName, // Use file name as content
-        messageType: e.messageType,
-        attachmentUrl: attachmentUrl,
-      );
-      log('Message sent successfully to Supabase');
-      log('Signed URL in newMessage: ${newMessage['attachment_signed_url']}');
+      // Retry logic for upload
+      const maxRetries = 3;
+      String? attachmentUrl;
+      Map<String, dynamic>? newMessage;
 
-      // Verify signed URL was generated
-      if (newMessage['attachment_signed_url'] == null) {
-        log('WARNING: Signed URL not generated, fetching manually...');
+      for (int attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          newMessage['attachment_signed_url'] = await service.createSignedUrl(
-            attachmentUrl,
+          log('Upload attempt $attempt of $maxRetries');
+
+          // 1. Upload the file with retry
+          attachmentUrl = await service.uploadChatAttachment(
+            e.file,
+            e.fileName,
+            e.messageType,
           );
-          log(
-            'Manually fetched signed URL: ${newMessage['attachment_signed_url']}',
+          log('File uploaded successfully to: $attachmentUrl');
+
+          // 2. Send the message with the URL
+          log('Sending message with attachment URL: $attachmentUrl');
+          newMessage = await service.sendMessage(
+            e.requestId,
+            e.fileName,
+            messageType: e.messageType,
+            attachmentUrl: attachmentUrl,
           );
+          log('Message sent successfully to Supabase');
+
+          // Success - break out of retry loop
+          break;
         } catch (e) {
-          log('ERROR: Failed to fetch signed URL manually: $e');
+          log('Attempt $attempt failed: $e');
+          if (attempt < maxRetries) {
+            // Exponential backoff: wait 1s, 2s, 4s
+            final delaySeconds = attempt * attempt;
+            log('Retrying in $delaySeconds seconds...');
+            await Future.delayed(Duration(seconds: delaySeconds));
+          } else {
+            // All retries exhausted
+            rethrow;
+          }
         }
       }
 
-      // Optimistically add the new message to the UI immediately
-      final updatedMessages = List<Map<String, dynamic>>.from(
-        currentState.messages,
-      )..add(newMessage);
-      final newMessageId = newMessage['id']?.toString();
-      if (newMessageId != null) {
-        _seenMessageIds.add(newMessageId);
+      if (newMessage == null) {
+        throw Exception('Failed to send message after $maxRetries attempts');
       }
-      emit(
-        ChatLoaded(
-          messages: updatedMessages,
-          inCall: currentState.inCall,
-          isUploading: false,
-        ),
+
+      log('Message from database: ${newMessage.keys.join(", ")}');
+      log('attachment_url from DB: ${newMessage['attachment_url']}');
+      log(
+        'attachment_signed_url from DB: ${newMessage['attachment_signed_url']}',
       );
+
+      // CRITICAL: Ensure both attachment_url and signed URL are available
+      if (attachmentUrl != null) {
+        // Make sure attachment_url is set (it should be from sendMessage)
+        newMessage['attachment_url'] ??= attachmentUrl;
+        log('Ensured attachment_url is set: ${newMessage['attachment_url']}');
+
+        // Ensure signed URL is available for immediate display
+        if (newMessage['attachment_signed_url'] == null) {
+          log('Signed URL missing, fetching now...');
+          try {
+            final signedUrl = await service
+                .createSignedUrl(attachmentUrl)
+                .timeout(const Duration(seconds: 10));
+            newMessage['attachment_signed_url'] = signedUrl;
+            log('Successfully fetched signed URL: $signedUrl');
+          } catch (e) {
+            log('ERROR: Failed to fetch signed URL: $e');
+            // Try to use the attachment_url as fallback
+            log('Will rely on _ChatBubble to fetch signed URL lazily');
+          }
+        } else {
+          log(
+            'Signed URL already present: ${newMessage['attachment_signed_url']}',
+          );
+        }
+      }
+
+      // CRITICAL: Preserve local_path so the UI can continue to show the local file
+      // while the network URL is being processed or if it fails to load.
+      newMessage['local_path'] = e.file.path;
+      log('Preserved local_path in final message: ${e.file.path}');
+
+      // Mark as successfully sent
+      newMessage['_status'] = 'sent';
+
+      // Update state safely using the LATEST state
+      if (state is ChatLoaded) {
+        final currentMessages = List<Map<String, dynamic>>.from(
+          (state as ChatLoaded).messages,
+        );
+
+        // Remove optimistic message
+        // We use a more robust removal strategy to ensure it's gone
+        currentMessages.removeWhere((m) {
+          final isIdMatch = m['id'] == tempMessageId;
+          final isOptimisticMatch =
+              m['_status'] == 'sending' &&
+              m['content'] == e.fileName &&
+              m['message_type'] == e.messageType;
+          // Also check by local path if available
+          final isPathMatch =
+              m['local_path'] != null && m['local_path'] == e.file.path;
+          return isIdMatch || isOptimisticMatch || isPathMatch;
+        });
+
+        // Check if message already exists (from realtime)
+        // Use toString() for safe comparison regardless of type (int vs String)
+        final newMessageIdStr = newMessage['id']?.toString();
+        final existingIndex = currentMessages.indexWhere(
+          (m) => m['id']?.toString() == newMessageIdStr,
+        );
+
+        if (existingIndex != -1) {
+          // Update existing message (merge to keep any other updates)
+          log(
+            'Merging with existing real-time message at index $existingIndex',
+          );
+          final existingMsg = currentMessages[existingIndex];
+
+          // We want to keep the local_path we just added, but also respect
+          // any newer data from real-time (though our newMessage is likely freshest for own fields)
+          currentMessages[existingIndex] = {
+            ...existingMsg,
+            ...newMessage,
+            // Ensure local_path is definitely kept
+            'local_path': e.file.path,
+          };
+        } else {
+          // Add new message
+          log('Adding new message to list (not found in real-time yet)');
+          // Ensure local_path is present in the new message being added
+          newMessage['local_path'] = e.file.path;
+          currentMessages.add(newMessage);
+        }
+
+        if (newMessageIdStr != null) {
+          _seenMessageIds.add(newMessageIdStr);
+        }
+
+        emit(
+          (state as ChatLoaded).copyWith(
+            messages: currentMessages,
+            isUploading: false,
+          ),
+        );
+      }
       log('=== UploadAndSendAttachment completed successfully ===');
     } catch (err, stackTrace) {
       log("=== ERROR in _onUploadAndSendAttachment ===");
@@ -385,23 +526,34 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       log("Error type: ${err.runtimeType}");
       log("Error details: ${err.toString()}");
       log("Stack trace: $stackTrace");
-      // Restore previous state on error - reload messages to get current state
-      try {
-        final messages = await service.fetchMessages(e.requestId);
-        emit(ChatLoaded(messages: messages, isUploading: false));
-        // Emit error state so the listener can show it to the user
-        // Note: This will be received by the listener, then the builder will see ChatError
-        // but the chat_view handles this by checking if state is ChatLoaded first
-        emit(
-          ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+
+      // Remove optimistic message and restore previous state safely
+      if (state is ChatLoaded) {
+        final currentMessages = List<Map<String, dynamic>>.from(
+          (state as ChatLoaded).messages,
         );
-      } catch (e) {
-        // If we can't reload messages, just emit error state
+        currentMessages.removeWhere((m) {
+          final isIdMatch = m['id'] == tempMessageId;
+          final isOptimisticMatch =
+              m['_status'] == 'sending' &&
+              m['content'] == e.fileName &&
+              m['message_type'] == e.messageType;
+          return isIdMatch || isOptimisticMatch;
+        });
+
         emit(
-          ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+          (state as ChatLoaded).copyWith(
+            messages: currentMessages,
+            isUploading: false,
+          ),
         );
       }
-      log("=== Error handled, state restored ===");
+
+      // Emit error for user feedback
+      emit(
+        ChatError(ErrorHandler.handleError(err, context: 'UploadAttachment')),
+      );
+      log("=== Error handled, optimistic message removed ===");
     }
   }
   // --- END OF NEW HANDLER ---
@@ -449,11 +601,84 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     if (state is! ChatLoaded) return;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final id = e.raw['id']?.toString();
+
+    // Check if this is a duplicate message
     if (id != null && _seenMessageIds.contains(id)) {
-      log('Skipping duplicate message: $id');
+      log('Message $id already seen, checking if it needs updating...');
+
+      final messageType = e.raw['message_type'] as String?;
+      final isAttachmentMessage =
+          messageType == 'image' ||
+          messageType == 'audio' ||
+          messageType == 'file';
+
+      if (isAttachmentMessage) {
+        final current = (state as ChatLoaded);
+        final messages = List<Map<String, dynamic>>.from(current.messages);
+        final index = messages.indexWhere((m) => m['id']?.toString() == id);
+        if (index != -1) {
+          final updatedMessage = Map<String, dynamic>.from(messages[index])
+            ..addAll(e.raw);
+
+          // Ensure user profile is set
+          if (updatedMessage['user_profiles'] == null &&
+              updatedMessage['sender_id'] != null) {
+            try {
+              final userProfile = await _supabaseService.getUserProfile(
+                updatedMessage['sender_id'],
+              );
+              if (userProfile != null) {
+                updatedMessage['user_profiles'] = {
+                  'username': userProfile.username,
+                  'profile_image': _supabaseService.getProfileImageUrl(
+                    userProfile.profileImage,
+                  ),
+                  'role': userProfile.role,
+                };
+              }
+            } catch (error) {
+              log('Error fetching user profile for update: $error');
+            }
+          }
+
+          // Ensure signed URL exists
+          final attachmentPath = updatedMessage['attachment_url'] as String?;
+          if (attachmentPath != null &&
+              updatedMessage['attachment_signed_url'] == null) {
+            try {
+              log('Duplicate message missing signed URL, fetching now...');
+              updatedMessage['attachment_signed_url'] = await service
+                  .createSignedUrl(attachmentPath)
+                  .timeout(const Duration(seconds: 10));
+              log('Signed URL attached to duplicate message');
+            } catch (error) {
+              log('Failed to fetch signed URL for duplicate message: $error');
+            }
+          }
+
+          messages[index] = updatedMessage;
+
+          final isOwnMessage =
+              currentUserId != null &&
+              updatedMessage['sender_id'] == currentUserId;
+          final shouldClearUploading = current.isUploading && isOwnMessage;
+
+          log('Updated duplicate attachment message $id');
+          emit(
+            ChatLoaded(
+              messages: messages,
+              inCall: current.inCall,
+              isUploading: shouldClearUploading ? false : current.isUploading,
+            ),
+          );
+          return;
+        }
+      }
       return;
     }
+
     if (id != null) _seenMessageIds.add(id);
 
     final current = (state as ChatLoaded);
@@ -510,7 +735,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         newMessage['attachment_signed_url'] == null) {
       try {
         log('Fetching signed URL for attachment: $attachmentPath');
-        final signedUrl = await service.createSignedUrl(attachmentPath);
+        final signedUrl = await service
+            .createSignedUrl(attachmentPath)
+            .timeout(const Duration(seconds: 10));
         newMessage['attachment_signed_url'] = signedUrl;
         log('Signed URL fetched successfully');
       } catch (error) {
@@ -519,73 +746,41 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
 
-    final updated = List<Map<String, dynamic>>.from(current.messages)
-      ..add(newMessage);
+    final currentMessages = List<Map<String, dynamic>>.from(current.messages);
+
+    // Check for optimistic match and replace it
+    final optimisticIndex = currentMessages.indexWhere(
+      (m) =>
+          m['_status'] == 'sending' &&
+          m['content'] == newMessage['content'] &&
+          m['message_type'] == newMessage['message_type'],
+    );
+
+    if (optimisticIndex != -1) {
+      log('Replacing optimistic message with real message $id');
+      // Preserve local_path from optimistic message
+      newMessage['local_path'] = currentMessages[optimisticIndex]['local_path'];
+      currentMessages[optimisticIndex] = newMessage;
+    } else {
+      currentMessages.add(newMessage);
+    }
+
+    final isOwnMessage =
+        currentUserId != null && newMessage['sender_id'] == currentUserId;
+    final shouldClearUploading = current.isUploading && isOwnMessage;
 
     log('Emitting updated chat state with new message');
     emit(
       ChatLoaded(
-        messages: updated,
+        messages: currentMessages,
         inCall: current.inCall,
-        isUploading: current.isUploading, // <-- Pass the uploading state
+        isUploading: shouldClearUploading ? false : current.isUploading,
       ),
     );
   }
 
-  Future<void> _onStartVoiceCall(
-    StartVoiceCall e,
-    Emitter<ChatState> emit,
-  ) async {
-    await [Permission.microphone].request();
-
-    _engine ??= createAgoraRtcEngine();
-    await _engine!.initialize(RtcEngineContext(appId: agoraAppId));
-
-    _engine!.registerEventHandler(
-      RtcEngineEventHandler(
-        onJoinChannelSuccess: (connection, elapsed) {
-          if (state is ChatLoaded) {
-            final loaded = state as ChatLoaded;
-            emit(
-              ChatLoaded(
-                messages: loaded.messages,
-                inCall: true,
-                isUploading: loaded.isUploading, // <-- Pass the uploading state
-              ),
-            );
-          }
-          emit(ChatCallStarted(e.channelId, e.uid));
-        },
-      ),
-    );
-
-    final token = await service.fetchAgoraToken(e.channelId, e.uid);
-    await _engine!.joinChannel(
-      token: token,
-      channelId: e.channelId,
-      uid: e.uid,
-      options: const ChannelMediaOptions(
-        clientRoleType: ClientRoleType.clientRoleBroadcaster,
-      ),
-    );
-  }
-
-  Future<void> _onEndVoiceCall(EndVoiceCall e, Emitter<ChatState> emit) async {
-    if (_engine != null) {
-      await _engine!.leaveChannel();
-    }
-    if (state is ChatLoaded) {
-      final loaded = state as ChatLoaded;
-      emit(
-        ChatLoaded(
-          messages: loaded.messages,
-          inCall: false,
-          isUploading: loaded.isUploading, // <-- Pass the uploading state
-        ),
-      );
-    }
-    emit(ChatCallEnded());
-  }
+  // Removed _onStartVoiceCall and _onEndVoiceCall methods
+  // Call logic is now exclusively handled by CallBloc
 
   @override
   Future<void> close() async {

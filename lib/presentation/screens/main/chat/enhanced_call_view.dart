@@ -132,8 +132,12 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         },
         builder: (context, callState) {
           // Track call duration
-          if (callState is CallOngoing && _callStartTime == null) {
-            _callStartTime = DateTime.now();
+          if (callState is CallOngoing) {
+            if (callState.startTime != null) {
+              _callStartTime = callState.startTime;
+            } else if (_callStartTime == null) {
+              _callStartTime = DateTime.now();
+            }
           }
 
           if (callState is CallOngoing && _callStartTime != null) {

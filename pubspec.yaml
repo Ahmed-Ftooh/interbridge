@@ -57,6 +57,7 @@ dependencies:
   flutter_rating_bar: ^4.0.1         # For the 5-star rating dialog
 
   audioplayers: ^6.5.1
+  url_launcher: ^6.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -116,5 +117,7 @@ flutter:
         - asset: assets/fonts/Quicksand-Light.ttf
           weight: 300
   
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

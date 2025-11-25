@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'dart:convert';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +8,7 @@ import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:get_it/get_it.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
   final SupabaseService supabase = GetIt.I<SupabaseService>();
@@ -53,13 +53,12 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       }
 
       // Sign up the user only. Defer profile creation until email verified
-      final authResponse = await supabase.signUp(
+      // Supabase automatically sends confirmation email during signUp
+      await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
       );
-      await supabase.sendEmailOtp(event.email);
-      final userId = authResponse.user?.id;
-      if (userId == null) throw Exception('Registration failed');
+      await supabase.sendMagicLink(event.email);
 
       // Persist pending registration locally
       final pending = {
@@ -120,23 +119,12 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         return;
       }
 
-      log('DEBUG: Starting registration for ${event.role}');
-      log('DEBUG: Languages: ${event.languages}');
-      log('DEBUG: Skills: ${event.skillIds}');
-      log('DEBUG: Specializations: ${event.specializationIds}');
-
-      // Sign up only; defer DB writes until email is verified
-      final authResponse = await supabase.signUp(
+      // Sign up only; defer most DB writes until email is verified
+      await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
       );
-      final userId = authResponse.user?.id;
-      if (userId == null) throw Exception('Registration failed');
-
-      log('DEBUG: User created with ID: $userId');
-
-      // Wait a moment for the auth context to be established
-      await Future.delayed(const Duration(milliseconds: 500));
+      // await supabase.sendMagicLink(event.email); // Redundant
 
       // Persist pending registration locally
       final pending = {
@@ -153,21 +141,38 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'certificateUrl': event.certificateUrl,
         'voiceSamplePath': event.voiceSamplePath,
         'certificatePath': event.certificatePath,
+        'bio': event.bio,
+        'yearsExperience': event.yearsExperience,
       };
       await GetIt.I<AppPreferences>().savePendingRegistration(
         jsonEncode(pending),
       );
 
-      log('DEBUG: Registration completed successfully');
       emit(RegisterSuccess());
     } catch (e) {
-      log('DEBUG: Registration failed with error: $e');
       final appError = ErrorHandler.handleAuthError(e);
       emit(RegisterFailure(appError.message));
     }
   }
 
-  // (removed) helper not used anymore; registration writes deferred
+  Future<void> _signUpAllowingPendingConfirmation({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await supabase.signUp(email: email, password: password);
+    } on AuthException catch (e) {
+      // If the error is just that email is not confirmed, we can proceed
+      // because we want to show the confirmation screen anyway.
+      // Note: Supabase usually returns success with null session for this case,
+      // but if it throws, we catch it here.
+      if (e.message.contains('not confirmed') ||
+          e.message.contains('security purposes')) {
+        return;
+      }
+      rethrow;
+    }
+  }
 
   // Helper method to validate registration data
   String? _validateRegistrationData(RegisterSubmitted event) {

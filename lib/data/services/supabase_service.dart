@@ -3,10 +3,12 @@ import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/core/deeplink_config.dart';
 import '../models/user_profile.dart';
 import '../models/interpreter_language.dart';
 import '../models/interpreter_specialization.dart';
 import '../models/interpreter_skill.dart';
+import '../models/interpreter_language_skill.dart';
 import '../models/interpreter_details.dart';
 import '../models/specialization.dart';
 import '../models/skill.dart';
@@ -27,20 +29,21 @@ class SupabaseService {
     required String email,
     required String password,
   }) async {
-    return await _client.auth.signUp(email: email, password: password);
+    return await _client.auth.signUp(
+      email: email,
+      password: password,
+      emailRedirectTo: kAuthCallbackUrl,
+    );
   }
 
   Future<void> sendEmailOtp(String email) async {
-    try {
-      await _client.auth.signInWithOtp(
-        email: email,
-        // You can specify a redirect URL after verification (optional
-        shouldCreateUser: true, // creates a new user if not registered
-      );
-      print('OTP sent to $email');
-    } catch (e) {
-      print('Error sending OTP: $e');
-    }
+    // Send magic link for verification
+    await _client.auth.signInWithOtp(email: email, shouldCreateUser: false);
+  }
+
+  Future<void> sendMagicLink(String email) async {
+    // Send magic link for verification
+    await _client.auth.signInWithOtp(email: email, shouldCreateUser: false);
   }
 
   Future<void> sendPasswordResetEmail({required String email}) async {
@@ -57,13 +60,13 @@ class SupabaseService {
     await _client.auth.updateUser(UserAttributes(password: newPassword));
   }
 
-  Future<void> verifyEmailOtp({
+  Future<void> verifyMagicLink({
     required String email,
     required String token,
   }) async {
     await _client.auth.verifyOTP(
       token: token,
-      type: OtpType.signup,
+      type: OtpType.magiclink,
       email: email,
     );
   }
@@ -131,12 +134,8 @@ class SupabaseService {
   Future<void> createUserProfileAfterSignUp(UserProfile profile) async {
     // Method specifically for creating profile after signup
     try {
-      log('DEBUG: Creating user profile for user ID: ${profile.id}');
-      log('DEBUG: Profile data: ${profile.toJson()}');
-
       // Check if user is authenticated
       final user = _client.auth.currentUser;
-      log('DEBUG: Current authenticated user: ${user?.id}');
 
       // Ensure the profile user_id matches the authenticated user
       if (user != null && profile.id != user.id) {
@@ -153,21 +152,15 @@ class SupabaseService {
         // created_at will be set automatically by the database
       };
 
-      log('DEBUG: Inserting data: $data');
-
       // Ensure we're using the authenticated user's context
       if (user == null) {
         throw Exception('User must be authenticated to create profile');
       }
 
-      final response = await _client.from('users_profile').insert(data);
-      log('DEBUG: Profile creation successful: $response');
+      await _client.from('users_profile').insert(data);
     } catch (e) {
-      log('DEBUG: Error in createUserProfileAfterSignUp: $e');
-
       // Try alternative approach with explicit error handling
       try {
-        log('DEBUG: Attempting fallback profile creation method');
         final fallbackData = {
           'user_id': profile.id,
           'username': profile.username ?? '',
@@ -176,11 +169,8 @@ class SupabaseService {
           'gender': profile.gender ?? '',
         };
 
-        log('DEBUG: Fallback data: $fallbackData');
         await _client.from('users_profile').insert(fallbackData);
-        log('DEBUG: Fallback profile creation successful');
       } catch (e2) {
-        log('DEBUG: Fallback profile creation also failed: $e2');
         throw Exception('Failed to create user profile: $e2');
       }
     }
@@ -277,15 +267,48 @@ class SupabaseService {
         .eq('skill_id', skillId);
   }
 
+  // --- LANGUAGE-SPECIFIC SKILL MAP ---
+  Future<List<InterpreterLanguageSkill>> getInterpreterLanguageSkills(
+    String userId,
+  ) async {
+    final List data = await _client
+        .from('interpreter_language_skills')
+        .select()
+        .eq('user_id', userId);
+    return data.map((e) => InterpreterLanguageSkill.fromJson(e)).toList();
+  }
+
+  Future<void> replaceInterpreterLanguageSkills(
+    String userId,
+    int languageId,
+    Set<int> skillIds,
+  ) async {
+    final table = _client.from('interpreter_language_skills');
+    await table.delete().eq('user_id', userId).eq('language_id', languageId);
+    if (skillIds.isEmpty) return;
+    final rows =
+        skillIds
+            .map(
+              (skillId) => {
+                'user_id': userId,
+                'language_id': languageId,
+                'skill_id': skillId,
+              },
+            )
+            .toList();
+    await table.insert(rows);
+  }
+
   // --- INTERPRETER DETAILS ---
   Future<InterpreterDetails?> getInterpreterDetails(String userId) async {
-    final response =
-        await _client
-            .from('interpreter_details')
-            .select()
-            .eq('user_id', userId)
-            .single();
-    return InterpreterDetails.fromJson(response);
+    // Use a safe select to avoid exceptions for non-interpreters
+    final List data = await _client
+        .from('interpreter_details')
+        .select()
+        .eq('user_id', userId)
+        .limit(1);
+    if (data.isEmpty) return null;
+    return InterpreterDetails.fromJson(data.first);
   }
 
   Future<void> createInterpreterDetails(InterpreterDetails details) async {
@@ -304,6 +327,8 @@ class SupabaseService {
     String userId, {
     String? voiceSampleUrl,
     String? certificateUrl,
+    String? bio,
+    int? yearsExperience,
   }) async {
     final updateData = <String, dynamic>{};
     if (voiceSampleUrl != null) {
@@ -311,6 +336,12 @@ class SupabaseService {
     }
     if (certificateUrl != null) {
       updateData['certificate_url'] = certificateUrl;
+    }
+    if (bio != null) {
+      updateData['bio'] = bio;
+    }
+    if (yearsExperience != null) {
+      updateData['years_experience'] = yearsExperience;
     }
 
     if (updateData.isNotEmpty) {
@@ -324,7 +355,15 @@ class SupabaseService {
   // --- SPECIALIZATION ---
   Future<List<Specialization>> getSpecializations() async {
     final List data = await _client.from('specializations').select();
-    return data.map((e) => Specialization.fromJson(e)).toList();
+    final specializations =
+        data.map((e) => Specialization.fromJson(e)).toList();
+    // Filter out "None of the above" option from the list (check multiple variations)
+    return specializations.where((s) {
+      final name = s.name.toLowerCase().trim();
+      return name != 'none of the above' &&
+          name != 'noneoftheabove' &&
+          !name.contains('none of the above');
+    }).toList();
   }
 
   // --- SKILL ---
@@ -364,6 +403,189 @@ class SupabaseService {
     await LanguageCacheService().cacheLanguages(languages);
 
     return languages;
+  }
+
+  Future<void> finalizePendingRegistrationData(
+    Map<String, dynamic> data,
+    String userId,
+  ) async {
+    final role = (data['role'] as String?) ?? 'requester';
+    final username = (data['username'] as String?) ?? '';
+    final profile = UserProfile(
+      id: userId,
+      role: role,
+      username: username,
+      profileImage: data['profileImage'],
+      gender: data['gender'],
+    );
+
+    try {
+      await createUserProfileAfterSignUp(profile);
+    } catch (_) {}
+
+    if (role != 'interpreter') {
+      return;
+    }
+
+    try {
+      await createInterpreterDetails(
+        InterpreterDetails(
+          userId: userId,
+          bio: data['bio'] as String?,
+          yearsExperience:
+              data['yearsExperience'] is int
+                  ? data['yearsExperience'] as int
+                  : int.tryParse(data['yearsExperience']?.toString() ?? ''),
+        ),
+      );
+    } catch (_) {}
+
+    final langs = (data['languages'] as List?)?.cast<String>() ?? [];
+    final fluencyRaw = data['fluency'];
+    final Map<String, dynamic> fluencyMap =
+        fluencyRaw is Map
+            ? fluencyRaw.map((k, v) => MapEntry(k.toString(), v))
+            : {};
+
+    for (final langIdStr in langs) {
+      final languageId = int.tryParse(langIdStr);
+      if (languageId == null || languageId <= 0) continue;
+      final fluencyName = fluencyMap[langIdStr]?.toString();
+      final fluencyId = _mapFluencyNameToId(fluencyName);
+      try {
+        await addInterpreterLanguage(
+          InterpreterLanguage(
+            userId: userId,
+            languageId: languageId,
+            fluencyId: fluencyId,
+          ),
+        );
+      } catch (_) {}
+    }
+
+    final skills = _parseIntList(data['skillIds'] ?? data['skills']);
+    for (final skillId in skills) {
+      if (skillId <= 0) continue;
+      try {
+        await addInterpreterSkill(
+          InterpreterSkill(userId: userId, skillId: skillId),
+        );
+      } catch (e) {
+        log('Error adding skill $skillId: $e');
+      }
+    }
+
+    // Also map skills to all languages
+    if (skills.isNotEmpty) {
+      for (final langIdStr in langs) {
+        final languageId = int.tryParse(langIdStr);
+        if (languageId == null || languageId <= 0) continue;
+        try {
+          await replaceInterpreterLanguageSkills(
+            userId,
+            languageId,
+            skills.toSet(),
+          );
+        } catch (e) {
+          log('Error mapping skills to language $languageId: $e');
+        }
+      }
+    }
+
+    final specs = _parseIntList(
+      data['specializationIds'] ?? data['specializations'],
+    );
+    for (final specId in specs) {
+      if (specId <= 0) continue;
+      try {
+        await addInterpreterSpecialization(
+          InterpreterSpecialization(userId: userId, specializationId: specId),
+        );
+      } catch (e) {
+        log('Error adding specialization $specId: $e');
+      }
+    }
+
+    final voiceUrl = data['voiceSampleUrl'] as String?;
+    String? certUrl = data['certificateUrl'] as String?;
+    final certPath = data['certificatePath'] as String?;
+    if ((certUrl == null || certUrl.isEmpty) &&
+        certPath != null &&
+        certPath.isNotEmpty) {
+      try {
+        final file = File(certPath);
+        if (await file.exists()) {
+          certUrl = await uploadInterpreterCertificate(
+            file,
+            certificateType: 'onboarding',
+          );
+        }
+      } catch (_) {}
+    }
+
+    final years =
+        data['yearsExperience'] is int
+            ? data['yearsExperience'] as int
+            : int.tryParse(data['yearsExperience']?.toString() ?? '');
+
+    if (voiceUrl != null ||
+        certUrl != null ||
+        data['bio'] != null ||
+        years != null) {
+      await updateInterpreterDetailsWithUrls(
+        userId,
+        voiceSampleUrl: voiceUrl,
+        // Don't pass certificateUrl - it's already stored in interpreter_certificates table
+        bio: data['bio'] as String?,
+        yearsExperience: years,
+      );
+    }
+  }
+
+  int _mapFluencyNameToId(String? name) {
+    switch (name) {
+      case 'Beginner':
+        return 1;
+      case 'Intermediate':
+        return 2;
+      case 'Upper Intermediate':
+        return 3;
+      case 'Native Or Fluent':
+        return 4;
+      default:
+        return 1;
+    }
+  }
+
+  List<int> _parseIntList(dynamic raw) {
+    if (raw is List) {
+      return raw
+          .map((e) => e is int ? e : int.tryParse('$e'))
+          .whereType<int>()
+          .toList();
+    }
+    return <int>[];
+  }
+
+  /// Languages that currently have at least one interpreter registered
+  Future<List<Language>> getSupportedInterpreterLanguages() async {
+    final List data = await _client
+        .from('languages')
+        .select('id, name, interpreter_languages!inner(user_id)')
+        .order('name');
+
+    final seenLanguageIds = <int>{};
+    final supported = <Language>[];
+    for (final row in data) {
+      final langId = row['id'];
+      final interpreterEntries = row['interpreter_languages'];
+      final hasInterpreter =
+          interpreterEntries is List && interpreterEntries.isNotEmpty;
+      if (langId is int && hasInterpreter && seenLanguageIds.add(langId)) {
+        supported.add(Language.fromJson(row));
+      }
+    }
+    return supported;
   }
 
   // --- FLUENCY LEVEL ---
@@ -531,7 +753,7 @@ class SupabaseService {
     }
   }
 
-  /// Upload an interpreter certificate file and return its public URL
+  /// Upload an interpreter certificate file to a PRIVATE bucket and return a signed URL
   Future<String> uploadInterpreterCertificate(
     File certificateFile, {
     String? certificateType,
@@ -573,39 +795,30 @@ class SupabaseService {
       final objectPath =
           'certificates/${user.id}/${dateStr}_${certType}_$safeName';
 
-      // Try preferred bucket, fallback to 'documents' if not found
-      String bucket = 'documents';
-      try {
-        await _client.storage
-            .from(bucket)
-            .uploadBinary(
-              objectPath,
-              await certificateFile.readAsBytes(),
-              fileOptions: FileOptions(
-                upsert: true,
-                contentType: _getContentType(extension),
-              ),
-            );
-      } catch (_) {
-        bucket = 'documents';
-        await _client.storage
-            .from(bucket)
-            .uploadBinary(
-              objectPath,
-              await certificateFile.readAsBytes(),
-              fileOptions: FileOptions(
-                upsert: true,
-                contentType: _getContentType(extension),
-              ),
-            );
-      }
+      // Upload to a private onboarding bucket
+      // NOTE: Ensure a private bucket named 'onboarding' exists with appropriate RLS.
+      const bucket = 'onboarding';
+      await _client.storage
+          .from(bucket)
+          .uploadBinary(
+            objectPath,
+            await certificateFile.readAsBytes(),
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: _getContentType(extension),
+            ),
+          );
 
-      final publicUrl = _client.storage.from(bucket).getPublicUrl(objectPath);
+      // Generate a signed URL (valid for 7 days)
+      final signedUrl = await _client.storage
+          .from(bucket)
+          .createSignedUrl(objectPath, 60 * 60 * 24 * 7);
 
       // Store certificate metadata in database
       await _storeCertificateMetadata(
         userId: user.id,
-        url: publicUrl,
+        url: signedUrl,
+        storagePath: objectPath,
         certificateType: certType,
         issuingOrganization: issuingOrganization,
         expirationDate: expirationDate,
@@ -614,7 +827,7 @@ class SupabaseService {
         timestamp: DateTime.now(),
       );
 
-      return publicUrl;
+      return signedUrl;
     } catch (e) {
       throw Exception('Failed to upload interpreter certificate: $e');
     }
@@ -639,6 +852,7 @@ class SupabaseService {
   Future<void> _storeCertificateMetadata({
     required String userId,
     required String url,
+    required String storagePath,
     required String certificateType,
     required String? issuingOrganization,
     required DateTime? expirationDate,
@@ -650,6 +864,7 @@ class SupabaseService {
       await _client.from('interpreter_certificates').insert({
         'user_id': userId,
         'url': url,
+        'storage_path': storagePath,
         'certificate_type': certificateType,
         'issuing_organization': issuingOrganization,
         'expiration_date': expirationDate?.toIso8601String(),

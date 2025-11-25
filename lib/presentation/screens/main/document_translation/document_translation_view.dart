@@ -408,6 +408,21 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
   }
 
   Widget _buildLanguageSelection({required List<Language> langs}) {
+    if (langs.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSize.s20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppSize.s12),
+          border: Border.all(color: ColorManager.greyLight),
+        ),
+        child: Text(
+          'No supported languages available yet. Please check back soon.',
+          style: TextStyle(color: ColorManager.textSecondary, fontSize: 14),
+        ),
+      );
+    }
     return LanguagePairSelector(
       languages: langs,
       fromLanguage: _selectedFromLanguage,
@@ -504,10 +519,10 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
               children: [
                 Icon(Icons.mic_none_outlined, color: ColorManager.primary2),
                 const SizedBox(width: AppSize.s12),
-                Expanded(
+                const Expanded(
                   child: Text(
                     'Record a voice note',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1384,8 +1399,9 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
       if (user == null) throw Exception('User not authenticated');
 
       final file = File(path);
-      if (!await file.exists())
+      if (!await file.exists()) {
         throw Exception('File not found at path: $path');
+      }
 
       final bytes = await file.readAsBytes();
       final originalName = fileName ?? path.split(Platform.pathSeparator).last;

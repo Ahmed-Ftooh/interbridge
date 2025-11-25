@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
@@ -16,7 +17,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/screens/main/preview/embedded_audio_player.dart';
-import 'package:interbridge/app/di.dart'; // For ChatService instance
+// For ChatService instance
 import 'package:interbridge/data/services/chat_service.dart'; // For ChatService
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart' as perm_handler;
@@ -127,30 +128,35 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             // Call button
             BlocBuilder<ChatBloc, ChatState>(
               builder: (context, state) {
+                final isUploading = state is ChatLoaded && state.isUploading;
                 return IconButton(
                   icon: const Icon(Icons.call),
-                  onPressed: () {
-                    if (myId == null) return;
-                    context.read<ChatBloc>().add(
-                      SendMessage(
-                        requestId: widget.requestId,
-                        content: '__CALL_INVITE__',
-                      ),
-                    );
-                    context.read<CallBloc>().add(
-                      StartCall(
-                        channelId: widget.requestId,
-                        localUid: _uidFromUuid(myId),
-                      ),
-                    );
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder:
-                            (_) =>
-                                EnhancedCallScreen(channelId: widget.requestId),
-                      ),
-                    );
-                  },
+                  onPressed:
+                      isUploading
+                          ? null
+                          : () {
+                            if (myId == null) return;
+                            context.read<ChatBloc>().add(
+                              SendMessage(
+                                requestId: widget.requestId,
+                                content: '__CALL_INVITE__',
+                              ),
+                            );
+                            context.read<CallBloc>().add(
+                              StartCall(
+                                channelId: widget.requestId,
+                                localUid: _uidFromUuid(myId),
+                              ),
+                            );
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => EnhancedCallScreen(
+                                      channelId: widget.requestId,
+                                    ),
+                              ),
+                            );
+                          },
                 );
               },
             ),
@@ -228,14 +234,105 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
               },
             ),
             Expanded(
-              // --- ADDED BlocListener for Chat Errors ---
+              // --- ADDED BlocListener for Chat Errors and Session End ---
               child: BlocListener<ChatBloc, ChatState>(
                 listener: (context, state) {
+                  if (state is ChatLoaded && state.messages.isNotEmpty) {
+                    final lastMessage = state.messages.last;
+                    final content = lastMessage['content'];
+                    final senderId = lastMessage['sender_id'];
+                    final myId = Supabase.instance.client.auth.currentUser?.id;
+
+                    // Check for Session Ended message from the other party
+                    if (content == '__SESSION_ENDED__' && senderId != myId) {
+                      // Check if we already handled this specific message ID to avoid loops
+                      // (Though showDialog is modal, it's safer)
+                      // We can just show the dialog.
+
+                      // Ensure we aren't already showing a dialog or navigating
+                      // Ideally we should track this state, but for now:
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Session Ended'),
+                              content: const Text(
+                                'The other party has ended the session.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () async {
+                                    Navigator.of(context).pop(); // Close dialog
+
+                                    // End call if active
+                                    if (context.read<CallBloc>().state
+                                        is CallOngoing) {
+                                      context.read<CallBloc>().add(
+                                        EndCall(isRemote: true),
+                                      );
+                                    }
+
+                                    await SessionService.endSession(
+                                      requestId: widget.requestId,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.of(
+                                        context,
+                                      ).pushNamedAndRemoveUntil(
+                                        '/main',
+                                        (route) => false,
+                                      );
+                                    }
+                                  },
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                      );
+                    }
+                  }
+
                   if (state is ChatError) {
+                    // Show error as snackbar with actionable message
+                    String errorMessage = state.error.message;
+
+                    // Make error messages more user-friendly
+                    if (errorMessage.contains('timeout')) {
+                      errorMessage =
+                          'Upload timed out. Check your connection and try again.';
+                    } else if (errorMessage.contains('File does not exist')) {
+                      errorMessage =
+                          'Could not access the file. Please try again.';
+                    } else if (errorMessage.contains('File too large')) {
+                      errorMessage = 'File is too large. Maximum size is 50MB.';
+                    } else if (errorMessage.contains('storage')) {
+                      errorMessage = 'Storage error. Please try again later.';
+                    } else if (errorMessage.contains('not authenticated')) {
+                      errorMessage = 'Session expired. Please log in again.';
+                    }
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Error: ${state.error.message}'),
+                        content: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(errorMessage)),
+                          ],
+                        ),
                         backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 5),
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          },
+                        ),
                       ),
                     );
                   }
@@ -354,6 +451,9 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                             if (content == '__CALL_ENDED__') {
                               return false;
                             }
+                            if (content == '__SESSION_ENDED__') {
+                              return false;
+                            }
                             return true;
                           }).toList();
 
@@ -364,7 +464,13 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                         itemBuilder: (context, index) {
                           final m = filteredMessages[index];
                           final isMe = m['sender_id'] == myId;
-                          return _ChatBubble(message: m, isMe: isMe);
+                          final messageId =
+                              m['id']?.toString() ?? 'local_$index';
+                          return _ChatBubble(
+                            key: ValueKey(messageId),
+                            message: m,
+                            isMe: isMe,
+                          );
                         },
                       );
                     }
@@ -447,9 +553,15 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                     ),
                     // Send Button
                     const SizedBox(width: 4),
-                    IconButton(
-                      icon: Icon(Icons.send, color: ColorManager.primary2),
-                      onPressed: _send,
+                    BlocBuilder<ChatBloc, ChatState>(
+                      builder: (context, state) {
+                        final isUploading =
+                            state is ChatLoaded && state.isUploading;
+                        return IconButton(
+                          icon: Icon(Icons.send, color: ColorManager.primary2),
+                          onPressed: isUploading ? null : _send,
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -486,39 +598,59 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   }
 
   void _showEndSessionDialog() {
+    // Capture blocs to avoid using dialog context
+    final chatBloc = context.read<ChatBloc>();
+    final callBloc = context.read<CallBloc>();
+
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (dialogContext) => AlertDialog(
             title: const Text('End Session'),
             content: const Text(
               'Are you sure you want to end this session? You will be returned to the home screen.',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(dialogContext).pop(),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
                   try {
-                    Navigator.of(context).pop();
-                    if (mounted) {
-                      if (context.read<CallBloc>().state is CallOngoing) {
-                        context.read<CallBloc>().add(EndCall());
-                        await Future.delayed(const Duration(milliseconds: 500));
-                      }
+                    Navigator.of(dialogContext).pop();
+
+                    // Send session ended message to notify the other party
+                    chatBloc.add(
+                      SendMessage(
+                        requestId: widget.requestId,
+                        content: '__SESSION_ENDED__',
+                        messageType: 'text',
+                      ),
+                    );
+
+                    if (callBloc.state is CallOngoing) {
+                      callBloc.add(EndCall());
+                      await Future.delayed(const Duration(milliseconds: 500));
                     }
-                    await SessionService.endSession();
+
+                    await SessionService.endSession(
+                      requestId: widget.requestId,
+                    );
+
+                    // Use the root navigator to ensure we exit the chat flow completely
                     if (mounted) {
                       Navigator.of(
                         context,
+                        rootNavigator: true,
                       ).pushNamedAndRemoveUntil('/main', (route) => false);
                     }
                   } catch (e) {
+                    log('Error ending session: $e');
                     if (mounted) {
                       Navigator.of(
                         context,
+                        rootNavigator: true,
                       ).pushNamedAndRemoveUntil('/main', (route) => false);
                     }
                   }
@@ -679,7 +811,7 @@ class _ChatBubble extends StatefulWidget {
   final Map<String, dynamic> message;
   final bool isMe;
 
-  const _ChatBubble({required this.message, required this.isMe});
+  const _ChatBubble({super.key, required this.message, required this.isMe});
 
   @override
   State<_ChatBubble> createState() => _ChatBubbleState();
@@ -689,67 +821,147 @@ class _ChatBubbleState extends State<_ChatBubble> {
   String? _signedUrl;
   bool _isLoadingUrl = false;
   bool _errorLoadingUrl = false;
-  late final String _messageType;
-  late final String? _attachmentPath;
+  String _messageType = 'text';
+  String? _attachmentPath;
+  String? _localPath; // <-- ADDED
   int _signedUrlRetryCount = 0;
   static const int _maxSignedUrlRetries = 3;
 
   @override
   void initState() {
     super.initState();
-    _messageType = widget.message['message_type'] ?? 'text';
-    _attachmentPath = widget.message['attachment_url'];
-    final existingSignedUrl = widget.message['attachment_signed_url'];
-    if (existingSignedUrl is String && existingSignedUrl.isNotEmpty) {
+    _syncFromMessage(logSource: 'initState');
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Resync when the message reference changes or signed URL updates
+    if (!mapEquals(widget.message, oldWidget.message)) {
+      setState(() {
+        _syncFromMessage(logSource: 'didUpdateWidget');
+      });
+    }
+  }
+
+  void _syncFromMessage({required String logSource}) {
+    final typeValue = widget.message['message_type'];
+    _messageType =
+        typeValue is String && typeValue.isNotEmpty ? typeValue : 'text';
+    final attachmentValue = widget.message['attachment_url'];
+    final newAttachmentPath =
+        attachmentValue is String
+            ? attachmentValue
+            : attachmentValue?.toString();
+    final signedUrlValue = widget.message['attachment_signed_url'];
+    final existingSignedUrl =
+        signedUrlValue is String ? signedUrlValue : signedUrlValue?.toString();
+
+    log('_ChatBubble $_messageType sync ($logSource):');
+    log('  message_id: ${widget.message['id']}');
+    log('  attachment_url: $newAttachmentPath');
+    log('  signed_url_present: ${existingSignedUrl != null}');
+
+    final localPathValue = widget.message['local_path']; // <-- ADDED
+    _localPath = localPathValue is String ? localPathValue : null; // <-- ADDED
+    log('  local_path: $_localPath'); // <-- ADDED
+
+    final pathChanged = newAttachmentPath != _attachmentPath;
+    _attachmentPath = newAttachmentPath;
+
+    if (existingSignedUrl != null && existingSignedUrl.isNotEmpty) {
       _signedUrl = existingSignedUrl;
+      _isLoadingUrl = false;
+      _errorLoadingUrl = false;
+      _signedUrlRetryCount = 0;
+    } else if (pathChanged) {
+      _signedUrl = null;
     }
 
-    // If it's a file type that needs a signed URL, fetch it
-    if (_signedUrl == null &&
-        (_messageType == 'image' ||
+    final needsSignedUrl = _needsSignedUrl();
+    if (_signedUrl == null && needsSignedUrl) {
+      _isLoadingUrl = true;
+      _errorLoadingUrl = false;
+      // Fetch on next frame to avoid calling setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _getSignedUrl();
+        }
+      });
+    }
+  }
+
+  bool _needsSignedUrl() {
+    // If we have a local path, we don't strictly need a signed URL immediately
+    if (_localPath != null && File(_localPath!).existsSync()) {
+      return false;
+    }
+    return (_messageType == 'image' ||
             _messageType == 'audio' ||
             _messageType == 'file') &&
-        _attachmentPath != null) {
-      _getSignedUrl();
-    }
+        (_attachmentPath?.isNotEmpty ?? false) &&
+        _signedUrl == null &&
+        !_isLoadingUrl &&
+        !_errorLoadingUrl;
   }
 
   Future<void> _getSignedUrl() async {
     final attachmentPath = _attachmentPath;
-    if (attachmentPath == null) return;
-    if (_isLoadingUrl) return;
-    setState(() {
-      _isLoadingUrl = true;
-      _errorLoadingUrl = false;
-    });
+    if (attachmentPath == null || attachmentPath.isEmpty) {
+      log('Cannot fetch signed URL: attachment path is null or empty');
+      return;
+    }
+
+    if (_signedUrlRetryCount >= _maxSignedUrlRetries) {
+      if (mounted) {
+        setState(() {
+          _isLoadingUrl = false;
+          _errorLoadingUrl = true;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingUrl = true;
+        _errorLoadingUrl = false;
+      });
+    }
 
     try {
-      final url = await instance<ChatService>().createSignedUrl(attachmentPath);
+      // Add timeout to prevent infinite loading
+      final url = await context
+          .read<ChatService>()
+          .createSignedUrl(attachmentPath)
+          .timeout(const Duration(seconds: 15));
+
       if (mounted) {
         setState(() {
           _signedUrl = url;
           _isLoadingUrl = false;
+          _errorLoadingUrl = false;
           _signedUrlRetryCount = 0;
         });
       }
     } catch (e) {
-      log('Error getting signed URL for $_attachmentPath: $e');
-      if (!mounted) return;
-
-      final shouldRetry = _signedUrlRetryCount < _maxSignedUrlRetries;
-      _signedUrlRetryCount += 1;
-
-      setState(() {
-        _isLoadingUrl = false;
-        _errorLoadingUrl = !shouldRetry;
-      });
-
-      if (shouldRetry) {
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            _getSignedUrl();
-          }
-        });
+      log(
+        'Error fetching signed URL (attempt ${_signedUrlRetryCount + 1}): $e',
+      );
+      if (mounted) {
+        _signedUrlRetryCount++;
+        if (_signedUrlRetryCount < _maxSignedUrlRetries) {
+          // Retry with backoff
+          Future.delayed(
+            Duration(seconds: _signedUrlRetryCount * 2),
+            _getSignedUrl,
+          );
+        } else {
+          setState(() {
+            _isLoadingUrl = false;
+            _errorLoadingUrl = true;
+          });
+        }
       }
     }
   }
@@ -760,6 +972,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
         widget.message['user_profiles'] as Map<String, dynamic>?;
     final username = userProfile?['username'] ?? (widget.isMe ? 'You' : 'User');
     final profileImage = userProfile?['profile_image'] as String?;
+    final messageStatus = widget.message['_status'] as String?;
 
     return Align(
       alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -836,6 +1049,48 @@ class _ChatBubbleState extends State<_ChatBubble> {
                                   const SizedBox(height: 2),
                                 ],
                                 _buildMessageContent(context),
+                                // Show status indicator for own messages
+                                if (widget.isMe && messageStatus != null) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (messageStatus == 'sending') ...[
+                                        const SizedBox(
+                                          width: 10,
+                                          height: 10,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.5,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'Sending...',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white70,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ] else if (messageStatus == 'sent') ...[
+                                        const Icon(
+                                          Icons.check_circle,
+                                          size: 12,
+                                          color: Colors.white70,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'Sent',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                   );
@@ -877,61 +1132,121 @@ class _ChatBubbleState extends State<_ChatBubble> {
       );
     }
 
-    // Use _signedUrl if it's available
+    // Use _signedUrl if it's available, otherwise check for local path
     final String? url = _signedUrl;
+    final String? localPath = _localPath;
+    final bool hasLocalFile = localPath != null && File(localPath).existsSync();
+    final bool isSending = widget.message['_status'] == 'sending';
 
     switch (_messageType) {
       case 'image':
-        if (url == null) return const Text('[Image not available]');
+        if (url == null && !hasLocalFile) {
+          return _buildAttachmentPlaceholder('image');
+        }
         final heroTag = 'chat_image_${widget.message['id'] ?? url ?? content}';
-        return GestureDetector(
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder:
-                    (_) => ImagePreviewScreen(
-                      imageUrl: url,
-                      heroTag: heroTag,
-                      fileName: content,
-                    ),
-              ),
-            );
-          },
-          child: Hero(
-            tag: heroTag,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 250, maxHeight: 250),
-              child: Image.network(
-                url,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                },
-                errorBuilder: (context, error, stack) {
-                  return const Icon(Icons.broken_image);
-                },
+        return Stack(
+          children: [
+            GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (_) => ImagePreviewScreen(
+                          imageUrl: url ?? '', // Handle null if using file
+                          imageFile:
+                              hasLocalFile
+                                  ? File(localPath)
+                                  : null, // Support local file
+                          heroTag: heroTag,
+                          fileName: content,
+                        ),
+                  ),
+                );
+              },
+              child: Hero(
+                tag: heroTag,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 250,
+                    maxHeight: 250,
+                  ),
+                  child:
+                      hasLocalFile
+                          ? Image.file(
+                            File(localPath),
+                            errorBuilder: (context, error, stack) {
+                              return const Icon(Icons.broken_image);
+                            },
+                          )
+                          : Image.network(
+                            url!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stack) {
+                              return const Icon(Icons.broken_image);
+                            },
+                          ),
+                ),
               ),
             ),
-          ),
+            if (isSending)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black26,
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
 
       case 'audio':
-        if (url == null) return const Text('[Audio not available]');
-        return SizedBox(
-          width: 260,
-          child: EmbeddedAudioPlayer(
-            url: url,
-            fileName: content,
-            isMe: widget.isMe,
-          ),
+        if (url == null && !hasLocalFile) {
+          return _buildAttachmentPlaceholder('audio');
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 260,
+              child: EmbeddedAudioPlayer(
+                url: url ?? '',
+                localFile: hasLocalFile ? File(localPath) : null,
+                fileName: content,
+                isMe: widget.isMe,
+              ),
+            ),
+            if (isSending)
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0, top: 4.0),
+                child: Text(
+                  'Sending...',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: widget.isMe ? Colors.white70 : Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+          ],
         );
 
       // --- THIS IS THE PDF FIX ---
       case 'file':
-        if (url == null) return const Text('[File not available]');
+        if (url == null && !hasLocalFile) {
+          return _buildAttachmentPlaceholder('file');
+        }
         final bool isPdf = content.toLowerCase().endsWith('.pdf');
 
         return InkWell(
@@ -941,14 +1256,24 @@ class _ChatBubbleState extends State<_ChatBubble> {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder:
-                      (ctx) => PdfPreviewScreen(url: url, fileName: content),
+                      (ctx) => PdfPreviewScreen(
+                        url: url ?? '',
+                        localFile: hasLocalFile ? File(localPath) : null,
+                        fileName: content,
+                      ),
                 ),
               );
             } else {
               // Fallback to external launcher for other files
-              final uri = Uri.parse(url);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (hasLocalFile) {
+                // Open local file if possible (might need platform channel or open_file package)
+                // For now, we might not be able to easily open local non-pdf files without extra packages
+                // But at least it won't show "Preparing..."
+              } else if (url != null) {
+                final uri = Uri.parse(url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
               }
             }
           },
@@ -1010,6 +1335,53 @@ class _ChatBubbleState extends State<_ChatBubble> {
           style: TextStyle(color: widget.isMe ? Colors.white : Colors.black87),
         );
     }
+  }
+
+  Widget _buildAttachmentPlaceholder(String type) {
+    final isSelf = widget.isMe;
+    final textColor = isSelf ? Colors.white70 : Colors.black54;
+    final label = () {
+      switch (type) {
+        case 'audio':
+          return 'voice message';
+        case 'file':
+          return 'document';
+        default:
+          return 'image';
+      }
+    }();
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isSelf ? Colors.blue.shade600 : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(textColor),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Preparing $label...',
+              style: TextStyle(
+                fontSize: 12,
+                color: textColor,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

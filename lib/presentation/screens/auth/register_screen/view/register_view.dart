@@ -2,18 +2,15 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/app/app_prf.dart';
-import 'package:interbridge/app/di.dart';
 
 import 'package:interbridge/presentation/resources/color_manager.dart';
-import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_text_field_container.dart';
 import 'package:flutter/gestures.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
-import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/presentation/widgets/custom_button.dart';
 
 import '../view_model/registerBloc/register_bloc.dart';
 import '../view_model/registerBloc/register_event.dart';
@@ -61,6 +58,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   // Local paths for deferred upload
   late String? voiceSamplePath;
   late String? certificatePath;
+  late String? bio;
+  late int? yearsExperience;
 
   @override
   void initState() {
@@ -83,7 +82,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         languages = [];
       }
     } catch (e) {
-      log('DEBUG: Error parsing languages: $e');
       languages = [];
     }
 
@@ -96,7 +94,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         fluency = {};
       }
     } catch (e) {
-      log('DEBUG: Error parsing fluency: $e');
       fluency = {};
     }
 
@@ -115,7 +112,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         skills = [];
       }
     } catch (e) {
-      log('DEBUG: Error parsing skills: $e');
       skills = [];
     }
 
@@ -134,7 +130,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         specializations = [];
       }
     } catch (e) {
-      log('DEBUG: Error parsing specializations: $e');
       specializations = [];
     }
 
@@ -144,17 +139,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     certificateUrl = widget.data['certificateUrl'];
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
-
-    // Debug: Print the role being used
-    log('DEBUG: Role being used: $role');
-    log('DEBUG: Data received: ${widget.data}');
-    log('DEBUG: Languages: $languages');
-    log('DEBUG: Fluency: $fluency');
-    log('DEBUG: Skills: $skills');
-    log('DEBUG: Specializations: $specializations');
-    log('DEBUG: Voice Sample URL: $voiceSampleUrl');
-    log('DEBUG: Voice Prompt: $voicePrompt');
-    log('DEBUG: Certificate URL: $certificateUrl');
+    bio = widget.data['bio'] as String?;
+    yearsExperience =
+        widget.data['yearsExperience'] is int
+            ? widget.data['yearsExperience'] as int
+            : int.tryParse(widget.data['yearsExperience']?.toString() ?? '');
   }
 
   @override
@@ -196,7 +185,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
               if (state is RegisterSuccess) {
                 // mark that login flow started so splash doesn't route to onboarding
                 Navigator.of(context).pushNamedAndRemoveUntil(
-                  Routes.emailVerificationRoute,
+                  Routes.confirmEmailRoute,
                   (route) => false,
                 );
               }
@@ -445,9 +434,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               // Check if user is requester or interpreter
                               if (role == 'requester') {
                                 // Simple registration for requesters
-                                log(
-                                  'DEBUG: Calling RequesterRegisterSubmitted',
-                                );
                                 context.read<RegisterBloc>().add(
                                   RequesterRegisterSubmitted(
                                     email: _emailController.text.trim(),
@@ -457,15 +443,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                 );
                               } else {
                                 // Full registration for interpreters
-                                log(
-                                  'DEBUG: Calling RegisterSubmitted with role: $role',
-                                );
-                                log('DEBUG: Languages being sent: $languages');
-                                log('DEBUG: Skills being sent: $skills');
-                                log(
-                                  'DEBUG: Specializations being sent: $specializations',
-                                );
-
                                 context.read<RegisterBloc>().add(
                                   RegisterSubmitted(
                                     email: _emailController.text.trim(),
@@ -482,6 +459,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     certificateUrl: certificateUrl,
                                     voiceSamplePath: voiceSamplePath,
                                     certificatePath: certificatePath,
+                                    bio: bio,
+                                    yearsExperience: yearsExperience,
                                   ),
                                 );
                               }

@@ -21,6 +21,8 @@ class RegisterSubmitted extends RegisterEvent {
   // Local paths for deferred upload
   final String? voiceSamplePath;
   final String? certificatePath;
+  final String? bio;
+  final int? yearsExperience;
 
   RegisterSubmitted({
     required this.email,
@@ -37,6 +39,8 @@ class RegisterSubmitted extends RegisterEvent {
     this.certificateUrl,
     this.voiceSamplePath,
     this.certificatePath,
+    this.bio,
+    this.yearsExperience,
   });
 
   @override
@@ -55,6 +59,8 @@ class RegisterSubmitted extends RegisterEvent {
     certificateUrl,
     voiceSamplePath,
     certificatePath,
+    bio,
+    yearsExperience,
   ];
 }
 

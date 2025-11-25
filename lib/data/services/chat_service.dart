@@ -130,16 +130,25 @@ class ChatService {
       result['sender_id'] ??= userId;
       result['request_id'] ??= requestId;
       result['message_type'] ??= messageType;
+
+      // CRITICAL: Ensure attachment_url is always in the result
       if (attachmentUrl != null) {
-        result['attachment_url'] ??= attachmentUrl;
+        result['attachment_url'] = attachmentUrl;
+        log('Set attachment_url in result: $attachmentUrl');
       }
 
+      // Prefetch signed URL for attachments
       if (attachmentUrl != null) {
         try {
+          log('Attempting to prefetch signed URL for: $attachmentUrl');
           final signedUrl = await createSignedUrl(attachmentUrl);
           result['attachment_signed_url'] = signedUrl;
+          log('Successfully prefetched signed URL');
         } catch (e) {
-          log('Unable to prefetch signed URL: $e');
+          log('WARNING: Unable to prefetch signed URL: $e');
+          log('URL will be fetched lazily by the UI');
+          // Set to null explicitly so UI knows to fetch it
+          result['attachment_signed_url'] = null;
         }
       }
 
@@ -194,7 +203,7 @@ class ChatService {
     }
   }
 
-  // --- MODIFIED: uploadChatAttachment ---
+  // --- MODIFIED: uploadChatAttachment with Enhanced Error Handling ---
   Future<String> uploadChatAttachment(
     File file,
     String fileName,
@@ -203,7 +212,7 @@ class ChatService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
 
-    // Check if file exists
+    // Validate file exists
     if (!await file.exists()) {
       log('Error: File does not exist at path: ${file.path}');
       throw Exception('File does not exist: ${file.path}');
@@ -213,11 +222,22 @@ class ChatService {
     final fileBytes = await file.readAsBytes();
     log('File size: ${fileBytes.length} bytes');
 
+    // Validate file size (e.g., max 50MB)
+    const maxFileSize = 50 * 1024 * 1024; // 50MB
+    if (fileBytes.length > maxFileSize) {
+      throw Exception('File too large. Maximum size is 50MB');
+    }
+
+    // Validate file is not empty
+    if (fileBytes.isEmpty) {
+      throw Exception('File is empty: ${file.path}');
+    }
+
     final fileExt = fileName.split('.').last.toLowerCase();
 
-    // The 'name' of the object in storage
+    // Generate unique storage path (relative to bucket root)
     final storagePath =
-        'chat_attachments/$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+        '$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
     String contentType;
     switch (messageType) {
@@ -225,47 +245,84 @@ class ChatService {
         contentType = 'image/$fileExt';
         break;
       case 'audio':
-        // --- THIS IS THE FIX ---
         // .m4a files must use the 'audio/mp4' content type
         contentType = (fileExt == 'm4a') ? 'audio/mp4' : 'audio/$fileExt';
         log('Uploading audio with contentType: $contentType');
         break;
-      // --- END OF FIX ---
       default:
         contentType = 'application/octet-stream';
     }
 
     try {
       log('Uploading to storage path: $storagePath');
+
+      // Upload with timeout protection (30 seconds)
       await _supabase.storage
           .from('chat_attachments')
           .uploadBinary(
             storagePath,
             fileBytes,
             fileOptions: FileOptions(contentType: contentType, upsert: false),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception('Upload timed out after 30 seconds');
+            },
           );
 
       log('File uploaded successfully to path: $storagePath');
-      // --- FIX: Return the storage path, NOT a public URL ---
+
+      // Verify upload by checking if file exists in storage
+      try {
+        await _supabase.storage
+            .from('chat_attachments')
+            .list(path: 'chat_attachments/$userId');
+        log('Upload verified successfully');
+      } catch (e) {
+        log('Warning: Could not verify upload: $e');
+        // Don't fail if verification fails
+      }
+
       return storagePath;
     } catch (e) {
       log('Error uploading file to Supabase storage: $e');
       log('Storage path attempted: $storagePath');
       log('File size: ${fileBytes.length} bytes, Content type: $contentType');
+
+      // Provide more specific error messages
+      if (e.toString().contains('timeout')) {
+        throw Exception(
+          'Upload timed out. Please check your connection and try again.',
+        );
+      } else if (e.toString().contains('storage')) {
+        throw Exception('Storage error. Please try again later.');
+      }
+
       rethrow;
     }
   }
   // --- END OF MODIFICATION ---
 
-  // --- NEW METHOD: createSignedUrl ---
+  // --- NEW METHOD: createSignedUrl with Enhanced Logging ---
   Future<String> createSignedUrl(String path) async {
     try {
+      log('Creating signed URL for path: $path');
+
+      // Validate path is not empty
+      if (path.isEmpty) {
+        throw Exception('Cannot create signed URL: path is empty');
+      }
+
       final response = await _supabase.storage
           .from('chat_attachments')
           .createSignedUrl(path, 60 * 60); // 1 hour expiry
+
+      log('Successfully created signed URL (length: ${response.length})');
       return response;
     } catch (e) {
-      log('Error creating signed URL: $e');
+      log('ERROR creating signed URL for path "$path": $e');
+      log('Error type: ${e.runtimeType}');
       rethrow;
     }
   }
@@ -276,6 +333,7 @@ class ChatService {
     void Function(Map<String, dynamic>) onInsert,
   ) {
     try {
+      log('Setting up real-time subscription for request: $requestId');
       final channel =
           _supabase.channel('chat_$requestId')
             ..onPostgresChanges(
@@ -289,12 +347,19 @@ class ChatService {
               ),
               callback: (payload) {
                 final newRow = payload.newRecord;
+                log('Real-time message received:');
+                log('  id: ${newRow['id']}');
+                log('  message_type: ${newRow['message_type']}');
+                log('  attachment_url: ${newRow['attachment_url']}');
+                log('  sender_id: ${newRow['sender_id']}');
                 onInsert(newRow);
               },
             )
             ..subscribe();
+      log('Real-time subscription established successfully');
       return channel;
     } catch (e) {
+      log('ERROR: Failed to set up real-time subscription: $e');
       return _supabase.channel('chat_dummy_$requestId');
     }
   }

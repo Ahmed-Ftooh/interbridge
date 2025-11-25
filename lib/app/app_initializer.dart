@@ -9,6 +9,8 @@ import 'package:interbridge/core/network_service.dart';
 import 'package:interbridge/core/error_service.dart';
 import 'package:interbridge/data/services/notification_handler.dart';
 import 'package:interbridge/app/app.dart';
+import 'package:interbridge/data/services/pending_registration_service.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 class AppInitializer {
   static Future<void> initialize() async {
@@ -106,9 +108,27 @@ class AppInitializer {
         }
         if (type == AuthChangeEvent.signedIn) {
           log('Auth event: signedIn');
+          final didFinalize =
+              await PendingRegistrationService().finalizePendingRegistration();
+          if (didFinalize) {
+            final navigator = MyApp.navigatorKey.currentState;
+            navigator?.pushNamedAndRemoveUntil(
+              Routes.mainRoute,
+              (route) => false,
+            );
+          }
         }
         if (type == AuthChangeEvent.tokenRefreshed) {
           log('Auth event: tokenRefreshed');
+          final didFinalize =
+              await PendingRegistrationService().finalizePendingRegistration();
+          if (didFinalize) {
+            final navigator = MyApp.navigatorKey.currentState;
+            navigator?.pushNamedAndRemoveUntil(
+              Routes.mainRoute,
+              (route) => false,
+            );
+          }
         }
       });
 

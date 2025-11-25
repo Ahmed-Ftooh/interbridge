@@ -17,7 +17,7 @@ CREATE INDEX IF NOT EXISTS users_profile_active_idx ON public.users_profile (use
 ALTER TABLE public.interpreter_requests
   ADD COLUMN IF NOT EXISTS deleted_at timestamptz NULL;
 
-CREATE INDEX IF NOT EXISTS interpreter_requests_active_idx ON public.interpreter_requests (requester_id, interpreter_id)
+CREATE INDEX IF NOT EXISTS interpreter_requests_active_idx ON public.interpreter_requests (requester_id, status)
   WHERE deleted_at IS NULL;
 
 -- DOCUMENT TRANSLATION REQUESTS

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SessionService {
   static const String _sessionKey = 'active_session';
@@ -133,7 +134,18 @@ class SessionService {
   }
 
   /// End current session
-  static Future<void> endSession() async {
+  static Future<void> endSession({String? requestId}) async {
+    if (requestId != null) {
+      try {
+        await Supabase.instance.client
+            .from('interpreter_requests')
+            .update({'status': 'completed'})
+            .eq('id', requestId);
+        log('Session marked as completed in DB');
+      } catch (e) {
+        log('Error updating session status in DB: $e');
+      }
+    }
     await clearSession();
     log('Session ended by user');
   }

@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/presentation/widgets/custom_button.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
@@ -25,23 +28,48 @@ class EmailVerificationView extends StatefulWidget {
 class _EmailVerificationViewState extends State<EmailVerificationView> {
   final _codeController = TextEditingController();
   bool _isVerifying = false;
+  bool _isResending = false;
+  int _resendSecondsRemaining = 0;
+  Timer? _resendTimer;
+
+  String? _resolveEmail() {
+    final currentEmail = Supabase.instance.client.auth.currentUser?.email;
+    if (currentEmail != null && currentEmail.isNotEmpty) {
+      return currentEmail;
+    }
+
+    final prefs = instance<AppPreferences>();
+    final pendingStr = prefs.getPendingRegistration();
+    if (pendingStr != null && pendingStr.isNotEmpty) {
+      try {
+        final data = jsonDecode(pendingStr) as Map<String, dynamic>;
+        final storedEmail = data['email']?.toString();
+        if (storedEmail != null && storedEmail.isNotEmpty) {
+          return storedEmail;
+        }
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  void _startResendCooldown([int seconds = 60]) {
+    _resendTimer?.cancel();
+    setState(() => _resendSecondsRemaining = seconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_resendSecondsRemaining <= 1) {
+        timer.cancel();
+        if (mounted) {
+          setState(() => _resendSecondsRemaining = 0);
+        }
+      } else if (mounted) {
+        setState(() => _resendSecondsRemaining -= 1);
+      }
+    });
+  }
 
   Future<void> _verify() async {
-    var email = Supabase.instance.client.auth.currentUser?.email;
-    if (email == null || email.isEmpty) {
-      // fallback to pending registration email
-      final prefs = instance<AppPreferences>();
-      final pendingStr = prefs.getPendingRegistration();
-      if (pendingStr != null && pendingStr.isNotEmpty) {
-        try {
-          final data = jsonDecode(pendingStr) as Map<String, dynamic>;
-          final storedEmail = data['email']?.toString();
-          if (storedEmail != null && storedEmail.isNotEmpty) {
-            email = storedEmail;
-          }
-        } catch (_) {}
-      }
-    }
+    final email = _resolveEmail();
     if (email == null || email.isEmpty) {
       CustomSnackBar.show(
         context,
@@ -53,14 +81,14 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
     if (_codeController.text.trim().isEmpty) {
       CustomSnackBar.show(
         context,
-        message: 'Enter the verification code',
+        message: 'Enter the token from the magic link',
         type: SnackBarType.error,
       );
       return;
     }
     setState(() => _isVerifying = true);
     try {
-      await SupabaseService().verifyEmailOtp(
+      await SupabaseService().verifyMagicLink(
         email: email,
         token: _codeController.text.trim(),
       );
@@ -71,71 +99,7 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
         final data = jsonDecode(pendingStr) as Map<String, dynamic>;
         final userId = Supabase.instance.client.auth.currentUser?.id;
         if (userId != null) {
-          final role = (data['role'] as String?) ?? 'requester';
-          final username = (data['username'] as String?) ?? '';
-          final profile = UserProfile(
-            id: userId,
-            role: role,
-            username: username,
-            profileImage: data['profileImage'],
-            gender: data['gender'],
-          );
-          await SupabaseService().createUserProfileAfterSignUp(profile);
-
-          if (role == 'interpreter') {
-            try {
-              await SupabaseService().createInterpreterDetails(
-                InterpreterDetails(userId: userId),
-              );
-            } catch (_) {}
-
-            final langs = (data['languages'] as List?)?.cast<String>() ?? [];
-            final fluencyMapRaw = data['fluency'];
-            final Map<String, dynamic> fluencyMap =
-                fluencyMapRaw is Map
-                    ? fluencyMapRaw.map((k, v) => MapEntry(k.toString(), v))
-                    : {};
-            for (final langIdStr in langs) {
-              final languageId = int.tryParse(langIdStr);
-              if (languageId == null || languageId <= 0) continue;
-              final fluencyName = fluencyMap[langIdStr]?.toString();
-              final fluencyId = _mapFluencyNameToId(fluencyName);
-              await SupabaseService().addInterpreterLanguage(
-                InterpreterLanguage(
-                  userId: userId,
-                  languageId: languageId,
-                  fluencyId: fluencyId,
-                ),
-              );
-            }
-
-            final skills = (data['skillIds'] as List?)?.cast<int>() ?? [];
-            for (final sid in skills) {
-              if (sid <= 0) continue;
-              await SupabaseService().addInterpreterSkill(
-                InterpreterSkill(userId: userId, skillId: sid),
-              );
-            }
-
-            final specs =
-                (data['specializationIds'] as List?)?.cast<int>() ?? [];
-            for (final sp in specs) {
-              if (sp <= 0) continue;
-              await SupabaseService().addInterpreterSpecialization(
-                InterpreterSpecialization(userId: userId, specializationId: sp),
-              );
-            }
-
-            final voiceUrl = data['voiceSampleUrl'] as String?;
-            final certUrl = data['certificateUrl'] as String?;
-            if (voiceUrl != null || certUrl != null) {
-              await SupabaseService().updateInterpreterDetailsWithUrls(
-                userId,
-                voiceSampleUrl: voiceUrl,
-                certificateUrl: certUrl,
-              );
-            }
-          }
+          await SupabaseService().finalizePendingRegistrationData(data, userId);
         }
         await prefs.clearPendingRegistration();
         await prefs.setLoginViewed();
@@ -156,34 +120,46 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
     }
   }
 
-  int _mapFluencyNameToId(String? name) {
-    switch (name) {
-      case 'Beginner':
-        return 1;
-      case 'Intermediate':
-        return 2;
-      case 'Upper Intermediate':
-        return 3;
-      case 'Native Or Fluent':
-        return 4;
-      default:
-        return 1;
+  Future<void> _resendCode() async {
+    final email = _resolveEmail();
+    if (email == null || email.isEmpty) {
+      CustomSnackBar.show(
+        context,
+        message: 'No email found in session',
+        type: SnackBarType.error,
+      );
+      return;
+    }
+
+    setState(() => _isResending = true);
+    try {
+      await SupabaseService().sendMagicLink(email);
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Magic link sent. Please check your inbox.',
+          type: SnackBarType.success,
+        );
+        _startResendCooldown();
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to resend code: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isResending = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String shownEmail = Supabase.instance.client.auth.currentUser?.email ?? '';
-    if (shownEmail.isEmpty) {
-      final prefs = instance<AppPreferences>();
-      final pendingStr = prefs.getPendingRegistration();
-      if (pendingStr != null && pendingStr.isNotEmpty) {
-        try {
-          final data = jsonDecode(pendingStr) as Map<String, dynamic>;
-          shownEmail = data['email']?.toString() ?? '';
-        } catch (_) {}
-      }
-    }
+    final shownEmail = _resolveEmail() ?? '';
     return Scaffold(
       backgroundColor: ColorManager.backgroundPrimary,
       appBar: AppBar(
@@ -199,14 +175,18 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
           children: [
             const SizedBox(height: AppSize.s24),
             Text(
-              'We sent a verification code to:\n$shownEmail',
+              'We sent a magic link to:\n$shownEmail',
               style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: AppSize.s16),
+            Text(
+              'Click the link in your email to verify your account, or enter the token from the link below:',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: AppSize.s24),
             TextField(
               controller: _codeController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Verification code'),
+              decoration: const InputDecoration(labelText: 'Token (optional)'),
             ),
             const SizedBox(height: AppSize.s16),
             CustomButton(
@@ -223,9 +203,34 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
                 ],
               ),
             ),
+            TextButton(
+              onPressed:
+                  _isVerifying || _isResending || _resendSecondsRemaining > 0
+                      ? null
+                      : _resendCode,
+              child:
+                  _isResending
+                      ? const SizedBox(
+                        height: AppSize.s20,
+                        width: AppSize.s20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : Text(
+                        _resendSecondsRemaining > 0
+                            ? 'Resend link in $_resendSecondsRemaining s'
+                            : 'Resend link',
+                      ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _resendTimer?.cancel();
+    super.dispose();
   }
 }

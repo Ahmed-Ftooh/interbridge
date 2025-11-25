@@ -74,7 +74,6 @@ class _SettingViewState extends State<SettingView> {
             titleColor: ColorManager.error,
             onTap: _showSignOutDialog,
           ),
-
           const SizedBox(height: AppSize.s32),
         ],
       ),

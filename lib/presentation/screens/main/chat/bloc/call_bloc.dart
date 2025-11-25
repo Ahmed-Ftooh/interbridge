@@ -71,6 +71,7 @@ class CallOngoing extends CallState {
   final bool muted;
   final bool speakerOn;
   final Duration elapsed;
+  final DateTime? startTime; // Added start time
 
   CallOngoing({
     required this.channelId,
@@ -79,6 +80,7 @@ class CallOngoing extends CallState {
     required this.muted,
     required this.speakerOn,
     required this.elapsed,
+    this.startTime,
   });
 
   CallOngoing copyWith({
@@ -86,6 +88,7 @@ class CallOngoing extends CallState {
     bool? muted,
     bool? speakerOn,
     Duration? elapsed,
+    DateTime? startTime,
   }) {
     return CallOngoing(
       channelId: channelId,
@@ -94,6 +97,7 @@ class CallOngoing extends CallState {
       muted: muted ?? this.muted,
       speakerOn: speakerOn ?? this.speakerOn,
       elapsed: elapsed ?? this.elapsed,
+      startTime: startTime ?? this.startTime,
     );
   }
 }
@@ -154,9 +158,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       emit(CallConnecting(e.channelId));
 
-      // 2) Init engine (once)
+      // 2) Init engine (ensure fresh instance)
       log('Initializing Agora RTC Engine...');
-      _engine ??= createAgoraRtcEngine();
+      if (_engine != null) {
+        log('Releasing existing engine instance...');
+        try {
+          await _engine!.release();
+        } catch (e) {
+          log('Error releasing engine: $e');
+        }
+        _engine = null;
+      }
+      _engine = createAgoraRtcEngine();
 
       // Check if Agora App ID is properly configured
       String appId;
@@ -186,14 +199,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         RtcEngineEventHandler(
           onJoinChannelSuccess: (connection, elapsed) {
             log('Successfully joined channel: ${e.channelId}');
-            _startedAt = DateTime.now();
+            // Don't start timer here - wait for remote user
             _timer?.cancel();
-            _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-              if (_startedAt != null) {
-                final elapsed = DateTime.now().difference(_startedAt!);
-                add(_Tick(elapsed));
-              }
-            });
 
             log('Emitting CallOngoing state for channel: ${e.channelId}');
             emit(
@@ -204,6 +211,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
                 muted: _muted,
                 speakerOn: _speakerOn,
                 elapsed: Duration.zero,
+                startTime: null, // Wait for remote user to start timer
               ),
             );
             log('CallOngoing state emitted successfully');
@@ -260,6 +268,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       ); // earpiece to reduce echo
 
       await _engine!.enableAudio();
+      await _engine!.enableLocalAudio(true); // Explicitly enable local audio
+      await _engine!.setClientRole(
+        role: ClientRoleType.clientRoleBroadcaster,
+      ); // Explicitly set role
       await _engine!.muteLocalAudioStream(_muted);
       _speakerOn = false; // start on earpiece
       try {
@@ -275,9 +287,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final token = await service
           .fetchAgoraToken(channelName: e.channelId, uid: e.localUid)
           .timeout(
-            const Duration(seconds: 15),
+            const Duration(seconds: 10),
             onTimeout: () {
-              log('Token fetch timeout after 15 seconds');
+              log('Token fetch timeout after 10 seconds');
               throw Exception(
                 'Failed to get voice call token. Please try again.',
               );
@@ -297,9 +309,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             ),
           )
           .timeout(
-            const Duration(seconds: 30),
+            const Duration(seconds: 10),
             onTimeout: () {
-              log('Join channel timeout after 30 seconds');
+              log('Join channel timeout after 10 seconds');
               throw Exception(
                 'Voice call connection timeout. Please try again.',
               );
@@ -307,9 +319,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           );
       log('Successfully joined Agora channel');
 
-      // Fallback: If onJoinChannelSuccess doesn't fire within 3 seconds,
+      // Fallback: If onJoinChannelSuccess doesn't fire within 5 seconds,
       // assume the call is ongoing and emit the state manually
-      Timer(const Duration(seconds: 3), () {
+      Timer(const Duration(seconds: 5), () {
         if (state is CallConnecting) {
           log('Fallback: Manually transitioning to CallOngoing state');
           _startedAt = DateTime.now();
@@ -408,8 +420,27 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   void _onRemoteUserJoined(_RemoteUserJoined e, Emitter<CallState> emit) {
     _remoteUids.add(e.uid);
+
+    // Start timer if this is the first remote user and timer hasn't started
+    if (_startedAt == null) {
+      log('First remote user joined. Starting call timer.');
+      _startedAt = DateTime.now();
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (_startedAt != null) {
+          final elapsed = DateTime.now().difference(_startedAt!);
+          add(_Tick(elapsed));
+        }
+      });
+    }
+
     if (state is CallOngoing) {
-      emit((state as CallOngoing).copyWith(remoteUids: {..._remoteUids}));
+      emit(
+        (state as CallOngoing).copyWith(
+          remoteUids: {..._remoteUids},
+          startTime: _startedAt, // Ensure start time is propagated
+        ),
+      );
     }
   }
 
@@ -435,7 +466,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         remoteUids: {..._remoteUids},
         muted: _muted,
         speakerOn: _speakerOn,
-        elapsed: Duration.zero,
+        elapsed:
+            _startedAt != null
+                ? DateTime.now().difference(_startedAt!)
+                : Duration.zero,
+        startTime: _startedAt,
       ),
     );
   }

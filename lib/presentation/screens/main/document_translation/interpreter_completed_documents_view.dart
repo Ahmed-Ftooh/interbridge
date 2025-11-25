@@ -6,6 +6,7 @@ import 'package:interbridge/data/models/document_translation_request.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/data/services/hidden_items_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InterpreterCompletedDocumentsView extends StatefulWidget {
   const InterpreterCompletedDocumentsView({super.key});
@@ -20,11 +21,34 @@ class _InterpreterCompletedDocumentsViewState
   List<DocumentTranslationRequest> _completedRequests = [];
   bool _isLoading = false;
   String? _errorMessage;
+  RealtimeChannel? _subscription;
 
   @override
   void initState() {
     super.initState();
     _loadCompletedRequests();
+    _subscribeToRealtime();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToRealtime() {
+    _subscription =
+        Supabase.instance.client
+            .channel('public:document_translation_requests:completed')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'document_translation_requests',
+              callback: (payload) {
+                _loadCompletedRequests();
+              },
+            )
+            .subscribe();
   }
 
   Future<void> _loadCompletedRequests() async {

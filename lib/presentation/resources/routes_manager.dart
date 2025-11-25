@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/forgot_password_view.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/reset_password_view.dart';
+import 'package:interbridge/presentation/screens/auth/verification/confirm_email_pending_view.dart';
 import 'package:interbridge/presentation/screens/auth/verification/email_verification_view.dart';
 import 'package:interbridge/presentation/screens/auth/login_screen/view/login_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/register_view.dart';
@@ -20,6 +21,7 @@ import 'package:interbridge/presentation/screens/main/document_translation/docum
 import 'package:interbridge/presentation/screens/legal/privacy_policy_view.dart';
 import 'package:interbridge/presentation/screens/legal/terms_of_service_view.dart';
 import 'package:interbridge/presentation/screens/main/setting/change_password_view.dart';
+import 'package:interbridge/admin/screens/admin_list_screen.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -27,6 +29,7 @@ class Routes {
   static const String registerRoute = "/register";
   static const String forgotPasswordRoute = "/forgotPassword";
   static const String emailVerificationRoute = "/emailVerification";
+  static const String confirmEmailRoute = "/confirmEmailPending";
   static const String resetPasswordRoute = "/resetPassword";
   static const String onBoardingRoute = "/onBoarding";
   static const String mainRoute = "/main";
@@ -35,6 +38,8 @@ class Routes {
   static const String selectLanguage = "/selectLanguage";
   static const String languageFluencyScreen = "/languageFluencyScreen";
   static const String voiceCheckScreen = "/voiceCheckScreen";
+  static const String interpreterOnboardingRoute =
+      "/interpreterOnboarding"; // deprecated
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
   static const String requestWaiting = "/requestWaiting";
   static const String accepteddocument = "/accepteddocument";
@@ -42,6 +47,7 @@ class Routes {
   static const String privacyPolicy = "/privacyPolicy";
   static const String termsOfService = "/termsOfService";
   static const String changePassword = "/changePassword";
+  static const String adminRoute = "/admin";
 }
 
 class RouteGenerator {
@@ -52,6 +58,11 @@ class RouteGenerator {
       case Routes.emailVerificationRoute:
         return MaterialPageRoute(
           builder: (_) => const EmailVerificationView(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
+      case Routes.confirmEmailRoute:
+        return MaterialPageRoute(
+          builder: (_) => const ConfirmEmailPendingView(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.resetPasswordRoute:
@@ -98,6 +109,8 @@ class RouteGenerator {
           settings: RouteSettings(arguments: settings.arguments),
         );
 
+      // Routes.interpreterOnboardingRoute is deprecated and not used anymore
+
       case Routes.mainRoute:
         return MaterialPageRoute(builder: (_) => const MainView());
       case Routes.chatRoute:
@@ -132,6 +145,26 @@ class RouteGenerator {
         return MaterialPageRoute(builder: (_) => const TermsOfServiceView());
       case Routes.changePassword:
         return MaterialPageRoute(builder: (_) => const ChangePasswordView());
+      case Routes.adminRoute:
+        return MaterialPageRoute(builder: (_) => const AdminListScreen());
+      // Handle Supabase Auth Callback
+      case '/login-callback':
+      case 'login-callback':
+        return MaterialPageRoute(
+          builder:
+              (_) => const Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Verifying login...'),
+                    ],
+                  ),
+                ),
+              ),
+        );
       default:
         return unDefinedRoute();
     }

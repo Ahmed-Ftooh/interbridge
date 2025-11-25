@@ -35,12 +35,14 @@ class FirebaseMessagingService {
       // Local notifications setup
       await _initializeLocalNotifications();
 
-      // Don't request permission here - it will be handled at login
-      // Just check current status
-      NotificationSettings settings =
-          await _messaging.getNotificationSettings();
+      // Request permission explicitly
+      NotificationSettings settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
       debugPrint(
-        '🔔 Current notification permission: ${settings.authorizationStatus}',
+        '🔔 Notification permission status: ${settings.authorizationStatus}',
       );
 
       // Get token
@@ -50,6 +52,18 @@ class FirebaseMessagingService {
       if (_fcmToken != null) {
         await _registerFCMToken(_fcmToken!);
       }
+
+      // Listen for auth changes to register token when user logs in
+      _client.auth.onAuthStateChange.listen((data) {
+        final event = data.event;
+        if (event == AuthChangeEvent.signedIn ||
+            event == AuthChangeEvent.tokenRefreshed ||
+            event == AuthChangeEvent.initialSession) {
+          if (_fcmToken != null) {
+            _registerFCMToken(_fcmToken!);
+          }
+        }
+      });
 
       // Foreground message handler
       _onMessageSubscription = FirebaseMessaging.onMessage.listen(

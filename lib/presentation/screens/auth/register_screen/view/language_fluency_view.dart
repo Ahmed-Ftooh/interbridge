@@ -5,7 +5,7 @@ import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
-import 'package:interbridge/presentation/widgets/customButtom.dart';
+import 'package:interbridge/presentation/widgets/custom_button.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/languageFluencyBloc/language_fluency_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/languageFluencyBloc/language_fluency_event.dart'
     as fluency_event;

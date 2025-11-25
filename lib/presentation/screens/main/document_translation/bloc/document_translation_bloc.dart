@@ -1,12 +1,8 @@
 import 'package:bloc/bloc.dart';
-import 'package:equatable/equatable.dart';
 import 'document_translation_event.dart';
 import 'document_translation_state.dart';
-import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/document_translation_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/data/models/document_translation_request.dart';
-import 'package:interbridge/data/models/language.dart';
 
 class DocumentTranslationBloc
     extends Bloc<DocumentTranslationEvent, DocumentTranslationState> {
@@ -32,7 +28,8 @@ class DocumentTranslationBloc
       emit(DocumentTranslationLoading());
     }
     try {
-      final languages = await supabaseService.getLanguages();
+      final languages =
+          await supabaseService.getSupportedInterpreterLanguages();
       // Preserve existing requests if we have them
       if (state is DocumentTranslationLoadSuccess) {
         final currentState = state as DocumentTranslationLoadSuccess;
