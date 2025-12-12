@@ -1,9 +1,7 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/config.dart';
 import 'package:interbridge/data/services/chat_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'dart:io'; // <-- ADDED

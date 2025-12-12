@@ -88,11 +88,17 @@ class _InterpreterOnboardingStepperViewState
                     .whereType<int>() ??
                 {},
           );
+          // Load specialization IDs but filter to only valid ones that still exist
+          final savedSpecIds =
+              ((data['specializationIds'] ?? data['specializations']) as List?)
+                  ?.map((e) => int.tryParse(e.toString()))
+                  .whereType<int>()
+                  .toSet() ??
+              {};
+          // Filter against valid specialization IDs from database
+          final validSpecIds = specs.map((s) => s.id).toSet();
           _selectedSpecializationIds.addAll(
-            ((data['specializationIds'] ?? data['specializations']) as List?)
-                    ?.map((e) => int.tryParse(e.toString()))
-                    .whereType<int>() ??
-                {},
+            savedSpecIds.where((id) => validSpecIds.contains(id)),
           );
           final certPath = data['certificatePath'] as String?;
           if (certPath != null && certPath.isNotEmpty) {

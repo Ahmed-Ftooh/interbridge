@@ -10,6 +10,7 @@ class InterpreterRequest {
   final DateTime? acceptedAt;
   final String? acceptedBy;
   final String? description;
+  final String callType; // 'voice' or 'video'
 
   InterpreterRequest({
     required this.id,
@@ -23,6 +24,7 @@ class InterpreterRequest {
     this.acceptedAt,
     this.acceptedBy,
     this.description,
+    this.callType = 'voice',
   });
 
   factory InterpreterRequest.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,7 @@ class InterpreterRequest {
               : null,
       acceptedBy: json['accepted_by'],
       description: json['description'],
+      callType: json['call_type'] ?? 'voice',
     );
   }
 
@@ -57,6 +60,7 @@ class InterpreterRequest {
       'accepted_at': acceptedAt?.toIso8601String(),
       'accepted_by': acceptedBy,
       'description': description,
+      'call_type': callType,
     };
   }
 
@@ -72,6 +76,7 @@ class InterpreterRequest {
     DateTime? acceptedAt,
     String? acceptedBy,
     String? description,
+    String? callType,
   }) {
     return InterpreterRequest(
       id: id ?? this.id,
@@ -85,6 +90,7 @@ class InterpreterRequest {
       acceptedAt: acceptedAt ?? this.acceptedAt,
       acceptedBy: acceptedBy ?? this.acceptedBy,
       description: description ?? this.description,
+      callType: callType ?? this.callType,
     );
   }
 }

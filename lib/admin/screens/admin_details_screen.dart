@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:interbridge/admin/services/admin_service.dart';
 import 'package:interbridge/admin/widgets/admin_stats_card.dart';
 import 'package:interbridge/admin/widgets/certificate_tile.dart';
@@ -86,6 +87,15 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
         final skills = (data['skills'] ?? []) as List;
         final specializations = (data['specializations'] ?? []) as List;
         final certificates = (data['certificates'] ?? []) as List;
+        final voiceSamples = (data['voiceSamples'] ?? []) as List;
+        final quizAttempts = (data['quizAttempts'] ?? []) as List;
+        final badges = (data['badges'] ?? []) as List;
+
+        // Debug: Print voice samples data
+        debugPrint('Voice Samples received: ${voiceSamples.length} items');
+        if (voiceSamples.isNotEmpty) {
+          debugPrint('First voice sample: ${voiceSamples.first}');
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -197,6 +207,16 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                             profile['email'] ?? 'Not available',
                           ),
                           _buildInfoRow('Gender', profile['gender']),
+                          _buildInfoRow(
+                            'Country',
+                            profile['country'] ?? 'Not set',
+                          ),
+                          _buildInfoRow(
+                            'Employment Type',
+                            (details['employment_type'] ?? 'Not set')
+                                .toString()
+                                .toUpperCase(),
+                          ),
                           _buildInfoRow('Bio', details['bio']),
                           _buildInfoRow(
                             'Experience',
@@ -313,6 +333,29 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  _buildSectionTitle(
+                    context,
+                    'Voice Samples (${voiceSamples.length})',
+                  ),
+                  if (voiceSamples.isNotEmpty)
+                    ...voiceSamples.map(
+                      (v) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: _VoiceSampleTile(
+                          voiceSample: v as Map,
+                          service: _service,
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No voice samples uploaded',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
                   _buildSectionTitle(context, 'Documents'),
                   if (certificates.isNotEmpty)
                     ...certificates.map(
@@ -330,6 +373,121 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                       padding: EdgeInsets.all(16.0),
                       child: Text(
                         'No certificates uploaded',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Badges Section
+                  _buildSectionTitle(context, 'Earned Badges'),
+                  if (badges.isNotEmpty)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children:
+                              badges.map((badge) {
+                                final badgeName =
+                                    badge['badge']?.toString() ?? 'Unknown';
+                                final score = badge['score']?.toString() ?? '0';
+                                return Chip(
+                                  avatar: const Icon(
+                                    Icons.verified,
+                                    size: 18,
+                                    color: Colors.amber,
+                                  ),
+                                  label: Text('$badgeName ($score%)'),
+                                  backgroundColor: Colors.amber.shade50,
+                                );
+                              }).toList(),
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No badges earned yet',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Quiz Results Section
+                  _buildSectionTitle(context, 'Quiz Results'),
+                  if (quizAttempts.isNotEmpty)
+                    Card(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: quizAttempts.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final attempt = quizAttempts[index];
+                          final quizType =
+                              attempt['quiz_type']?.toString() ?? 'Unknown';
+                          final section =
+                              attempt['medical_section']?.toString();
+                          final score =
+                              attempt['score_percentage']?.toString() ?? '0';
+                          final passed = attempt['passed'] == true;
+                          final takenAt =
+                              attempt['taken_at']?.toString().split('T')[0] ??
+                              '';
+                          final totalQ =
+                              attempt['total_questions']?.toString() ?? '0';
+                          final correctA =
+                              attempt['correct_answers']?.toString() ?? '0';
+
+                          String title =
+                              quizType == 'medical' && section != null
+                                  ? 'Medical - ${section.replaceAll('_', ' ').toUpperCase()}'
+                                  : quizType.toUpperCase();
+
+                          return ListTile(
+                            leading: Icon(
+                              passed ? Icons.check_circle : Icons.cancel,
+                              color: passed ? Colors.green : Colors.red,
+                            ),
+                            title: Text(title),
+                            subtitle: Text(
+                              'Score: $correctA/$totalQ ($score%) • $takenAt',
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    passed
+                                        ? Colors.green.shade100
+                                        : Colors.red.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                passed ? 'PASSED' : 'FAILED',
+                                style: TextStyle(
+                                  color:
+                                      passed
+                                          ? Colors.green.shade800
+                                          : Colors.red.shade800,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No quiz attempts yet',
                         style: TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -754,5 +912,136 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
         }
       }
     }
+  }
+}
+
+class _VoiceSampleTile extends StatefulWidget {
+  final Map voiceSample;
+  final AdminService service;
+
+  const _VoiceSampleTile({required this.voiceSample, required this.service});
+
+  @override
+  State<_VoiceSampleTile> createState() => _VoiceSampleTileState();
+}
+
+class _VoiceSampleTileState extends State<_VoiceSampleTile> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() => _isPlaying = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlayback() async {
+    if (_isLoading) return;
+
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+      setState(() => _isPlaying = false);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final url = widget.voiceSample['url'] as String?;
+      if (url == null || url.isEmpty) {
+        throw Exception('No audio URL available');
+      }
+
+      await _audioPlayer.play(UrlSource(url));
+      setState(() {
+        _isPlaying = true;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error playing audio: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The filename format is: {date}_{sentenceType}_{prompt}_{timestamp}.m4a
+    final fileName = widget.voiceSample['name']?.toString() ?? '';
+    final createdAt =
+        widget.voiceSample['created_at']?.toString().split('T')[0] ?? '';
+
+    // Parse a readable name from filename
+    String displayName = 'Voice Sample';
+    if (fileName.isNotEmpty) {
+      // Remove extension and parse
+      final nameWithoutExt = fileName
+          .replaceAll('.m4a', '')
+          .replaceAll('.mp3', '');
+      final parts = nameWithoutExt.split('_');
+      if (parts.length >= 2) {
+        // Try to get the sentence type (second part usually)
+        final sentenceType =
+            parts.length > 1 ? parts[1].replaceAll('_', ' ') : '';
+        displayName =
+            sentenceType.isNotEmpty
+                ? sentenceType[0].toUpperCase() +
+                    sentenceType.substring(1).replaceAll('_', ' ')
+                : 'Voice Sample';
+      }
+    }
+
+    return Card(
+      child: ListTile(
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child:
+              _isLoading
+                  ? const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                  : IconButton(
+                    onPressed: _togglePlayback,
+                    icon: Icon(
+                      _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                      color: Colors.blue,
+                      size: 32,
+                    ),
+                  ),
+        ),
+        title: Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          'Uploaded: $createdAt',
+          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+        ),
+        trailing: Icon(Icons.mic, color: Colors.blue.shade300),
+      ),
+    );
   }
 }

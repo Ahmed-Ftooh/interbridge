@@ -6,6 +6,7 @@ import 'dart:developer';
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
 import 'package:interbridge/data/services/permission_service.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
@@ -39,15 +40,46 @@ class _LoginViewBody extends StatefulWidget {
 
 class _LoginViewBodyState extends State<_LoginViewBody> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
+  final SupabaseService _supabaseService = SupabaseService();
 
-  Future<void> _requestPermissionsAndNavigate() async {
+  Future<void> _navigateBasedOnRole(String userId) async {
     try {
-      // Request a
-      //ll app permissions
-      if (mounted) {
+      final profile = await _supabaseService.getUserProfile(userId);
+      if (!mounted) return;
+
+      if (profile?.role == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationDashboardRoute,
+          (route) => false,
+        );
+      } else {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    } catch (e) {
+      log('Error getting user profile: $e');
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+    }
+  }
+
+  Future<void> _requestPermissionsAndNavigate() async {
+    try {
+      // Get current user ID for role-based navigation
+      final userId = _supabaseService.getCurrentUser()?.id;
+
+      // Request all app permissions
+      if (mounted) {
+        if (userId != null) {
+          await _navigateBasedOnRole(userId);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        }
       }
       final permissionResults =
           await PermissionService.requestAllAppPermissions();
@@ -91,11 +123,16 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
     } catch (e) {
       log('Error requesting permissions: $e');
 
-      // Navigate anyway if permissions fail
+      // Navigate anyway if permissions fail - use role-based navigation
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        final userId = _supabaseService.getCurrentUser()?.id;
+        if (userId != null) {
+          await _navigateBasedOnRole(userId);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        }
       }
     }
   }

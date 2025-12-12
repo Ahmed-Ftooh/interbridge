@@ -5,7 +5,15 @@ import 'package:interbridge/presentation/resources/values_manager.dart';
 
 /// Reusable language pair selector with searchable bottom sheet.
 class LanguagePairSelector extends StatefulWidget {
+  /// All languages (used if fromLanguages/toLanguages are not provided)
   final List<Language> languages;
+
+  /// Optional: Separate list of languages for "from" selection
+  final List<Language>? fromLanguages;
+
+  /// Optional: Separate list of languages for "to" selection
+  final List<Language>? toLanguages;
+
   final Language? fromLanguage;
   final Language? toLanguage;
   final ValueChanged<Language?> onFromChanged;
@@ -17,6 +25,8 @@ class LanguagePairSelector extends StatefulWidget {
   const LanguagePairSelector({
     super.key,
     required this.languages,
+    this.fromLanguages,
+    this.toLanguages,
     required this.fromLanguage,
     required this.toLanguage,
     required this.onFromChanged,
@@ -32,7 +42,13 @@ class LanguagePairSelector extends StatefulWidget {
 
 class _LanguagePairSelectorState extends State<LanguagePairSelector> {
   void _openPicker(bool isFrom) {
-    if (widget.languages.isEmpty) {
+    // Use specific language list if provided, otherwise use the general list
+    final languageList =
+        isFrom
+            ? (widget.fromLanguages ?? widget.languages)
+            : (widget.toLanguages ?? widget.languages);
+
+    if (languageList.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Languages not loaded yet.')),
       );
@@ -45,14 +61,14 @@ class _LanguagePairSelectorState extends State<LanguagePairSelector> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         String searchQuery = '';
-        List<Language> filtered = widget.languages;
+        List<Language> filtered = languageList;
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             void applyFilter(String value) {
               setModalState(() {
                 searchQuery = value.trim();
                 filtered =
-                    widget.languages.where((lang) {
+                    languageList.where((lang) {
                       return lang.name.toLowerCase().contains(
                         searchQuery.toLowerCase(),
                       );

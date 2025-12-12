@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
-import 'package:interbridge/app/di.dart';
-import 'package:interbridge/data/services/chat_service.dart';
 import 'dart:developer';
 
 class AppLifecycleService {
@@ -33,9 +30,6 @@ class AppLifecycleService {
       final currentScreen = session['currentScreen'] as String?;
 
       log('Found active session: $currentScreen for request: $requestId');
-
-      // Create chat bloc for the session
-      final chatBloc = ChatBloc(service: instance<ChatService>());
 
       switch (currentScreen) {
         case 'chat':

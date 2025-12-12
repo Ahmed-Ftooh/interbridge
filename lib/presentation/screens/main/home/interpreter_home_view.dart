@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/data/services/chat_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
-import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
@@ -26,6 +25,20 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
   int _totalSessions = 0;
   bool _isLoadingProfile = true;
 
+  // Employment type for online/offline toggle visibility
+  String? _employmentType; // 'volunteer' or 'paid'
+
+  /// Build a stable int UID from the authenticated user UUID
+  static int _uidFromUuid(String uuid) {
+    if (uuid.isNotEmpty) {
+      final hex = uuid.replaceAll('-', '');
+      final first8 =
+          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
+      return int.tryParse(first8, radix: 16) ?? 1;
+    }
+    return 1;
+  }
+
   void _safeAddToJobsBloc(InterpreterJobEvent event) {
     if (!mounted) return;
     final bloc = context.read<InterpreterJobBloc>();
@@ -45,6 +58,8 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
     });
   }
 
+  bool _isOnline = false;
+
   Future<void> _loadInterpreterProfile() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -54,12 +69,19 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
       final interpreterData =
           await Supabase.instance.client
               .from('interpreter_details')
-              .select('is_verified, is_suspended')
+              .select('is_verified, is_suspended, is_online')
               .eq('user_id', userId)
               .maybeSingle();
 
-      // 2. Count total completed sessions (calls)
-      // We count requests where this user was the interpreter and status is 'completed'
+      // 2. Get user profile for employment type (to show online/offline toggle for paid only)
+      final profileData =
+          await Supabase.instance.client
+              .from('users_profile')
+              .select('employment_type')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      // 3. Count total completed sessions (calls)
       final sessionsCount = await Supabase.instance.client
           .from('interpreter_requests')
           .count(CountOption.exact)
@@ -70,7 +92,9 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
         setState(() {
           _isVerified = interpreterData?['is_verified'] ?? false;
           _isSuspended = interpreterData?['is_suspended'] ?? false;
+          _isOnline = interpreterData?['is_online'] ?? false;
           _totalSessions = sessionsCount;
+          _employmentType = profileData?['employment_type'] ?? 'volunteer';
           _isLoadingProfile = false;
         });
       }
@@ -80,6 +104,31 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
         setState(() {
           _isLoadingProfile = false;
         });
+      }
+    }
+  }
+
+  Future<void> _toggleOnlineStatus(bool value) async {
+    setState(() => _isOnline = value);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'is_online': value})
+          .eq('user_id', userId);
+    } catch (e) {
+      debugPrint('Error updating online status: $e');
+      // Revert on error
+      if (mounted) {
+        setState(() => _isOnline = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update status: $e'),
+            backgroundColor: ColorManager.error,
+          ),
+        );
       }
     }
   }
@@ -165,13 +214,37 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                                 ? 'Verified Interpreter'
                                 : 'Pending Verification',
                             style: TextStyle(
-                              color: ColorManager.white.withOpacity(0.8),
+                              color: ColorManager.white.withValues(alpha: 0.8),
                               fontSize: AppSize.s14,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    // Only show online/offline toggle for experienced (paid) interpreters
+                    if (_isVerified &&
+                        !_isSuspended &&
+                        _employmentType == 'paid')
+                      Column(
+                        children: [
+                          Switch(
+                            value: _isOnline,
+                            onChanged: _toggleOnlineStatus,
+                            activeColor: ColorManager.white,
+                            activeTrackColor: ColorManager.success,
+                            inactiveThumbColor: ColorManager.white,
+                            inactiveTrackColor: ColorManager.grey,
+                          ),
+                          Text(
+                            _isOnline ? 'Online' : 'Offline',
+                            style: TextStyle(
+                              color: ColorManager.white,
+                              fontSize: AppSize.s12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -241,9 +314,10 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
               else if (_isSuspended)
                 _buildSuspendedView()
               else if (!_isVerified)
+                // Quizzes completed (via quiz hub), waiting for admin verification
                 _buildPendingVerificationView()
               else ...[
-                // Available Jobs header with "View All" button (add navigation later)
+                // Verified - show available jobs
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -261,21 +335,29 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
 
                 BlocConsumer<InterpreterJobBloc, InterpreterJobState>(
                   listener: (context, state) {
-                    // ✅ Navigate when a job is accepted
+                    // ✅ Navigate directly to call when a job is accepted
                     if (state is InterpreterJobAccepted) {
-                      // Use pushAndRemoveUntil to prevent going back to this screen
-                      // from chat with the old jobs list
+                      final request = state.request;
+                      final isVideoCall = request.callType == 'video';
+                      final myUid = _uidFromUuid(request.acceptedBy!);
+
+                      // Start the call via CallBloc
+                      context.read<CallBloc>().add(
+                        StartCall(
+                          channelId: request.id,
+                          localUid: myUid,
+                          isVideoCall: isVideoCall,
+                        ),
+                      );
+
+                      // Navigate to call screen
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(
                           builder:
-                              (_) => BlocProvider(
-                                create: (_) => ChatBloc(service: ChatService()),
-                                child: ChatView(
-                                  requestId: state.request.id,
-                                  requesterId: state.request.requesterId,
-                                  interpreterId: state.request.acceptedBy!,
-                                ),
+                              (_) => EnhancedCallScreen(
+                                channelId: request.id,
+                                isVideoCall: isVideoCall,
                               ),
                         ),
                         (route) =>
@@ -453,6 +535,8 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
       ),
     );
   }
+
+  // Quiz views removed - now handled by InterpreterQuizHubScreen
 
   Widget _buildSuspendedView() {
     return Center(

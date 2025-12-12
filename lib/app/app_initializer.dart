@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,6 +9,7 @@ import 'package:interbridge/core/firebase_service.dart';
 import 'package:interbridge/core/network_service.dart';
 import 'package:interbridge/core/error_service.dart';
 import 'package:interbridge/data/services/notification_handler.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/app/app.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -95,6 +97,9 @@ class AppInitializer {
       // These are not critical for app startup and can complete after the app launches
       _initializeNonCriticalServices();
 
+      // Set up deep link handling for auth callbacks
+      _setupDeepLinkHandling();
+
       // Listen for Supabase auth deep-link redirects to handle password reset
       // and email verification inside the app.
       Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
@@ -110,12 +115,23 @@ class AppInitializer {
           log('Auth event: signedIn');
           final didFinalize =
               await PendingRegistrationService().finalizePendingRegistration();
+
+          // Check for pending organization invites for existing users
+          final user = Supabase.instance.client.auth.currentUser;
+          if (user != null && user.email != null && !didFinalize) {
+            // Only check if we didn't just finalize registration (which already checks)
+            final supabaseService = SupabaseService();
+            await supabaseService.checkAndProcessPendingInvite(
+              user.id,
+              user.email!,
+            );
+          }
+
           if (didFinalize) {
             final navigator = MyApp.navigatorKey.currentState;
-            navigator?.pushNamedAndRemoveUntil(
-              Routes.mainRoute,
-              (route) => false,
-            );
+            if (user != null && navigator != null) {
+              await _navigateBasedOnRole(navigator, user.id);
+            }
           }
         }
         if (type == AuthChangeEvent.tokenRefreshed) {
@@ -124,10 +140,10 @@ class AppInitializer {
               await PendingRegistrationService().finalizePendingRegistration();
           if (didFinalize) {
             final navigator = MyApp.navigatorKey.currentState;
-            navigator?.pushNamedAndRemoveUntil(
-              Routes.mainRoute,
-              (route) => false,
-            );
+            final user = Supabase.instance.client.auth.currentUser;
+            if (user != null && navigator != null) {
+              await _navigateBasedOnRole(navigator, user.id);
+            }
           }
         }
       });
@@ -138,6 +154,111 @@ class AppInitializer {
       log('Error during app initialization: $e');
       // You might want to show a user-friendly error screen instead
       rethrow;
+    }
+  }
+
+  static Future<void> _navigateBasedOnRole(
+    NavigatorState navigator,
+    String userId,
+  ) async {
+    try {
+      final supabaseService = SupabaseService();
+      final profile = await supabaseService.getUserProfile(userId);
+
+      if (profile?.role == 'organization_admin') {
+        navigator.pushNamedAndRemoveUntil(
+          Routes.organizationDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile?.role == 'interpreter') {
+        // For interpreters, check if they still need to complete qualification quizzes
+        try {
+          // Query employment_type and badges directly to decide navigation
+          final client = Supabase.instance.client;
+          final profileData =
+              await client
+                  .from('users_profile')
+                  .select('employment_type')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+
+          final badgesData = await client
+              .from('interpreter_badges')
+              .select('badge')
+              .eq('user_id', userId);
+
+          final employmentType = profileData?['employment_type'] ?? 'volunteer';
+          final badges =
+              (badgesData as List)
+                  .map((b) => b['badge']?.toString() ?? '')
+                  .where((b) => b.isNotEmpty)
+                  .toSet();
+
+          final hasGeneral = badges.contains('general');
+          final medicalCount = badges.where((b) => b != 'general').length;
+
+          final bool isExperienced = employmentType == 'paid';
+          final bool allComplete =
+              isExperienced ? (hasGeneral && medicalCount >= 3) : hasGeneral;
+
+          if (allComplete) {
+            navigator.pushNamedAndRemoveUntil(
+              Routes.mainRoute,
+              (route) => false,
+            );
+          } else {
+            navigator.pushNamedAndRemoveUntil(
+              Routes.interpreterQuizHubRoute,
+              (route) => false,
+            );
+          }
+        } catch (e) {
+          // On error, fallback to main route
+          log('Error checking interpreter quiz status: $e');
+          navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        }
+      } else {
+        navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    } catch (e) {
+      log('Error getting user profile for navigation: $e');
+      navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+    }
+  }
+
+  // Set up deep link handling for auth callbacks
+  static void _setupDeepLinkHandling() {
+    final appLinks = AppLinks();
+
+    // Handle deep link when app is already running (warm start)
+    appLinks.uriLinkStream.listen((Uri uri) {
+      log('Deep link received (warm): $uri');
+      _handleDeepLink(uri);
+    });
+
+    // Handle deep link when app is launched from deep link (cold start)
+    appLinks.getInitialLink().then((Uri? uri) {
+      if (uri != null) {
+        log('Deep link received (cold): $uri');
+        _handleDeepLink(uri);
+      }
+    });
+  }
+
+  static Future<void> _handleDeepLink(Uri uri) async {
+    log('Processing deep link: $uri');
+
+    // Check if this is a Supabase auth callback
+    if (uri.scheme == 'io.supabase.flutter' ||
+        uri.host == 'login-callback' ||
+        uri.toString().contains('login-callback')) {
+      log('Deep link is auth callback, navigating to auth loading screen');
+
+      // Navigate to the auth callback loading screen
+      final navigator = MyApp.navigatorKey.currentState;
+      if (navigator != null) {
+        navigator.pushNamedAndRemoveUntil(uri.toString(), (route) => false);
+      }
     }
   }
 

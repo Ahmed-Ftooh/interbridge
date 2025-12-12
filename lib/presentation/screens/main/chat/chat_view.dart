@@ -125,12 +125,13 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
         appBar: AppBar(
           title: const Text('Chat'),
           actions: [
-            // Call button
+            // Voice Call button
             BlocBuilder<ChatBloc, ChatState>(
               builder: (context, state) {
                 final isUploading = state is ChatLoaded && state.isUploading;
                 return IconButton(
                   icon: const Icon(Icons.call),
+                  tooltip: 'Voice Call',
                   onPressed:
                       isUploading
                           ? null
@@ -146,6 +147,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                               StartCall(
                                 channelId: widget.requestId,
                                 localUid: _uidFromUuid(myId),
+                                isVideoCall: false,
                               ),
                             );
                             Navigator.of(context).push(
@@ -153,6 +155,45 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                                 builder:
                                     (_) => EnhancedCallScreen(
                                       channelId: widget.requestId,
+                                      isVideoCall: false,
+                                    ),
+                              ),
+                            );
+                          },
+                );
+              },
+            ),
+            // Video Call button
+            BlocBuilder<ChatBloc, ChatState>(
+              builder: (context, state) {
+                final isUploading = state is ChatLoaded && state.isUploading;
+                return IconButton(
+                  icon: const Icon(Icons.videocam),
+                  tooltip: 'Video Call',
+                  onPressed:
+                      isUploading
+                          ? null
+                          : () {
+                            if (myId == null) return;
+                            context.read<ChatBloc>().add(
+                              SendMessage(
+                                requestId: widget.requestId,
+                                content: '__VIDEO_CALL_INVITE__',
+                              ),
+                            );
+                            context.read<CallBloc>().add(
+                              StartCall(
+                                channelId: widget.requestId,
+                                localUid: _uidFromUuid(myId),
+                                isVideoCall: true,
+                              ),
+                            );
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => EnhancedCallScreen(
+                                      channelId: widget.requestId,
+                                      isVideoCall: true,
                                     ),
                               ),
                             );

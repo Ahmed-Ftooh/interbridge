@@ -7,6 +7,7 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_text_field_container.dart';
+import 'package:interbridge/presentation/widgets/country_picker_sheet.dart';
 import 'package:flutter/gestures.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
@@ -46,6 +47,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
       TextEditingController();
   bool _agreedToPrivacy = false;
 
+  // Gender and Country for interpreters
+  String? _selectedGender;
+  String? _selectedCountry;
+  String? _selectedCountryFlag;
+
   late String role;
   late List<String>
   languages; // Keep as List<String> since bloc expects strings
@@ -55,11 +61,23 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? voiceSampleUrl;
   late String? voicePrompt;
   late String? certificateUrl;
+  late String? medicalCertificateUrl;
   // Local paths for deferred upload
   late String? voiceSamplePath;
   late String? certificatePath;
+  late String? medicalCertificatePath;
   late String? bio;
   late int? yearsExperience;
+  late String? preferredShift;
+  late List<String> shiftAvailability;
+  late bool? isOnlineNow;
+  late String? employmentType; // 'volunteer' or 'paid'
+
+  // Organization data
+  late String? organizationName;
+  late String? organizationEmail;
+  late String? organizationPhone;
+  late String? organizationAddress;
 
   @override
   void initState() {
@@ -137,13 +155,71 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     voiceSampleUrl = widget.data['voiceSampleUrl'];
     voicePrompt = widget.data['voicePrompt'];
     certificateUrl = widget.data['certificateUrl'];
+    medicalCertificateUrl = widget.data['medicalCertificateUrl'];
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
+    medicalCertificatePath = widget.data['medicalCertificatePath'];
     bio = widget.data['bio'] as String?;
     yearsExperience =
         widget.data['yearsExperience'] is int
             ? widget.data['yearsExperience'] as int
             : int.tryParse(widget.data['yearsExperience']?.toString() ?? '');
+    preferredShift = widget.data['preferredShift']?.toString();
+    final dynamic shiftRaw = widget.data['shiftAvailability'];
+    if (shiftRaw is List) {
+      shiftAvailability =
+          shiftRaw.map((e) => e?.toString()).whereType<String>().toList();
+    } else if (shiftRaw is String && shiftRaw.isNotEmpty) {
+      shiftAvailability = [shiftRaw];
+    } else {
+      shiftAvailability = [];
+    }
+    preferredShift ??=
+        shiftAvailability.isNotEmpty ? shiftAvailability.first : null;
+
+    final dynamic onlineRaw =
+        widget.data['isOnlineNow'] ?? widget.data['isOnline'];
+    if (onlineRaw is bool) {
+      isOnlineNow = onlineRaw;
+    } else if (onlineRaw is String) {
+      isOnlineNow = onlineRaw.toLowerCase() == 'true';
+    } else {
+      isOnlineNow = null;
+    }
+
+    // Determine employment type from track selection
+    // interpreterTrack: 'volunteer' or 'paid'
+    // interpreterLevel: 'volunteer' or 'paid'
+    final trackValue =
+        widget.data['interpreterTrack'] ??
+        widget.data['interpreterLevel'] ??
+        widget.data['employmentType'];
+    if (trackValue is String) {
+      final normalized = trackValue.toLowerCase();
+      if (normalized.contains('paid') || normalized.contains('professional')) {
+        employmentType = 'paid';
+      } else {
+        employmentType = 'volunteer';
+      }
+    } else {
+      // Default to volunteer if not specified
+      employmentType = 'volunteer';
+    }
+
+    // Organization data
+    organizationName = widget.data['organizationName'] as String?;
+    organizationEmail = widget.data['organizationEmail'] as String?;
+    organizationPhone = widget.data['organizationPhone'] as String?;
+    organizationAddress = widget.data['organizationAddress'] as String?;
+
+    // Pre-fill admin fields if coming from organization registration
+    if (role == 'organization_admin') {
+      _usernameController.text = widget.data['username'] as String? ?? '';
+      _emailController.text = widget.data['email'] as String? ?? '';
+      _passwordController.text = widget.data['password'] as String? ?? '';
+      _confirmPasswordController.text =
+          widget.data['password'] as String? ?? '';
+    }
   }
 
   @override
@@ -285,6 +361,146 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               ),
                             ),
                           ),
+
+                          // Gender and Country fields for interpreters only
+                          if (role == 'interpreter') ...[
+                            const SizedBox(height: AppSize.s20),
+                            // Gender Selection
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSize.s16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: ColorManager.backgroundCard,
+                                borderRadius: BorderRadius.circular(
+                                  AppSize.s12,
+                                ),
+                                border: Border.all(
+                                  color:
+                                      _selectedGender != null
+                                          ? ColorManager.primary2
+                                          : ColorManager.greyMedium.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                ),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedGender,
+                                  hint: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.person_outline,
+                                        color: ColorManager.primary2,
+                                        size: AppSize.s20,
+                                      ),
+                                      const SizedBox(width: AppSize.s12),
+                                      Text(
+                                        'Select Gender',
+                                        style: TextStyle(
+                                          color: ColorManager.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  isExpanded: true,
+                                  icon: Icon(
+                                    Icons.keyboard_arrow_down,
+                                    color: ColorManager.primary2,
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'male',
+                                      child: Text('Male'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'female',
+                                      child: Text('Female'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'prefer_not_to_say',
+                                      child: Text('Prefer not to say'),
+                                    ),
+                                  ],
+                                  onChanged:
+                                      (value) => setState(
+                                        () => _selectedGender = value,
+                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: AppSize.s20),
+
+                            // Country Selection - Tappable to open searchable picker
+                            GestureDetector(
+                              onTap: () async {
+                                final country = await CountryPickerSheet.show(
+                                  context,
+                                  selectedCountry: _selectedCountry,
+                                );
+                                if (country != null) {
+                                  setState(() {
+                                    _selectedCountry = country.name;
+                                    _selectedCountryFlag = country.flag;
+                                  });
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSize.s16,
+                                  vertical: AppSize.s14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: ColorManager.backgroundCard,
+                                  borderRadius: BorderRadius.circular(
+                                    AppSize.s12,
+                                  ),
+                                  border: Border.all(
+                                    color:
+                                        _selectedCountry != null
+                                            ? ColorManager.primary2
+                                            : ColorManager.greyMedium
+                                                .withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    if (_selectedCountryFlag != null) ...[
+                                      Text(
+                                        _selectedCountryFlag!,
+                                        style: const TextStyle(fontSize: 24),
+                                      ),
+                                      const SizedBox(width: AppSize.s12),
+                                    ] else ...[
+                                      Icon(
+                                        Icons.public,
+                                        color: ColorManager.primary2,
+                                        size: AppSize.s20,
+                                      ),
+                                      const SizedBox(width: AppSize.s12),
+                                    ],
+                                    Expanded(
+                                      child: Text(
+                                        _selectedCountry ?? 'Select Country',
+                                        style: TextStyle(
+                                          color:
+                                              _selectedCountry != null
+                                                  ? ColorManager.textPrimary
+                                                  : ColorManager.textSecondary,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.keyboard_arrow_down,
+                                      color: ColorManager.primary2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+
                           const SizedBox(height: AppSize.s24),
                           Container(
                             padding: const EdgeInsets.all(AppSize.s16),
@@ -431,7 +647,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                 }
                               }
 
-                              // Check if user is requester or interpreter
+                              // Check if user is requester, interpreter, or organization_admin
                               if (role == 'requester') {
                                 // Simple registration for requesters
                                 context.read<RegisterBloc>().add(
@@ -441,6 +657,19 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     username: _usernameController.text.trim(),
                                   ),
                                 );
+                              } else if (role == 'organization_admin') {
+                                // Organization admin registration
+                                context.read<RegisterBloc>().add(
+                                  OrganizationRegisterSubmitted(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                    username: _usernameController.text.trim(),
+                                    organizationName: organizationName ?? '',
+                                    organizationEmail: organizationEmail ?? '',
+                                    organizationPhone: organizationPhone,
+                                    organizationAddress: organizationAddress,
+                                  ),
+                                );
                               } else {
                                 // Full registration for interpreters
                                 context.read<RegisterBloc>().add(
@@ -448,7 +677,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     email: _emailController.text.trim(),
                                     password: _passwordController.text,
                                     username: _usernameController.text.trim(),
-                                    gender: '',
+                                    gender: _selectedGender ?? '',
+                                    country: _selectedCountry,
                                     languages: languages,
                                     fluency: fluency,
                                     skillIds: skills,
@@ -457,10 +687,23 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     voiceSampleUrl: voiceSampleUrl,
                                     voicePrompt: voicePrompt,
                                     certificateUrl: certificateUrl,
+                                    medicalCertificateUrl:
+                                        medicalCertificateUrl,
                                     voiceSamplePath: voiceSamplePath,
                                     certificatePath: certificatePath,
+                                    medicalCertificatePath:
+                                        medicalCertificatePath,
                                     bio: bio,
                                     yearsExperience: yearsExperience,
+                                    preferredShift: preferredShift,
+                                    shiftAvailability:
+                                        shiftAvailability.isNotEmpty
+                                            ? shiftAvailability
+                                            : preferredShift != null
+                                            ? [preferredShift!]
+                                            : null,
+                                    isOnlineNow: isOnlineNow,
+                                    employmentType: employmentType,
                                   ),
                                 );
                               }

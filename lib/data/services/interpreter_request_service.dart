@@ -18,6 +18,7 @@ class InterpreterRequestService {
     String? specialization,
     required String urgency,
     String? description,
+    String callType = 'voice',
   }) async {
     try {
       final user = _client.auth.currentUser;
@@ -34,6 +35,7 @@ class InterpreterRequestService {
         'urgency': urgency,
         'status': 'pending',
         'description': description,
+        'call_type': callType,
         'created_at': DateTime.now().toIso8601String(),
       };
 
@@ -43,7 +45,7 @@ class InterpreterRequestService {
               .from('interpreter_requests')
               .insert(requestData)
               .select(
-                'id, requester_id, from_language, to_language, specialization, urgency, status, description, created_at',
+                'id, requester_id, from_language, to_language, specialization, urgency, status, description, call_type, created_at',
               )
               .single();
 
@@ -84,6 +86,7 @@ class InterpreterRequestService {
   }
 
   /// Find interpreters matching both from and to languages and optional specialization
+  /// Prioritizes interpreters with badges for the requested medical section
   Future<List<Map<String, dynamic>>> _findMatchingInterpreters(
     InterpreterRequest request,
   ) async {
@@ -127,11 +130,71 @@ class InterpreterRequestService {
           .inFilter('user_id', matchingUserIds)
           .eq('role', 'interpreter');
 
-      // If specialization is specified, filter by specialization
+      List<Map<String, dynamic>> result = List<Map<String, dynamic>>.from(
+        userProfiles,
+      );
+
+      // If specialization is specified, prioritize by badge
       if (request.specialization != null &&
           request.specialization!.isNotEmpty) {
-        log('Filtering by specialization: ${request.specialization}');
+        log(
+          'Prioritizing by badge for specialization: ${request.specialization}',
+        );
 
+        try {
+          // Convert specialization name to medical_section enum key
+          // e.g., "Neurology" -> "neurology", "OB/GYN" -> "ob_gyn"
+          final medicalSection = _specializationToMedicalSection(
+            request.specialization!,
+          );
+          log('Medical section key: $medicalSection');
+
+          // Find interpreters with a badge for this medical section
+          final badgeQuery = await _client
+              .from('interpreter_badges')
+              .select('user_id, score')
+              .eq('badge', medicalSection)
+              .inFilter('user_id', matchingUserIds)
+              .order('score', ascending: false);
+
+          final interpretersWithBadge =
+              badgeQuery.map((b) => b['user_id'] as String).toList();
+
+          log(
+            'Interpreters with badge for $medicalSection: ${interpretersWithBadge.length}',
+          );
+
+          if (interpretersWithBadge.isNotEmpty) {
+            // Sort results: interpreters with badges first (sorted by score), then others
+            final withBadge =
+                result
+                    .where((p) => interpretersWithBadge.contains(p['user_id']))
+                    .toList();
+            final withoutBadge =
+                result
+                    .where((p) => !interpretersWithBadge.contains(p['user_id']))
+                    .toList();
+
+            // Sort withBadge by their position in interpretersWithBadge (which is sorted by score)
+            withBadge.sort((a, b) {
+              final aIndex = interpretersWithBadge.indexOf(
+                a['user_id'] as String,
+              );
+              final bIndex = interpretersWithBadge.indexOf(
+                b['user_id'] as String,
+              );
+              return aIndex.compareTo(bIndex);
+            });
+
+            result = [...withBadge, ...withoutBadge];
+            log('Prioritized ${withBadge.length} interpreters with badges');
+          }
+        } catch (e) {
+          log('Badge prioritization error: $e');
+          // Continue without badge prioritization if it fails
+        }
+
+        // Also filter by specialization if applicable
         try {
           // Get specialization ID by name
           final specializationResponse =
@@ -139,43 +202,67 @@ class InterpreterRequestService {
                   .from('specializations')
                   .select('id')
                   .eq('name', request.specialization!)
-                  .single();
+                  .maybeSingle();
 
-          final specializationId = specializationResponse['id'] as int;
-          log('Found specialization ID: $specializationId');
+          if (specializationResponse != null) {
+            final specializationId = specializationResponse['id'] as int;
+            log('Found specialization ID: $specializationId');
 
-          // Find interpreters with that specialization among matching users
-          final specializationQuery = await _client
-              .from('interpreter_specializations')
-              .select('user_id')
-              .eq('specialization_id', specializationId)
-              .inFilter('user_id', matchingUserIds);
+            // Find interpreters with that specialization among matching users
+            final specializationQuery = await _client
+                .from('interpreter_specializations')
+                .select('user_id')
+                .eq('specialization_id', specializationId)
+                .inFilter('user_id', matchingUserIds);
 
-          final specializedUserIds =
-              specializationQuery
-                  .map((spec) => spec['user_id'] as String)
-                  .toList();
+            final specializedUserIds =
+                specializationQuery
+                    .map((spec) => spec['user_id'] as String)
+                    .toSet();
 
-          log('Interpreters with specialization: ${specializedUserIds.length}');
+            log(
+              'Interpreters with specialization: ${specializedUserIds.length}',
+            );
 
-          // Filter profiles by specialization
-          return userProfiles
-              .where(
-                (profile) => specializedUserIds.contains(profile['user_id']),
-              )
-              .toList();
+            // Filter profiles by specialization (but keep badge ordering)
+            if (specializedUserIds.isNotEmpty) {
+              result =
+                  result
+                      .where((p) => specializedUserIds.contains(p['user_id']))
+                      .toList();
+            }
+          }
         } catch (e) {
           log('Specialization filter error: $e');
-          // If specialization lookup fails, return all profiles without filtering
-          return userProfiles;
+          // Continue without specialization filtering if it fails
         }
       }
 
-      return userProfiles;
+      return result;
     } catch (e) {
       log('Error finding matching interpreters: $e');
       return [];
     }
+  }
+
+  /// Convert specialization display name to medical_section enum key
+  String _specializationToMedicalSection(String specialization) {
+    final map = {
+      'Neurology': 'neurology',
+      'Cardiology': 'cardiology',
+      'Respiratory': 'respiratory',
+      'Gastrointestinal': 'gastrointestinal',
+      'Endocrinology': 'endocrinology',
+      'Renal': 'renal',
+      'OB/GYN': 'ob_gyn',
+      'Oncology': 'oncology',
+      'Emergency': 'emergency',
+      'Psychology': 'psychology',
+      'Musculoskeletal': 'musculoskeletal',
+      'Dermatology': 'dermatology',
+    };
+    return map[specialization] ??
+        specialization.toLowerCase().replaceAll('/', '_').replaceAll(' ', '_');
   }
 
   /// Get FCM tokens for a list of user IDs
@@ -247,21 +334,27 @@ class InterpreterRequestService {
     required InterpreterRequest request,
   }) async {
     try {
-      log('Sending notification to ${tokens.length} interpreters');
+      log('Sending call invite notification to ${tokens.length} interpreters');
       final fromLanguageName = await _findLanguageById(request.fromLanguage);
       final toLanguageName = await _findLanguageById(request.toLanguage);
 
+      // Build caller name for CallKit display
+      final callerName =
+          '$fromLanguageName → $toLanguageName${request.specialization != null ? ' (${request.specialization})' : ''}';
+
       final notificationData = {
-        'title': 'New Interpreter Request',
-        'body':
-            'A new ${request.urgency.toLowerCase()} request from $fromLanguageName to $toLanguageName',
+        'title': 'Incoming Call Request',
+        'body': 'New ${request.callType} call: $callerName',
         'data': {
           'request_id': request.id,
           'from_language': fromLanguageName,
           'to_language': toLanguageName,
           'urgency': request.urgency,
           'specialization': request.specialization ?? '',
-          'type': 'interpreter_request',
+          'call_type': request.callType,
+          'type': 'incoming_call', // Triggers CallKit incoming call UI
+          'caller_name': callerName, // For CallKit display
+          'caller_id': request.id, // Use request ID as caller ID
         },
         'tokens': tokens,
       };
@@ -280,7 +373,7 @@ class InterpreterRequestService {
         throw Exception('Failed to send notification: ${response.data}');
       }
 
-      log('Notification sent successfully');
+      log('Call invite notification sent successfully');
     } catch (e) {
       log('Error sending notification via Edge Function: $e');
     }

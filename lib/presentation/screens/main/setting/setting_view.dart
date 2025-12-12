@@ -16,6 +16,42 @@ class SettingView extends StatefulWidget {
 
 class _SettingViewState extends State<SettingView> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
+  final SupabaseService _supabaseService = SupabaseService();
+  bool _isInOrganization = false;
+  String? _userRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOrganizationMembership();
+  }
+
+  Future<void> _checkOrganizationMembership() async {
+    final userId = _supabaseService.getCurrentUser()?.id;
+    if (userId == null) return;
+
+    try {
+      // Check user role
+      final profile = await _supabaseService.getUserProfile(userId);
+      _userRole = profile?.role;
+
+      // Check if user is in an organization
+      final member =
+          await _supabaseService.client
+              .from('organization_members')
+              .select('id')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _isInOrganization = member != null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking org membership: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +76,22 @@ class _SettingViewState extends State<SettingView> {
             onTap: () => Navigator.pushNamed(context, Routes.changePassword),
           ),
           const Divider(height: 1),
+
+          // Show "Join Organization" only for requesters not in an organization
+          if (_userRole == 'requester' && !_isInOrganization) ...[
+            _buildSimpleTile(
+              icon: Icons.business,
+              title: 'Join Organization',
+              subtitle: 'Join a healthcare organization',
+              onTap:
+                  () => Navigator.pushNamed(
+                    context,
+                    Routes.joinOrganizationRoute,
+                  ),
+            ),
+            const Divider(height: 1),
+          ],
+
           _buildSimpleTile(
             icon: Icons.delete_forever,
             title: 'Delete Account',

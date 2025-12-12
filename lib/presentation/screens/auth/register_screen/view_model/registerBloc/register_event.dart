@@ -10,6 +10,7 @@ class RegisterSubmitted extends RegisterEvent {
   final String password;
   final String username;
   final String gender;
+  final String? country;
   final List<String> languages;
   final Map<String, String?> fluency;
   final List<int> skillIds;
@@ -18,17 +19,24 @@ class RegisterSubmitted extends RegisterEvent {
   final String? voiceSampleUrl;
   final String? voicePrompt;
   final String? certificateUrl;
+  final String? medicalCertificateUrl;
   // Local paths for deferred upload
   final String? voiceSamplePath;
   final String? certificatePath;
+  final String? medicalCertificatePath;
   final String? bio;
   final int? yearsExperience;
+  final String? preferredShift;
+  final List<String>? shiftAvailability;
+  final bool? isOnlineNow;
+  final String? employmentType; // 'volunteer' or 'paid'
 
   RegisterSubmitted({
     required this.email,
     required this.password,
     required this.username,
     required this.gender,
+    this.country,
     required this.languages,
     required this.fluency,
     required this.skillIds,
@@ -37,10 +45,16 @@ class RegisterSubmitted extends RegisterEvent {
     this.voiceSampleUrl,
     this.voicePrompt,
     this.certificateUrl,
+    this.medicalCertificateUrl,
     this.voiceSamplePath,
     this.certificatePath,
+    this.medicalCertificatePath,
     this.bio,
     this.yearsExperience,
+    this.preferredShift,
+    this.shiftAvailability,
+    this.isOnlineNow,
+    this.employmentType,
   });
 
   @override
@@ -49,6 +63,7 @@ class RegisterSubmitted extends RegisterEvent {
     password,
     username,
     gender,
+    country,
     languages,
     fluency,
     skillIds,
@@ -57,10 +72,16 @@ class RegisterSubmitted extends RegisterEvent {
     voiceSampleUrl,
     voicePrompt,
     certificateUrl,
+    medicalCertificateUrl,
     voiceSamplePath,
     certificatePath,
+    medicalCertificatePath,
     bio,
     yearsExperience,
+    preferredShift,
+    shiftAvailability,
+    isOnlineNow,
+    employmentType,
   ];
 }
 
@@ -77,4 +98,35 @@ class RequesterRegisterSubmitted extends RegisterEvent {
 
   @override
   List<Object?> get props => [email, password, username];
+}
+
+class OrganizationRegisterSubmitted extends RegisterEvent {
+  final String email;
+  final String password;
+  final String username;
+  final String organizationName;
+  final String organizationEmail;
+  final String? organizationPhone;
+  final String? organizationAddress;
+
+  OrganizationRegisterSubmitted({
+    required this.email,
+    required this.password,
+    required this.username,
+    required this.organizationName,
+    required this.organizationEmail,
+    this.organizationPhone,
+    this.organizationAddress,
+  });
+
+  @override
+  List<Object?> get props => [
+    email,
+    password,
+    username,
+    organizationName,
+    organizationEmail,
+    organizationPhone,
+    organizationAddress,
+  ];
 }

@@ -24,6 +24,9 @@ class SupabaseService {
 
   final SupabaseClient _client = Supabase.instance.client;
 
+  /// Public getter for accessing the Supabase client directly
+  SupabaseClient get client => _client;
+
   // --- AUTH ---
   Future<AuthResponse> signUp({
     required String email,
@@ -38,12 +41,20 @@ class SupabaseService {
 
   Future<void> sendEmailOtp(String email) async {
     // Send magic link for verification
-    await _client.auth.signInWithOtp(email: email, shouldCreateUser: false);
+    await _client.auth.signInWithOtp(
+      email: email,
+      shouldCreateUser: false,
+      emailRedirectTo: kAuthCallbackUrl,
+    );
   }
 
   Future<void> sendMagicLink(String email) async {
     // Send magic link for verification
-    await _client.auth.signInWithOtp(email: email, shouldCreateUser: false);
+    await _client.auth.signInWithOtp(
+      email: email,
+      shouldCreateUser: false,
+      emailRedirectTo: kAuthCallbackUrl,
+    );
   }
 
   Future<void> sendPasswordResetEmail({required String email}) async {
@@ -107,7 +118,8 @@ class SupabaseService {
             .from('users_profile')
             .select()
             .eq('user_id', userId)
-            .single();
+            .maybeSingle();
+    if (response == null) return null;
     return UserProfile.fromJson(response);
   }
 
@@ -149,6 +161,7 @@ class SupabaseService {
         'role': profile.role ?? '',
         'profile_image': profile.profileImage ?? '',
         'gender': profile.gender ?? '',
+        'country': profile.country,
         // created_at will be set automatically by the database
       };
 
@@ -157,7 +170,10 @@ class SupabaseService {
         throw Exception('User must be authenticated to create profile');
       }
 
-      await _client.from('users_profile').insert(data);
+      // Use upsert with ignoreDuplicates to prevent duplicate profiles
+      await _client
+          .from('users_profile')
+          .upsert(data, onConflict: 'user_id', ignoreDuplicates: true);
     } catch (e) {
       // Try alternative approach with explicit error handling
       try {
@@ -167,9 +183,16 @@ class SupabaseService {
           'role': profile.role ?? '',
           'profile_image': profile.profileImage ?? '',
           'gender': profile.gender ?? '',
+          'country': profile.country,
         };
 
-        await _client.from('users_profile').insert(fallbackData);
+        await _client
+            .from('users_profile')
+            .upsert(
+              fallbackData,
+              onConflict: 'user_id',
+              ignoreDuplicates: true,
+            );
       } catch (e2) {
         throw Exception('Failed to create user profile: $e2');
       }
@@ -181,6 +204,24 @@ class SupabaseService {
         .from('users_profile')
         .update(profile.toJson())
         .eq('user_id', profile.id);
+  }
+
+  Future<Map<String, dynamic>?> getInstitutionStatus(
+    String institutionId,
+  ) async {
+    final response =
+        await _client
+            .from('institutions')
+            .select('''
+          id,
+          subscription_status,
+          subscription_end_date,
+          active_users
+        ''')
+            .eq('id', institutionId)
+            .maybeSingle();
+
+    return response;
   }
 
   // --- INTERPRETER LANGUAGE ---
@@ -195,7 +236,13 @@ class SupabaseService {
   }
 
   Future<void> addInterpreterLanguage(InterpreterLanguage lang) async {
-    await _client.from('interpreter_languages').insert(lang.toJson());
+    await _client
+        .from('interpreter_languages')
+        .upsert(
+          lang.toJson(),
+          onConflict: 'user_id,language_id',
+          ignoreDuplicates: true,
+        );
   }
 
   Future<void> deleteInterpreterLanguage(String userId, int languageId) async {
@@ -218,6 +265,36 @@ class SupabaseService {
         .eq('language_id', languageId);
   }
 
+  /// Get all unique languages that interpreters have registered
+  /// This returns languages that at least one interpreter speaks
+  Future<List<Language>> getAvailableInterpreterLanguages() async {
+    try {
+      // Get all unique language_ids from interpreter_languages
+      final interpreterLangs = await _client
+          .from('interpreter_languages')
+          .select('language_id');
+
+      if (interpreterLangs.isEmpty) {
+        return [];
+      }
+
+      // Get unique language IDs
+      final uniqueLanguageIds =
+          interpreterLangs.map((e) => e['language_id'] as int).toSet().toList();
+
+      // Get the language details for these IDs
+      final languages = await _client
+          .from('languages')
+          .select()
+          .inFilter('id', uniqueLanguageIds);
+
+      return languages.map((e) => Language.fromJson(e)).toList();
+    } catch (e) {
+      log('Error getting available interpreter languages: $e');
+      return [];
+    }
+  }
+
   // --- INTERPRETER SPECIALIZATION ---
   Future<List<InterpreterSpecialization>> getInterpreterSpecializations(
     String userId,
@@ -232,7 +309,13 @@ class SupabaseService {
   Future<void> addInterpreterSpecialization(
     InterpreterSpecialization spec,
   ) async {
-    await _client.from('interpreter_specializations').insert(spec.toJson());
+    await _client
+        .from('interpreter_specializations')
+        .upsert(
+          spec.toJson(),
+          onConflict: 'user_id,specialization_id',
+          ignoreDuplicates: true,
+        );
   }
 
   Future<void> deleteInterpreterSpecialization(
@@ -256,7 +339,13 @@ class SupabaseService {
   }
 
   Future<void> addInterpreterSkill(InterpreterSkill skill) async {
-    await _client.from('interpreter_skills').insert(skill.toJson());
+    await _client
+        .from('interpreter_skills')
+        .upsert(
+          skill.toJson(),
+          onConflict: 'user_id,skill_id',
+          ignoreDuplicates: true,
+        );
   }
 
   Future<void> deleteInterpreterSkill(String userId, int skillId) async {
@@ -312,7 +401,13 @@ class SupabaseService {
   }
 
   Future<void> createInterpreterDetails(InterpreterDetails details) async {
-    await _client.from('interpreter_details').insert(details.toJson());
+    await _client
+        .from('interpreter_details')
+        .upsert(
+          details.toJson(),
+          onConflict: 'user_id',
+          ignoreDuplicates: true,
+        );
   }
 
   Future<void> updateInterpreterDetails(InterpreterDetails details) async {
@@ -323,6 +418,7 @@ class SupabaseService {
   }
 
   /// Update interpreter details with voice sample and certificate URLs
+  /// Note: voice_sample_url may be stored in users_profile table if the column exists
   Future<void> updateInterpreterDetailsWithUrls(
     String userId, {
     String? voiceSampleUrl,
@@ -330,10 +426,21 @@ class SupabaseService {
     String? bio,
     int? yearsExperience,
   }) async {
-    final updateData = <String, dynamic>{};
+    // Voice sample URL - try to store in users_profile if column exists
+    // Skip silently if column doesn't exist (migration not applied)
     if (voiceSampleUrl != null) {
-      updateData['voice_sample_url'] = voiceSampleUrl;
+      try {
+        await _client
+            .from('users_profile')
+            .update({'voice_sample_url': voiceSampleUrl})
+            .eq('user_id', userId);
+      } catch (e) {
+        log('Skipping voice_sample_url update (column may not exist): $e');
+      }
     }
+
+    // Other interpreter details are stored in interpreter_details table
+    final updateData = <String, dynamic>{};
     if (certificateUrl != null) {
       updateData['certificate_url'] = certificateUrl;
     }
@@ -345,10 +452,15 @@ class SupabaseService {
     }
 
     if (updateData.isNotEmpty) {
-      await _client
-          .from('interpreter_details')
-          .update(updateData)
-          .eq('user_id', userId);
+      // Use upsert in case the interpreter_details row doesn't exist yet
+      updateData['user_id'] = userId;
+      try {
+        await _client
+            .from('interpreter_details')
+            .upsert(updateData, onConflict: 'user_id');
+      } catch (e) {
+        log('Skipping interpreter_details update: $e');
+      }
     }
   }
 
@@ -409,19 +521,85 @@ class SupabaseService {
     Map<String, dynamic> data,
     String userId,
   ) async {
+    // Check if user profile already exists to prevent duplicate registration
+    try {
+      final existingProfile =
+          await _client
+              .from('users_profile')
+              .select('user_id')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      if (existingProfile != null) {
+        log('User profile already exists for $userId, skipping finalization');
+        return;
+      }
+    } catch (e) {
+      log('Error checking existing profile: $e');
+    }
+
     final role = (data['role'] as String?) ?? 'requester';
     final username = (data['username'] as String?) ?? '';
+    final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
     final profile = UserProfile(
       id: userId,
       role: role,
       username: username,
       profileImage: data['profileImage'],
       gender: data['gender'],
+      country: data['country'],
+    );
+
+    log(
+      'finalizePendingRegistrationData: Creating profile with role=$role, username=$username, employmentType=$employmentType',
     );
 
     try {
       await createUserProfileAfterSignUp(profile);
-    } catch (_) {}
+      log('finalizePendingRegistrationData: Profile created successfully');
+
+      // Update employment_type for interpreters
+      if (role == 'interpreter') {
+        await _client
+            .from('users_profile')
+            .update({'employment_type': employmentType})
+            .eq('user_id', userId);
+        log(
+          'finalizePendingRegistrationData: Employment type set to $employmentType',
+        );
+      }
+    } catch (e) {
+      log('finalizePendingRegistrationData: Error creating profile: $e');
+      // Re-throw to prevent organization creation without profile
+      rethrow;
+    }
+
+    // Check for pending organization invitations (for requesters/doctors)
+    if (role == 'requester') {
+      final user = _client.auth.currentUser;
+      if (user?.email != null) {
+        final didJoinOrg = await checkAndProcessPendingInvite(
+          userId,
+          user!.email!,
+        );
+        if (didJoinOrg) {
+          log(
+            'finalizePendingRegistrationData: User joined organization via invite',
+          );
+          // Update user role to indicate they're part of an organization
+          await _client
+              .from('users_profile')
+              .update({'role': 'requester'})
+              .eq('user_id', userId);
+        }
+      }
+    }
+
+    // Handle organization_admin role - create organization and membership
+    if (role == 'organization_admin') {
+      await _createOrganizationFromRegistration(data, userId);
+      return;
+    }
 
     if (role != 'interpreter') {
       return;
@@ -495,8 +673,23 @@ class SupabaseService {
     final specs = _parseIntList(
       data['specializationIds'] ?? data['specializations'],
     );
+
+    // Get valid specialization IDs from database to filter out deleted ones
+    Set<int> validSpecIds = {};
+    try {
+      final validSpecs = await getSpecializations();
+      validSpecIds = validSpecs.map((s) => s.id).toSet();
+    } catch (e) {
+      log('Error fetching valid specializations: $e');
+    }
+
     for (final specId in specs) {
       if (specId <= 0) continue;
+      // Skip if specialization no longer exists in database
+      if (validSpecIds.isNotEmpty && !validSpecIds.contains(specId)) {
+        log('Skipping invalid specialization ID: $specId');
+        continue;
+      }
       try {
         await addInterpreterSpecialization(
           InterpreterSpecialization(userId: userId, specializationId: specId),
@@ -506,7 +699,28 @@ class SupabaseService {
       }
     }
 
-    final voiceUrl = data['voiceSampleUrl'] as String?;
+    // --- Upload voice sample from local path if not already a URL ---
+    String? voiceUrl = data['voiceSampleUrl'] as String?;
+    final voicePath = data['voiceSamplePath'] as String?;
+    if ((voiceUrl == null || voiceUrl.isEmpty) &&
+        voicePath != null &&
+        voicePath.isNotEmpty) {
+      try {
+        final file = File(voicePath);
+        if (await file.exists()) {
+          voiceUrl = await uploadVoiceSampleFromPath(
+            voicePath,
+            prompt: data['voicePrompt'] as String?,
+            sentenceType: 'onboarding',
+          );
+          log('Voice sample uploaded: $voiceUrl');
+        }
+      } catch (e) {
+        log('Error uploading voice sample: $e');
+      }
+    }
+
+    // --- Upload training certificate ---
     String? certUrl = data['certificateUrl'] as String?;
     final certPath = data['certificatePath'] as String?;
     if ((certUrl == null || certUrl.isEmpty) &&
@@ -517,10 +731,33 @@ class SupabaseService {
         if (await file.exists()) {
           certUrl = await uploadInterpreterCertificate(
             file,
-            certificateType: 'onboarding',
+            certificateType: 'training',
           );
+          log('Training certificate uploaded: $certUrl');
         }
-      } catch (_) {}
+      } catch (e) {
+        log('Error uploading training certificate: $e');
+      }
+    }
+
+    // --- Upload medical certificate (paid interpreters) ---
+    String? medicalCertUrl = data['medicalCertificateUrl'] as String?;
+    final medicalCertPath = data['medicalCertificatePath'] as String?;
+    if ((medicalCertUrl == null || medicalCertUrl.isEmpty) &&
+        medicalCertPath != null &&
+        medicalCertPath.isNotEmpty) {
+      try {
+        final file = File(medicalCertPath);
+        if (await file.exists()) {
+          medicalCertUrl = await uploadInterpreterCertificate(
+            file,
+            certificateType: 'medical',
+          );
+          log('Medical certificate uploaded: $medicalCertUrl');
+        }
+      } catch (e) {
+        log('Error uploading medical certificate: $e');
+      }
     }
 
     final years =
@@ -528,17 +765,24 @@ class SupabaseService {
             ? data['yearsExperience'] as int
             : int.tryParse(data['yearsExperience']?.toString() ?? '');
 
+    // Try to update interpreter details with voice sample and bio
+    // This is non-critical - don't fail the whole registration if this fails
     if (voiceUrl != null ||
         certUrl != null ||
+        medicalCertUrl != null ||
         data['bio'] != null ||
         years != null) {
-      await updateInterpreterDetailsWithUrls(
-        userId,
-        voiceSampleUrl: voiceUrl,
-        // Don't pass certificateUrl - it's already stored in interpreter_certificates table
-        bio: data['bio'] as String?,
-        yearsExperience: years,
-      );
+      try {
+        await updateInterpreterDetailsWithUrls(
+          userId,
+          voiceSampleUrl: voiceUrl,
+          bio: data['bio'] as String?,
+          yearsExperience: years,
+        );
+      } catch (e) {
+        log('Error updating interpreter details with URLs (non-critical): $e');
+        // Don't rethrow - this is not critical for registration
+      }
     }
   }
 
@@ -690,9 +934,12 @@ class SupabaseService {
 
       // Create a more descriptive filename
       final sentenceTypeStr = sentenceType ?? 'professional_sentence';
-      final safePrompt = (prompt ?? 'sample')
-          .replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_')
-          .substring(0, 50); // Limit length
+      final sanitized = (prompt ?? 'sample').replaceAll(
+        RegExp(r'[^a-zA-Z0-9_\-]'),
+        '_',
+      );
+      final safePrompt =
+          sanitized.length > 50 ? sanitized.substring(0, 50) : sanitized;
 
       final objectPath =
           'voice_samples/${user.id}/${dateStr}_${sentenceTypeStr}_${safePrompt}_$timestamp.m4a';
@@ -795,9 +1042,8 @@ class SupabaseService {
       final objectPath =
           'certificates/${user.id}/${dateStr}_${certType}_$safeName';
 
-      // Upload to a private onboarding bucket
-      // NOTE: Ensure a private bucket named 'onboarding' exists with appropriate RLS.
-      const bucket = 'onboarding';
+      // Upload to the interpreter_certificates bucket
+      const bucket = 'interpreter_certificates';
       await _client.storage
           .from(bucket)
           .uploadBinary(
@@ -877,6 +1123,359 @@ class SupabaseService {
     } catch (e) {
       // Log error but don't fail the upload
       log('Failed to store certificate metadata: $e');
+    }
+  }
+
+  // --- QUIZ ---
+  Future<List<Map<String, dynamic>>> getQuizQuestions({
+    required String quizType,
+    String? medicalSection,
+  }) async {
+    log(
+      'getQuizQuestions called with quizType: $quizType, medicalSection: $medicalSection',
+    );
+
+    var query = _client
+        .from('quiz_questions')
+        .select()
+        .eq('quiz_type', quizType)
+        .eq('is_active', true);
+
+    if (medicalSection != null) {
+      query = query.eq('medical_section', medicalSection);
+    }
+
+    final List data = await query;
+    log('getQuizQuestions returned ${data.length} questions');
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> submitQuizAttempt(Map<String, dynamic> attempt) async {
+    log('submitQuizAttempt called with: $attempt');
+    try {
+      await _client.from('quiz_attempts').insert(attempt);
+      log('Quiz attempt submitted successfully');
+    } catch (e, stackTrace) {
+      log('Error submitting quiz attempt: $e');
+      log('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  Future<void> awardBadge({
+    required String userId,
+    required String badge,
+    required int score,
+  }) async {
+    log('awardBadge called: userId=$userId, badge=$badge, score=$score');
+    try {
+      // Check if badge already exists
+      final existing =
+          await _client
+              .from('interpreter_badges')
+              .select()
+              .eq('user_id', userId)
+              .eq('badge', badge)
+              .maybeSingle();
+
+      log('Existing badge check result: $existing');
+
+      if (existing != null) {
+        // Update if new score is higher
+        final existingScore = existing['score'];
+        final existingScoreNum =
+            existingScore is num ? existingScore.toDouble() : 0.0;
+        if (score > existingScoreNum) {
+          log('Updating existing badge with higher score');
+          await _client
+              .from('interpreter_badges')
+              .update({
+                'score': score,
+                'earned_at': DateTime.now().toIso8601String(),
+              })
+              .eq('user_id', userId)
+              .eq('badge', badge);
+        } else {
+          log('Existing badge has higher or equal score, not updating');
+        }
+      } else {
+        // Insert new badge
+        log('Inserting new badge');
+        await _client.from('interpreter_badges').insert({
+          'user_id': userId,
+          'badge': badge,
+          'score': score,
+        });
+        log('Badge inserted successfully');
+      }
+    } catch (e, stackTrace) {
+      log('Error in awardBadge: $e');
+      log('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getUserBadges(String userId) async {
+    final List data = await _client
+        .from('interpreter_badges')
+        .select()
+        .eq('user_id', userId);
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> getQuizAttempts(String userId) async {
+    final List data = await _client
+        .from('quiz_attempts')
+        .select()
+        .eq('user_id', userId)
+        .order('taken_at', ascending: false);
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  /// Creates an organization and adds the user as organization_admin
+  Future<void> _createOrganizationFromRegistration(
+    Map<String, dynamic> data,
+    String userId,
+  ) async {
+    final orgName = data['organizationName'] as String? ?? '';
+    final orgEmail = data['organizationEmail'] as String? ?? '';
+    final orgPhone = data['organizationPhone'] as String?;
+    final orgAddress = data['organizationAddress'] as String?;
+
+    if (orgName.isEmpty || orgEmail.isEmpty) {
+      log(
+        'Organization name or email is empty, skipping organization creation',
+      );
+      return;
+    }
+
+    try {
+      // Generate a random invite code
+      final inviteCode = _generateInviteCode();
+
+      // Create the organization
+      final orgResponse =
+          await _client
+              .from('organizations')
+              .insert({
+                'name': orgName,
+                'email': orgEmail,
+                'phone': orgPhone,
+                'address': orgAddress,
+                'invite_code': inviteCode,
+                'wallet_balance': 0,
+                'rate_per_minute': 1.0,
+                'is_active': true,
+              })
+              .select('id')
+              .single();
+
+      final orgId = orgResponse['id'];
+
+      // Add the user as organization_admin member
+      await _client.from('organization_members').insert({
+        'organization_id': orgId,
+        'user_id': userId,
+        'role': 'organization_admin',
+        'is_active': true,
+        'spending_limit': null,
+        'total_spent': 0,
+      });
+
+      log('Organization created successfully: $orgId');
+    } catch (e) {
+      log('Error creating organization: $e');
+      rethrow;
+    }
+  }
+
+  String _generateInviteCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    final code = StringBuffer();
+    for (var i = 0; i < 8; i++) {
+      code.write(chars[(random + i * 7) % chars.length]);
+    }
+    return code.toString();
+  }
+
+  // --- ORGANIZATION INVITATION METHODS ---
+
+  /// Validate an invite code and return organization details if valid
+  Future<Map<String, dynamic>?> validateInviteCode(String inviteCode) async {
+    try {
+      // First, check for personal invite in organization_invites
+      final personalInvite =
+          await _client
+              .from('organization_invites')
+              .select('*, organizations(id, name)')
+              .eq('invite_code', inviteCode.toUpperCase())
+              .eq('status', 'pending')
+              .gt('expires_at', DateTime.now().toIso8601String())
+              .maybeSingle();
+
+      if (personalInvite != null) {
+        return {
+          'type': 'personal',
+          'invite': personalInvite,
+          'organization': personalInvite['organizations'],
+          'organization_id': personalInvite['organization_id'],
+          'role': personalInvite['role'] ?? 'doctor',
+          'invite_id': personalInvite['id'],
+        };
+      }
+
+      // Fall back to checking general org invite code in organizations table
+      final orgWithCode =
+          await _client
+              .from('organizations')
+              .select('id, name, invite_code')
+              .eq('invite_code', inviteCode.toUpperCase())
+              .maybeSingle();
+
+      if (orgWithCode != null) {
+        return {
+          'type': 'general',
+          'organization': orgWithCode,
+          'organization_id': orgWithCode['id'],
+          'role': 'doctor',
+          'invite_id': null,
+        };
+      }
+
+      return null; // Invalid code
+    } catch (e) {
+      log('Error validating invite code: $e');
+      return null;
+    }
+  }
+
+  /// Register a new doctor user and join them to an organization
+  Future<AuthResponse> signUpDoctorWithInvite({
+    required String email,
+    required String password,
+    required String fullName,
+    required String organizationId,
+    required String role,
+    String? inviteId,
+  }) async {
+    // First, sign up the user
+    final authResponse = await signUp(email: email, password: password);
+
+    if (authResponse.user != null) {
+      final userId = authResponse.user!.id;
+
+      // Create user profile as 'requester' (doctor role in the app)
+      await _client.from('users_profile').insert({
+        'user_id': userId,
+        'full_name': fullName,
+        'role': 'requester',
+        'email': email.toLowerCase(),
+      });
+
+      // Add to organization_members
+      await _client.from('organization_members').insert({
+        'organization_id': organizationId,
+        'user_id': userId,
+        'role': role,
+        'is_active': true,
+        'spending_limit': null,
+        'total_spent': 0,
+      });
+
+      // If personal invite, mark as accepted
+      if (inviteId != null) {
+        await _client
+            .from('organization_invites')
+            .update({
+              'status': 'accepted',
+              'redeemed_by': userId,
+              'redeemed_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', inviteId);
+      }
+
+      log('Doctor registered and joined organization: $organizationId');
+    }
+
+    return authResponse;
+  }
+
+  /// Check if an email has a pending organization invitation
+  Future<Map<String, dynamic>?> getPendingInviteByEmail(String email) async {
+    try {
+      final response =
+          await _client
+              .from('organization_invites')
+              .select('*, organizations(id, name)')
+              .eq('email', email.toLowerCase())
+              .eq('status', 'pending')
+              .gt('expires_at', DateTime.now().toIso8601String())
+              .maybeSingle();
+      return response;
+    } catch (e) {
+      log('Error checking pending invite: $e');
+      return null;
+    }
+  }
+
+  /// Accept an organization invitation and add user as member
+  Future<bool> acceptOrganizationInvite({
+    required String inviteId,
+    required String organizationId,
+    required String userId,
+    required String role,
+  }) async {
+    try {
+      // Update invite status to accepted
+      await _client
+          .from('organization_invites')
+          .update({
+            'status': 'accepted',
+            'redeemed_by': userId,
+            'redeemed_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', inviteId);
+
+      // Add user to organization_members
+      await _client.from('organization_members').insert({
+        'organization_id': organizationId,
+        'user_id': userId,
+        'role': role,
+        'is_active': true,
+        'spending_limit': null,
+        'total_spent': 0,
+      });
+
+      log(
+        'Organization invite accepted: user $userId joined org $organizationId',
+      );
+      return true;
+    } catch (e) {
+      log('Error accepting organization invite: $e');
+      return false;
+    }
+  }
+
+  /// Check and process pending invite after user registration/login
+  Future<bool> checkAndProcessPendingInvite(String userId, String email) async {
+    try {
+      final invite = await getPendingInviteByEmail(email);
+      if (invite == null) return false;
+
+      final inviteId = invite['id'] as String;
+      final orgId = invite['organization_id'] as String;
+      final role = invite['role'] as String? ?? 'doctor';
+
+      return await acceptOrganizationInvite(
+        inviteId: inviteId,
+        organizationId: orgId,
+        userId: userId,
+        role: role,
+      );
+    } catch (e) {
+      log('Error processing pending invite: $e');
+      return false;
     }
   }
 }

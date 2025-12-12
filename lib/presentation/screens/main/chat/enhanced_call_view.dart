@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -10,20 +11,32 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // 1. SIMPLIFIED WIDGET: It no longer creates a BLoC
 class EnhancedCallScreen extends StatelessWidget {
   final String channelId;
+  final bool isVideoCall;
 
-  const EnhancedCallScreen({super.key, required this.channelId});
+  const EnhancedCallScreen({
+    super.key,
+    required this.channelId,
+    this.isVideoCall = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     // We removed the BlocProvider wrapper from here
-    return _EnhancedCallScreenBody(channelId: channelId);
+    return _EnhancedCallScreenBody(
+      channelId: channelId,
+      isVideoCall: isVideoCall,
+    );
   }
 }
 
 class _EnhancedCallScreenBody extends StatefulWidget {
   final String channelId;
+  final bool isVideoCall;
 
-  const _EnhancedCallScreenBody({required this.channelId});
+  const _EnhancedCallScreenBody({
+    required this.channelId,
+    required this.isVideoCall,
+  });
 
   @override
   State<_EnhancedCallScreenBody> createState() =>
@@ -260,80 +273,173 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     }
 
     if (callState is CallOngoing) {
-      log('_buildCallInterface - Showing call interface');
+      log(
+        '_buildCallInterface - Showing call interface (isVideoCall: ${callState.isVideoCall})',
+      );
+
+      // Get the engine from CallBloc for video rendering
+      final engine = context.read<CallBloc>().engine;
+
       return Column(
         children: [
           Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: ColorManager.secondaryGradient,
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(30),
+            child: Stack(
+              children: [
+                // Background / Remote Video
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: ColorManager.secondaryGradient,
+                  ),
+                  child:
+                      callState.isVideoCall &&
+                              callState.videoEnabled &&
+                              engine != null
+                          ? AgoraVideoView(
+                            controller: VideoViewController.remote(
+                              rtcEngine: engine,
+                              canvas: VideoCanvas(
+                                uid:
+                                    callState.remoteUids.isNotEmpty
+                                        ? callState.remoteUids.first
+                                        : 0,
+                              ),
+                              connection: RtcConnection(
+                                channelId: widget.channelId,
+                              ),
+                            ),
+                          )
+                          : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(30),
+                                  decoration: BoxDecoration(
+                                    color: ColorManager.primary.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: ColorManager.primary.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    callState.isVideoCall
+                                        ? Icons.videocam_off
+                                        : Icons.person,
+                                    size: 100,
+                                    color: ColorManager.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  callState.isVideoCall
+                                      ? 'Video Call'
+                                      : 'Voice Call',
+                                  style: TextStyle(
+                                    color: ColorManager.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Channel: ${widget.channelId}',
+                                  style: TextStyle(
+                                    color: ColorManager.white.withValues(
+                                      alpha: 0.8,
+                                    ),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                // Call duration display
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: ColorManager.primary2.withValues(
+                                      alpha: 0.3,
+                                    ),
+                                    borderRadius: BorderRadius.circular(25),
+                                    border: Border.all(
+                                      color: ColorManager.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _formatDuration(_callDuration),
+                                    style: TextStyle(
+                                      color: ColorManager.white,
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                ),
+
+                // Local Video Preview (Picture-in-Picture)
+                if (callState.isVideoCall &&
+                    callState.videoEnabled &&
+                    engine != null)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      width: 120,
+                      height: 160,
                       decoration: BoxDecoration(
-                        color: ColorManager.primary.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: ColorManager.primary.withValues(alpha: 0.5),
-                          width: 2,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: AgoraVideoView(
+                        controller: VideoViewController(
+                          rtcEngine: engine,
+                          canvas: const VideoCanvas(uid: 0),
                         ),
                       ),
-                      child: Icon(
-                        Icons.person,
-                        size: 100,
-                        color: ColorManager.white,
-                      ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Voice Call',
-                      style: TextStyle(
-                        color: ColorManager.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Channel: ${widget.channelId}',
-                      style: TextStyle(
-                        color: ColorManager.white.withValues(alpha: 0.8),
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    // Call duration display
-                    Container(
+                  ),
+
+                // Call duration overlay for video calls
+                if (callState.isVideoCall && callState.videoEnabled)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
+                        horizontal: 16,
+                        vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: ColorManager.primary2.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(25),
-                        border: Border.all(
-                          color: ColorManager.primary.withValues(alpha: 0.3),
-                          width: 1,
-                        ),
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         _formatDuration(_callDuration),
-                        style: TextStyle(
-                          color: ColorManager.white,
-                          fontSize: 36,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'monospace',
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
           ),
           _buildCallControls(callState),
@@ -363,7 +469,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
 
   Widget _buildCallControls(CallOngoing state) {
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: ColorManager.primary2Dark.withValues(alpha: 0.8),
         borderRadius: const BorderRadius.only(
@@ -371,29 +477,65 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
           topRight: Radius.circular(30),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _roundIconButton(
-            icon: state.muted ? Icons.mic_off : Icons.mic,
-            label: state.muted ? 'Unmute' : 'Mute',
-            color: state.muted ? ColorManager.error : ColorManager.white,
-            onTap: () => context.read<CallBloc>().add(ToggleMute()),
-          ),
-          _roundIconButton(
-            icon: Icons.call_end,
-            label: 'Hang up',
-            color: ColorManager.error,
-            onTap: () {
-              // End the call and let the listener handle navigation
-              context.read<CallBloc>().add(EndCall());
-            },
-          ),
-          _roundIconButton(
-            icon: state.speakerOn ? Icons.volume_up : Icons.hearing,
-            label: state.speakerOn ? 'Speaker' : 'Earpiece',
-            color: state.speakerOn ? ColorManager.primary : ColorManager.white,
-            onTap: () => context.read<CallBloc>().add(ToggleSpeaker()),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _roundIconButton(
+                icon: state.muted ? Icons.mic_off : Icons.mic,
+                label: state.muted ? 'Unmute' : 'Mute',
+                color: state.muted ? ColorManager.error : ColorManager.white,
+                onTap: () => context.read<CallBloc>().add(ToggleMute()),
+              ),
+              // Video toggle (only for video calls)
+              if (state.isVideoCall)
+                _roundIconButton(
+                  icon:
+                      state.videoEnabled ? Icons.videocam : Icons.videocam_off,
+                  label: state.videoEnabled ? 'Camera On' : 'Camera Off',
+                  color:
+                      state.videoEnabled
+                          ? ColorManager.primary
+                          : ColorManager.white,
+                  onTap: () => context.read<CallBloc>().add(ToggleVideo()),
+                ),
+              _roundIconButton(
+                icon: Icons.call_end,
+                label: 'Hang up',
+                color: ColorManager.error,
+                onTap: () {
+                  // End the call and let the listener handle navigation
+                  context.read<CallBloc>().add(EndCall());
+                },
+              ),
+              // Camera switch (only for video calls with video enabled)
+              if (state.isVideoCall)
+                _roundIconButton(
+                  icon: Icons.cameraswitch,
+                  label: 'Flip',
+                  color:
+                      state.videoEnabled
+                          ? ColorManager.white
+                          : ColorManager.white.withValues(alpha: 0.3),
+                  onTap:
+                      state.videoEnabled
+                          ? () => context.read<CallBloc>().add(SwitchCamera())
+                          : () {},
+                ),
+              // Speaker button (only for voice calls or when video is off)
+              if (!state.isVideoCall)
+                _roundIconButton(
+                  icon: state.speakerOn ? Icons.volume_up : Icons.hearing,
+                  label: state.speakerOn ? 'Speaker' : 'Earpiece',
+                  color:
+                      state.speakerOn
+                          ? ColorManager.primary
+                          : ColorManager.white,
+                  onTap: () => context.read<CallBloc>().add(ToggleSpeaker()),
+                ),
+            ],
           ),
         ],
       ),

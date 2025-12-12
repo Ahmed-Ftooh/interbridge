@@ -31,7 +31,16 @@ Deno.serve(async (req) => {
     const svc = await serviceClient();
 
     // Get user profile from users_profile table
-    const profile = await svc.from("users_profile").select("user_id, username, role, gender, created_at").eq("user_id", id).maybeSingle();
+    const profile = await svc.from("users_profile").select(`
+      user_id, 
+      username, 
+      role, 
+      gender, 
+      country,
+      profile_image,
+      institution_id,
+      created_at
+    `).eq("user_id", id).maybeSingle();
     if (profile.error) throw profile.error;
 
     // Get email from auth.users table using admin API
@@ -64,6 +73,61 @@ Deno.serve(async (req) => {
       .eq("user_id", id)
       .order("uploaded_at", { ascending: false });
 
+    // Get all quiz attempts (quiz results with scores)
+    const quizAttempts = await svc
+      .from("quiz_attempts")
+      .select("id, quiz_type, medical_section, total_questions, correct_answers, score_percentage, time_taken_seconds, passed, taken_at")
+      .eq("user_id", id)
+      .order("taken_at", { ascending: false });
+
+    // Get all earned badges
+    const badges = await svc
+      .from("interpreter_badges")
+      .select("id, badge, score, earned_at")
+      .eq("user_id", id)
+      .order("earned_at", { ascending: false });
+
+    // Fetch voice samples from storage bucket (not a table)
+    // Voice samples are stored in bucket "voice_samples" at path: voice_samples/{user_id}/filename.m4a
+    // The bucket is PRIVATE so we need signed URLs
+    let voiceSamplesList: any[] = [];
+    try {
+      const folderPath = `voice_samples/${id}`;
+      const { data: files, error: listError } = await svc.storage
+        .from("voice_samples")
+        .list(folderPath, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+      
+      console.log("Listing path:", folderPath, "Result:", files?.length ?? 0, "files, error:", listError?.message);
+      
+      if (!listError && files && files.length > 0) {
+        // Filter out .emptyFolderPlaceholder and create signed URLs
+        const validFiles = files.filter((f: any) => f.name && !f.name.startsWith('.'));
+        
+        // Create signed URLs for each file (valid for 1 hour)
+        voiceSamplesList = await Promise.all(
+          validFiles.map(async (f: any) => {
+            const fullPath = `${folderPath}/${f.name}`;
+            const { data: signedData, error: signError } = await svc.storage
+              .from("voice_samples")
+              .createSignedUrl(fullPath, 3600); // 1 hour expiry
+            
+            return {
+              id: f.id,
+              name: f.name,
+              url: signError ? null : signedData?.signedUrl,
+              created_at: f.created_at,
+            };
+          })
+        );
+        
+        // Filter out any that failed to get signed URL
+        voiceSamplesList = voiceSamplesList.filter((v: any) => v.url);
+      }
+      console.log("Voice samples from storage:", voiceSamplesList.length, "files with signed URLs");
+    } catch (e) {
+      console.error("Error listing voice samples:", e);
+    }
+
     // Attempt to re-sign certificate URLs if expired (parse bucket + path from stored url if possible)
     let certificates = certs.data || [];
     certificates = await Promise.all(
@@ -77,6 +141,9 @@ Deno.serve(async (req) => {
       skills: skills.data ?? [],
       specializations: specs.data ?? [],
       certificates,
+      voiceSamples: voiceSamplesList,
+      quizAttempts: quizAttempts.data ?? [],
+      badges: badges.data ?? [],
     });
   } catch (e) {
     return json({ error: e?.message ?? String(e) }, 500);

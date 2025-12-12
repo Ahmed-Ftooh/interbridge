@@ -16,6 +16,68 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
   RegisterBloc() : super(RegisterInitial()) {
     on<RegisterSubmitted>(_onRegisterSubmitted);
     on<RequesterRegisterSubmitted>(_onRequesterRegisterSubmitted);
+    on<OrganizationRegisterSubmitted>(_onOrganizationRegisterSubmitted);
+  }
+
+  Future<void> _onOrganizationRegisterSubmitted(
+    OrganizationRegisterSubmitted event,
+    Emitter<RegisterState> emit,
+  ) async {
+    emit(RegisterLoading());
+    try {
+      // Validate input fields
+      final emailError = ErrorHandler.handleValidationError(
+        'email',
+        event.email,
+      );
+      if (emailError != null) {
+        emit(RegisterFailure(emailError.message));
+        return;
+      }
+
+      final passwordError = ErrorHandler.handleValidationError(
+        'password',
+        event.password,
+      );
+      if (passwordError != null) {
+        emit(RegisterFailure(passwordError.message));
+        return;
+      }
+
+      final usernameError = ErrorHandler.handleValidationError(
+        'username',
+        event.username,
+      );
+      if (usernameError != null) {
+        emit(RegisterFailure(usernameError.message));
+        return;
+      }
+
+      // Sign up the user
+      await _signUpAllowingPendingConfirmation(
+        email: event.email,
+        password: event.password,
+      );
+
+      // Persist pending registration locally (organization data included)
+      final pending = {
+        'email': event.email,
+        'role': 'organization_admin',
+        'username': event.username,
+        'organizationName': event.organizationName,
+        'organizationEmail': event.organizationEmail,
+        'organizationPhone': event.organizationPhone,
+        'organizationAddress': event.organizationAddress,
+      };
+      await GetIt.I<AppPreferences>().savePendingRegistration(
+        jsonEncode(pending),
+      );
+
+      emit(RegisterSuccess());
+    } catch (e) {
+      final appError = ErrorHandler.handleAuthError(e);
+      emit(RegisterFailure(appError.message));
+    }
   }
 
   Future<void> _onRequesterRegisterSubmitted(
@@ -132,6 +194,7 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'role': event.role,
         'username': event.username,
         'gender': event.gender,
+        'country': event.country,
         'languages': event.languages,
         'fluency': event.fluency,
         'skillIds': event.skillIds,
@@ -139,10 +202,16 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'voiceSampleUrl': event.voiceSampleUrl,
         'voicePrompt': event.voicePrompt,
         'certificateUrl': event.certificateUrl,
+        'medicalCertificateUrl': event.medicalCertificateUrl,
         'voiceSamplePath': event.voiceSamplePath,
         'certificatePath': event.certificatePath,
+        'medicalCertificatePath': event.medicalCertificatePath,
         'bio': event.bio,
         'yearsExperience': event.yearsExperience,
+        'preferredShift': event.preferredShift,
+        'shiftAvailability': event.shiftAvailability,
+        'isOnlineNow': event.isOnlineNow,
+        'employmentType': event.employmentType,
       };
       await GetIt.I<AppPreferences>().savePendingRegistration(
         jsonEncode(pending),

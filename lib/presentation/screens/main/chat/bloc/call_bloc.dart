@@ -14,7 +14,12 @@ abstract class CallEvent {}
 class StartCall extends CallEvent {
   final String channelId; // e.g., your requestId
   final int localUid; // stable int
-  StartCall({required this.channelId, required this.localUid});
+  final bool isVideoCall; // true for video call, false for voice call
+  StartCall({
+    required this.channelId,
+    required this.localUid,
+    this.isVideoCall = false,
+  });
 }
 
 class EndCall extends CallEvent {
@@ -26,6 +31,10 @@ class EndCall extends CallEvent {
 class ToggleMute extends CallEvent {}
 
 class ToggleSpeaker extends CallEvent {}
+
+class ToggleVideo extends CallEvent {}
+
+class SwitchCamera extends CallEvent {}
 
 // internal events
 class _RemoteUserJoined extends CallEvent {
@@ -72,6 +81,8 @@ class CallOngoing extends CallState {
   final bool speakerOn;
   final Duration elapsed;
   final DateTime? startTime; // Added start time
+  final bool isVideoCall; // true for video, false for voice
+  final bool videoEnabled; // Whether local video is enabled
 
   CallOngoing({
     required this.channelId,
@@ -81,6 +92,8 @@ class CallOngoing extends CallState {
     required this.speakerOn,
     required this.elapsed,
     this.startTime,
+    this.isVideoCall = false,
+    this.videoEnabled = false,
   });
 
   CallOngoing copyWith({
@@ -89,6 +102,7 @@ class CallOngoing extends CallState {
     bool? speakerOn,
     Duration? elapsed,
     DateTime? startTime,
+    bool? videoEnabled,
   }) {
     return CallOngoing(
       channelId: channelId,
@@ -98,6 +112,8 @@ class CallOngoing extends CallState {
       speakerOn: speakerOn ?? this.speakerOn,
       elapsed: elapsed ?? this.elapsed,
       startTime: startTime ?? this.startTime,
+      isVideoCall: isVideoCall,
+      videoEnabled: videoEnabled ?? this.videoEnabled,
     );
   }
 }
@@ -115,7 +131,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   DateTime? _startedAt;
   bool _muted = false;
   bool _speakerOn = true;
+  bool _videoEnabled = true;
+  bool _isVideoCall = false;
   final Set<int> _remoteUids = {};
+
+  /// Expose engine for video rendering in UI
+  RtcEngine? get engine => _engine;
 
   CallBloc({required this.service}) : super(CallIdle()) {
     // This is where the error appeared
@@ -123,6 +144,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     on<EndCall>(_onEndCall);
     on<ToggleMute>(_onToggleMute);
     on<ToggleSpeaker>(_onToggleSpeaker);
+    on<ToggleVideo>(_onToggleVideo);
+    on<SwitchCamera>(_onSwitchCamera);
     on<_RemoteUserJoined>(_onRemoteUserJoined);
     on<_RemoteUserLeft>(_onRemoteUserLeft);
     on<_Tick>(_onTick);
@@ -133,6 +156,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     try {
       // Notify global call state immediately so chat banner updates
       CallStateManager().startCall(e.channelId);
+
+      // Store video call flag
+      _isVideoCall = e.isVideoCall;
+      _videoEnabled = e.isVideoCall; // Start with video on for video calls
 
       // 1) Check mic permission (should already be granted at login)
       log('Checking microphone permission...');
@@ -155,6 +182,28 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         return;
       }
       log('Microphone permission granted');
+
+      // 1b) Check camera permission for video calls
+      if (e.isVideoCall) {
+        log('Checking camera permission...');
+        final camera = await Permission.camera.status;
+        if (!camera.isGranted) {
+          log('Camera permission not granted. Please enable in app settings.');
+          emit(
+            CallError(
+              AppError(
+                message: 'Camera permission required',
+                type: ErrorType.permission,
+                userAction:
+                    'Please enable camera permission in app settings to make video calls.',
+                isRetryable: false,
+              ),
+            ),
+          );
+          return;
+        }
+        log('Camera permission granted');
+      }
 
       emit(CallConnecting(e.channelId));
 
@@ -212,6 +261,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
                 speakerOn: _speakerOn,
                 elapsed: Duration.zero,
                 startTime: null, // Wait for remote user to start timer
+                isVideoCall: _isVideoCall,
+                videoEnabled: _videoEnabled,
               ),
             );
             log('CallOngoing state emitted successfully');
@@ -264,16 +315,27 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       );
       await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
       await _engine!.setDefaultAudioRouteToSpeakerphone(
-        false,
-      ); // earpiece to reduce echo
+        e.isVideoCall, // Use speaker for video calls
+      );
 
       await _engine!.enableAudio();
       await _engine!.enableLocalAudio(true); // Explicitly enable local audio
+
+      // 4b) Enable video for video calls
+      if (e.isVideoCall) {
+        log('Enabling video for video call...');
+        await _engine!.enableVideo();
+        await _engine!.enableLocalVideo(true);
+        await _engine!.startPreview();
+        _speakerOn = true; // Video calls default to speaker
+      } else {
+        _speakerOn = false; // Voice calls start on earpiece
+      }
+
       await _engine!.setClientRole(
         role: ClientRoleType.clientRoleBroadcaster,
       ); // Explicitly set role
       await _engine!.muteLocalAudioStream(_muted);
-      _speakerOn = false; // start on earpiece
       try {
         await _engine!.setEnableSpeakerphone(_speakerOn);
       } catch (e) {
@@ -365,6 +427,20 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _startedAt = null;
     _remoteUids.clear();
 
+    // Stop video preview if it was a video call
+    if (_isVideoCall) {
+      try {
+        await _engine?.stopPreview();
+        await _engine?.disableVideo();
+      } catch (err) {
+        log('Error stopping video: $err');
+      }
+    }
+
+    // Reset video state
+    _isVideoCall = false;
+    _videoEnabled = false;
+
     // --- THIS IS THE CHANGE ---
     // We NO LONGER try to send a ChatBloc message from here.
     // The UI (enhanced_call_view) will handle that.
@@ -415,6 +491,36 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
     if (state is CallOngoing) {
       emit((state as CallOngoing).copyWith(speakerOn: _speakerOn));
+    }
+  }
+
+  Future<void> _onToggleVideo(ToggleVideo e, Emitter<CallState> emit) async {
+    if (!_isVideoCall) return; // Only for video calls
+
+    _videoEnabled = !_videoEnabled;
+    try {
+      await _engine?.muteLocalVideoStream(!_videoEnabled);
+      if (_videoEnabled) {
+        await _engine?.startPreview();
+      } else {
+        await _engine?.stopPreview();
+      }
+    } catch (err) {
+      log('Warning: Could not toggle video: $err');
+      _videoEnabled = !_videoEnabled;
+    }
+    if (state is CallOngoing) {
+      emit((state as CallOngoing).copyWith(videoEnabled: _videoEnabled));
+    }
+  }
+
+  Future<void> _onSwitchCamera(SwitchCamera e, Emitter<CallState> emit) async {
+    if (!_isVideoCall) return; // Only for video calls
+
+    try {
+      await _engine?.switchCamera();
+    } catch (err) {
+      log('Warning: Could not switch camera: $err');
     }
   }
 
@@ -471,6 +577,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
                 ? DateTime.now().difference(_startedAt!)
                 : Duration.zero,
         startTime: _startedAt,
+        isVideoCall: _isVideoCall,
+        videoEnabled: _videoEnabled,
       ),
     );
   }

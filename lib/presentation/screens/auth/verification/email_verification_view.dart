@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -12,11 +11,6 @@ import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'dart:convert';
-import 'package:interbridge/data/models/user_profile.dart';
-import 'package:interbridge/data/models/interpreter_details.dart';
-import 'package:interbridge/data/models/interpreter_language.dart';
-import 'package:interbridge/data/models/interpreter_skill.dart';
-import 'package:interbridge/data/models/interpreter_specialization.dart';
 
 class EmailVerificationView extends StatefulWidget {
   const EmailVerificationView({super.key});
@@ -95,8 +89,10 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
       // After verification, write pending registration to DB
       final prefs = instance<AppPreferences>();
       final pendingStr = prefs.getPendingRegistration();
+      String? userRole;
       if (pendingStr != null && pendingStr.isNotEmpty) {
         final data = jsonDecode(pendingStr) as Map<String, dynamic>;
+        userRole = data['role'] as String?;
         final userId = Supabase.instance.client.auth.currentUser?.id;
         if (userId != null) {
           await SupabaseService().finalizePendingRegistrationData(data, userId);
@@ -105,9 +101,18 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
         await prefs.setLoginViewed();
       }
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+
+      // Navigate based on role
+      if (userRole == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationDashboardRoute,
+          (route) => false,
+        );
+      } else {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
     } catch (e) {
       if (!mounted) return;
       CustomSnackBar.show(

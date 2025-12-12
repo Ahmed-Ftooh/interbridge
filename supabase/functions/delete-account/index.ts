@@ -84,8 +84,100 @@ serve(async (req: Request): Promise<Response> => {
 
     // HARD DELETE FLOW
     // 1. Delete child records first to satisfy FK constraints
+    
+    // Delete organization-related records first
+    // Get organizations where user is admin to potentially delete them
+    const { data: adminOrgs } = await adminClient
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', targetUserId)
+      .eq('role', 'organization_admin');
+
+    // Delete organization invites created by this user
+    await adminClient.from('organization_invites').delete().eq('inviter_id', targetUserId);
+    
+    // Clear redeemed_by references (set to null instead of delete)
+    await adminClient.from('organization_invites').update({ redeemed_by: null }).eq('redeemed_by', targetUserId);
+    
+    // Delete organization transactions for this doctor
+    await adminClient.from('organization_transactions').delete().eq('doctor_id', targetUserId);
+    
+    // Delete organization membership
+    await adminClient.from('organization_members').delete().eq('user_id', targetUserId);
+    
+    // If user was the only admin, delete the organization and all its data
+    if (adminOrgs && adminOrgs.length > 0) {
+      for (const org of adminOrgs) {
+        // Check if there are other admins
+        const { data: otherAdmins } = await adminClient
+          .from('organization_members')
+          .select('id')
+          .eq('organization_id', org.organization_id)
+          .eq('role', 'organization_admin')
+          .neq('user_id', targetUserId);
+        
+        // If no other admins, delete the organization
+        if (!otherAdmins || otherAdmins.length === 0) {
+          // Delete all organization-related data
+          await adminClient.from('organization_invites').delete().eq('organization_id', org.organization_id);
+          await adminClient.from('organization_transactions').delete().eq('organization_id', org.organization_id);
+          await adminClient.from('organization_members').delete().eq('organization_id', org.organization_id);
+          // Update call_logs to remove organization reference
+          await adminClient.from('call_logs').update({ organization_id: null }).eq('organization_id', org.organization_id);
+          await adminClient.from('call_requests').update({ organization_id: null }).eq('organization_id', org.organization_id);
+          // Delete the organization
+          await adminClient.from('organizations').delete().eq('id', org.organization_id);
+        }
+      }
+    }
+
+    // Delete call-related records
+    await adminClient.from('call_declines').delete().eq('interpreter_id', targetUserId);
+    await adminClient.from('call_feedback').delete().eq('user_id', targetUserId);
+    await adminClient.from('call_sessions').delete().eq('user_id', targetUserId);
+    
+    // Update call_requests to remove user references (set to null)
+    await adminClient.from('call_requests').update({ caller_id: null }).eq('caller_id', targetUserId);
+    await adminClient.from('call_requests').update({ interpreter_id: null }).eq('interpreter_id', targetUserId);
+    
+    // Update call_logs to remove user references
+    await adminClient.from('call_logs').update({ requester_id: null }).eq('requester_id', targetUserId);
+    await adminClient.from('call_logs').update({ interpreter_id: null }).eq('interpreter_id', targetUserId);
+    await adminClient.from('call_logs').update({ admin_listener_id: null }).eq('admin_listener_id', targetUserId);
+
+    // Delete interpreter-related records
+    await adminClient.from('interpreter_badges').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_flexible_shifts').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_shifts').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_certificates').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_language_skills').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_languages').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_skills').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_specializations').delete().eq('user_id', targetUserId);
+    
+    // Delete interpreter applications (need to clear last_application_id first)
+    await adminClient.from('users_profile').update({ last_application_id: null }).eq('user_id', targetUserId);
+    await adminClient.from('interpreter_applications').delete().eq('user_id', targetUserId);
+    await adminClient.from('interpreter_applications').update({ reviewer_id: null }).eq('reviewer_id', targetUserId);
+    
+    // Delete interpreter details
+    await adminClient.from('interpreter_details').delete().eq('user_id', targetUserId);
+    
+    // Delete quiz attempts
+    await adminClient.from('quiz_attempts').delete().eq('user_id', targetUserId);
+    
+    // Delete admin messages
+    await adminClient.from('admin_interpreter_messages').delete().eq('interpreter_id', targetUserId);
+    await adminClient.from('admin_interpreter_messages').delete().eq('admin_id', targetUserId);
+
+    // Delete notifications and FCM tokens
+    await adminClient.from('notifications').delete().eq('user_id', targetUserId);
+    await adminClient.from('fcm_tokens').delete().eq('user_id', targetUserId);
+
+    // Delete original tables from the function
     await adminClient.from('chat_messages').delete().eq('sender_id', targetUserId);
     await adminClient.from('document_translation_requests').delete().eq('requester_id', targetUserId);
+    await adminClient.from('document_translation_requests').update({ accepted_by: null }).eq('accepted_by', targetUserId);
     await adminClient.from('interpreter_requests').delete().or(`requester_id.eq.${targetUserId},interpreter_id.eq.${targetUserId}`);
     await adminClient.from('users_profile').delete().eq('user_id', targetUserId);
 

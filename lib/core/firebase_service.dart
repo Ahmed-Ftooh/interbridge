@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get_it/get_it.dart';
 import 'package:interbridge/firebase_options.dart';
 import 'package:interbridge/data/services/firebase_messaging_service.dart';
+import 'package:interbridge/data/services/callkit_service.dart';
 
 class FirebaseService {
   static FirebaseService? _instance;
@@ -20,6 +21,24 @@ class FirebaseService {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     debugPrint('Handling a background message: ${message.messageId}');
+
+    // Check for incoming call
+    if (message.data['type'] == 'INCOMING_CALL' ||
+        message.data['type'] == 'incoming_call') {
+      final callerName = message.data['caller_name'] ?? 'Incoming Call Request';
+      final callerId = message.data['caller_id'] ?? 'unknown';
+      final callerAvatar = message.data['caller_avatar'] ?? '';
+      final requestId = message.data['request_id'];
+      final callType = message.data['call_type'] ?? 'voice';
+
+      await CallKitService().showIncomingCall(
+        callerName: callerName,
+        callerId: callerId,
+        callerAvatar: callerAvatar,
+        requestId: requestId,
+        callType: callType,
+      );
+    }
 
     // Background message handling is minimal - just log for now
     // The main FirebaseMessagingService handles the rest when app is active

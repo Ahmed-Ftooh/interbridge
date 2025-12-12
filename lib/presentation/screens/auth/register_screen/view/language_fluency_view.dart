@@ -48,7 +48,6 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
     );
     _animationController.forward();
     _slideController.forward();
-    // BLoC initialization will be handled in build
   }
 
   @override
@@ -71,17 +70,15 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
         selectedLanguages = languagesData.map((e) => e.toString()).toList();
       }
     }
+
     // Initialize BLoC state only once
-    if (BlocProvider.of<LanguageFluencyBloc>(
-          context,
-        ).state.selectedLanguages.isEmpty &&
-        selectedLanguages.isNotEmpty) {
+    final bloc = context.read<LanguageFluencyBloc>();
+    if (bloc.state.selectedLanguages.isEmpty && selectedLanguages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<LanguageFluencyBloc>().add(
-          fluency_event.InitializeLanguages(selectedLanguages),
-        );
+        bloc.add(fluency_event.InitializeLanguages(selectedLanguages));
       });
     }
+
     return BlocConsumer<LanguageFluencyBloc, LanguageFluencyState>(
       listener: (context, state) {
         if (state.errorMessage != null) {
@@ -166,21 +163,22 @@ class _LanguageFluencyScreenState extends State<LanguageFluencyScreen>
           data['skills'] = skillIds;
           data['languages'] = languageIds; // Pass language IDs instead of names
 
-          // Ensure role is preserved
-          if (!data.containsKey('role')) {
-            data['role'] = 'interpreter';
-          }
+          // Merge with original arguments to preserve track info
+          final originalArgs =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, dynamic>? ??
+              {};
+          final nextArgs = {...originalArgs, ...data};
 
-          Navigator.of(context).pushNamed(
-            Routes.interpreterFieldScreen,
-            arguments: {'type': 'skills', ...data},
-          );
+          Navigator.of(
+            context,
+          ).pushNamed(Routes.interpreterFieldScreen, arguments: nextArgs);
         }
       },
       builder: (context, state) {
-        final bloc = context.read<LanguageFluencyBloc>();
         final currentLang =
-            state.selectedLanguages.isNotEmpty
+            state.selectedLanguages.isNotEmpty &&
+                    state.currentLanguageIndex < state.selectedLanguages.length
                 ? state.selectedLanguages[state.currentLanguageIndex]
                 : '';
         final progress =

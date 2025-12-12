@@ -32,53 +32,25 @@ class _InterpreterFieldScreenState extends State<InterpreterFieldScreen>
       'id': 1,
     },
     {
-      'title': AppStrings.legalInterpretation,
-      'subtitle': AppStrings.legalProceedingsAndDocuments,
-      'icon': Icons.gavel,
-      'color': ColorManager.primary2,
+      'title': AppStrings.socialServices,
+      'subtitle': AppStrings.communityAndSocialWelfareServices,
+      'icon': Icons.people,
+      'color': ColorManager.primary,
       'id': 2,
-    },
-    {
-      'title': AppStrings.educationalInterpretation,
-      'subtitle': AppStrings.academicAndEducationalSettings,
-      'icon': Icons.school,
-      'color': ColorManager.success,
-      'id': 3,
-    },
-    {
-      'title': AppStrings.mentalHealth,
-      'subtitle': AppStrings.psychologicalAndCounselingSessions,
-      'icon': Icons.psychology,
-      'color': ColorManager.darkPrimary,
-      'id': 4,
     },
     {
       'title': AppStrings.documentation,
       'subtitle': AppStrings.officialDocumentsAndForms,
       'icon': Icons.description,
       'color': ColorManager.warning,
-      'id': 5,
+      'id': 3,
     },
     {
       'title': AppStrings.emergencyResponse,
       'subtitle': AppStrings.emergencyResponseSubtitle,
       'icon': Icons.business,
       'color': ColorManager.info,
-      'id': 6,
-    },
-    {
-      'title': AppStrings.socialServices,
-      'subtitle': AppStrings.communityAndSocialWelfareServices,
-      'icon': Icons.people,
-      'color': ColorManager.primary,
-      'id': 7,
-    },
-    {
-      'title': AppStrings.noneOfTheAbove,
-      'subtitle': '',
-      'icon': Icons.not_interested,
-      'color': ColorManager.greyDark,
-      'id': 8,
+      'id': 4,
     },
   ];
 
@@ -138,10 +110,18 @@ class _InterpreterFieldScreenState extends State<InterpreterFieldScreen>
             data['role'] = 'interpreter';
           }
 
+          // Merge with original arguments to preserve track info
+          final originalArgs =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, dynamic>? ??
+              {};
+          final nextArgs = {...originalArgs, ...data};
+
+          // Next step: Voice sample
           Navigator.pushNamed(
             context,
-            Routes.voiceCheckScreen,
-            arguments: data,
+            Routes.voiceSampleRoute,
+            arguments: nextArgs,
           );
         }
       },

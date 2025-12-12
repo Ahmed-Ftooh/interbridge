@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:interbridge/data/services/chat_service.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:lottie/lottie.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/resources/assets_manager.dart';
@@ -11,7 +11,6 @@ import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/data/services/interpreter_request_service.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
-import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'dart:developer';
 
@@ -21,6 +20,7 @@ class RequestWaitingView extends StatefulWidget {
   final String? specialization;
   final String urgency;
   final String? description;
+  final String callType;
 
   const RequestWaitingView({
     super.key,
@@ -29,6 +29,7 @@ class RequestWaitingView extends StatefulWidget {
     required this.specialization,
     required this.urgency,
     this.description,
+    this.callType = 'voice',
   });
 
   @override
@@ -41,6 +42,17 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
   RealtimeChannel? _channel;
   InterpreterRequest? _request;
   bool _isCreating = true;
+
+  /// Build a stable int UID from the authenticated user UUID
+  static int _uidFromUuid(String uuid) {
+    if (uuid.isNotEmpty) {
+      final hex = uuid.replaceAll('-', '');
+      final first8 =
+          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
+      return int.tryParse(first8, radix: 16) ?? 1;
+    }
+    return 1;
+  }
 
   @override
   void initState() {
@@ -65,6 +77,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
         specialization: widget.specialization,
         urgency: widget.urgency,
         description: widget.description,
+        callType: widget.callType,
       );
       if (!mounted) return;
       setState(() {
@@ -105,27 +118,36 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
                   final interpreterId = newRow['accepted_by'].toString();
                   final requesterId = newRow['requester_id'].toString();
 
-                  // Update session to chat BEFORE navigating
+                  // Update session to call BEFORE navigating
                   await SessionService.saveSession(
                     requestId: request.id,
                     requesterId: requesterId,
                     interpreterId: interpreterId,
-                    currentScreen: 'chat',
+                    currentScreen: 'call',
                   );
-                  log('Session updated to chat for request: ${request.id}');
+                  log('Session updated to call for request: ${request.id}');
 
                   if (mounted) {
+                    // Navigate to call screen and start the call
+                    final isVideoCall = widget.callType == 'video';
+                    final myUid = _uidFromUuid(requesterId);
+
+                    // Start the call via CallBloc
+                    context.read<CallBloc>().add(
+                      StartCall(
+                        channelId: request.id,
+                        localUid: myUid,
+                        isVideoCall: isVideoCall,
+                      ),
+                    );
+
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
                         builder:
-                            (_) => BlocProvider(
-                              create: (_) => ChatBloc(service: ChatService()),
-                              child: ChatView(
-                                requestId: request.id,
-                                requesterId: requesterId,
-                                interpreterId: interpreterId,
-                              ),
+                            (_) => EnhancedCallScreen(
+                              channelId: request.id,
+                              isVideoCall: isVideoCall,
                             ),
                       ),
                       (route) => false,
@@ -178,21 +200,31 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
         requestId: currentRequest.id,
         requesterId: requesterId,
         interpreterId: interpreterId,
-        currentScreen: 'chat',
+        currentScreen: 'call',
       );
 
       if (!mounted) return;
+
+      // Navigate to call screen and start the call
+      final isVideoCall = widget.callType == 'video';
+      final myUid = _uidFromUuid(requesterId);
+
+      // Start the call via CallBloc
+      context.read<CallBloc>().add(
+        StartCall(
+          channelId: currentRequest.id,
+          localUid: myUid,
+          isVideoCall: isVideoCall,
+        ),
+      );
+
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
           builder:
-              (_) => BlocProvider(
-                create: (_) => ChatBloc(service: ChatService()),
-                child: ChatView(
-                  requestId: currentRequest.id,
-                  requesterId: requesterId,
-                  interpreterId: interpreterId,
-                ),
+              (_) => EnhancedCallScreen(
+                channelId: currentRequest.id,
+                isVideoCall: isVideoCall,
               ),
         ),
         (route) => false,
