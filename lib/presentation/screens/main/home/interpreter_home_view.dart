@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/data/services/incoming_call_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -28,6 +29,9 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
   // Employment type for online/offline toggle visibility
   String? _employmentType; // 'volunteer' or 'paid'
 
+  // Incoming call service for ringing interpreters
+  final IncomingCallService _incomingCallService = IncomingCallService();
+
   /// Build a stable int UID from the authenticated user UUID
   static int _uidFromUuid(String uuid) {
     if (uuid.isNotEmpty) {
@@ -54,8 +58,16 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _safeAddToJobsBloc(LoadAvailableJobs());
+        // Start listening for incoming calls
+        _incomingCallService.startListening();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _incomingCallService.stopListening();
+    super.dispose();
   }
 
   bool _isOnline = false;

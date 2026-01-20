@@ -19,6 +19,8 @@ class CallKitService {
     String? callerAvatar,
     String? requestId,
     String? callType,
+    String? interpreterType,
+    String? medicalSection,
   }) async {
     final id = callerId.isNotEmpty ? callerId : _uuid.v4();
     await FlutterCallkitIncoming.showCallkitIncoming(
@@ -31,17 +33,40 @@ class CallKitService {
         type: callType == 'video' ? 1 : 0, // 0 = audio, 1 = video
         textAccept: 'Answer',
         textDecline: 'Decline',
-        duration: 30000,
+        duration: 30000, // 30 seconds timeout
         extra: <String, dynamic>{
           'callerId': callerId,
           'request_id': requestId,
           'call_type': callType ?? 'voice',
+          'interpreter_type': interpreterType ?? 'general',
+          'medical_section': medicalSection,
         },
         android: const AndroidParams(
           isCustomNotification: true,
-          ringtonePath: 'system_ringtone_default',
+          isShowLogo: true,
+          ringtonePath: 'call_ring', // References res/raw/call_ring.mp3
+          backgroundColor: '#0955fa',
+          backgroundUrl: '',
+          actionColor: '#4CAF50',
+          textColor: '#ffffff',
+          isShowFullLockedScreen: true,
         ),
-        ios: const IOSParams(iconName: 'CallKitIcon'),
+        ios: const IOSParams(
+          iconName: 'CallKitIcon',
+          handleType: 'generic',
+          supportsVideo: true,
+          maximumCallGroups: 1,
+          maximumCallsPerCallGroup: 1,
+          audioSessionMode: 'default',
+          audioSessionActive: true,
+          audioSessionPreferredSampleRate: 44100,
+          audioSessionPreferredIOBufferDuration: 0.005,
+          supportsDTMF: true,
+          supportsHolding: false,
+          supportsGrouping: false,
+          supportsUngrouping: false,
+          ringtonePath: 'Call_Ring',
+        ),
       ),
     );
   }

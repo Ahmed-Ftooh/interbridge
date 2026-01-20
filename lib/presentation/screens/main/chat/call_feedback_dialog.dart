@@ -7,8 +7,13 @@ import 'dart:developer';
 
 class CallFeedbackDialog extends StatefulWidget {
   final String requestId;
+  final VoidCallback? onComplete;
 
-  const CallFeedbackDialog({super.key, required this.requestId});
+  const CallFeedbackDialog({
+    super.key,
+    required this.requestId,
+    this.onComplete,
+  });
 
   @override
   State<CallFeedbackDialog> createState() => _CallFeedbackDialogState();
@@ -52,6 +57,7 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
 
       if (mounted) {
         Navigator.of(context).pop(); // Close dialog
+        widget.onComplete?.call(); // Notify completion
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Feedback submitted. Thank you!'),
@@ -119,7 +125,13 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          onPressed:
+              _isSubmitting
+                  ? null
+                  : () {
+                    Navigator.of(context).pop();
+                    widget.onComplete?.call();
+                  },
           child: const Text('Skip'),
         ),
         ElevatedButton(

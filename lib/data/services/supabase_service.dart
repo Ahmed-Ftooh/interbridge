@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/app/app_initializer.dart';
 import 'package:interbridge/core/deeplink_config.dart';
 import '../models/user_profile.dart';
 import '../models/interpreter_language.dart';
@@ -104,6 +105,8 @@ class SupabaseService {
   }
 
   Future<void> signOut() async {
+    // Reset auth state so next login can navigate properly
+    AppInitializer.resetAuthState();
     await _client.auth.signOut();
   }
 
@@ -521,7 +524,14 @@ class SupabaseService {
     Map<String, dynamic> data,
     String userId,
   ) async {
+    final role = (data['role'] as String?) ?? 'requester';
+    log(
+      'finalizePendingRegistrationData: Starting for userId=$userId, role=$role',
+    );
+    log('finalizePendingRegistrationData: data=$data');
+
     // Check if user profile already exists to prevent duplicate registration
+    bool profileExists = false;
     try {
       final existingProfile =
           await _client
@@ -530,73 +540,143 @@ class SupabaseService {
               .eq('user_id', userId)
               .maybeSingle();
 
-      if (existingProfile != null) {
-        log('User profile already exists for $userId, skipping finalization');
-        return;
+      profileExists = existingProfile != null;
+      log('finalizePendingRegistrationData: Profile exists=$profileExists');
+
+      if (profileExists) {
+        log('User profile already exists for $userId');
+        // Don't return yet - still need to check if organization needs to be created
       }
     } catch (e) {
       log('Error checking existing profile: $e');
     }
 
-    final role = (data['role'] as String?) ?? 'requester';
     final username = (data['username'] as String?) ?? '';
     final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
-    final profile = UserProfile(
-      id: userId,
-      role: role,
-      username: username,
-      profileImage: data['profileImage'],
-      gender: data['gender'],
-      country: data['country'],
-    );
 
-    log(
-      'finalizePendingRegistrationData: Creating profile with role=$role, username=$username, employmentType=$employmentType',
-    );
+    // Only create profile if it doesn't exist
+    if (!profileExists) {
+      final profile = UserProfile(
+        id: userId,
+        role: role,
+        username: username,
+        profileImage: data['profileImage'],
+        gender: data['gender'],
+        country: data['country'],
+      );
 
-    try {
-      await createUserProfileAfterSignUp(profile);
-      log('finalizePendingRegistrationData: Profile created successfully');
+      log(
+        'finalizePendingRegistrationData: Creating profile with role=$role, username=$username, employmentType=$employmentType',
+      );
 
-      // Update employment_type for interpreters
-      if (role == 'interpreter') {
-        await _client
-            .from('users_profile')
-            .update({'employment_type': employmentType})
-            .eq('user_id', userId);
-        log(
-          'finalizePendingRegistrationData: Employment type set to $employmentType',
-        );
+      try {
+        await createUserProfileAfterSignUp(profile);
+        log('finalizePendingRegistrationData: Profile created successfully');
+
+        // Update employment_type for interpreters
+        if (role == 'interpreter') {
+          await _client
+              .from('users_profile')
+              .update({'employment_type': employmentType})
+              .eq('user_id', userId);
+          log(
+            'finalizePendingRegistrationData: Employment type set to $employmentType',
+          );
+        }
+      } catch (e) {
+        log('finalizePendingRegistrationData: Error creating profile: $e');
+        // Re-throw to prevent organization creation without profile
+        rethrow;
       }
-    } catch (e) {
-      log('finalizePendingRegistrationData: Error creating profile: $e');
-      // Re-throw to prevent organization creation without profile
-      rethrow;
     }
 
     // Check for pending organization invitations (for requesters/doctors)
     if (role == 'requester') {
-      final user = _client.auth.currentUser;
-      if (user?.email != null) {
-        final didJoinOrg = await checkAndProcessPendingInvite(
-          userId,
-          user!.email!,
+      // First check if user registered via invite code (has organizationId in data)
+      final organizationId = data['organizationId'] as String?;
+      final organizationRole = data['organizationRole'] as String? ?? 'doctor';
+      final inviteId = data['inviteId'] as String?;
+
+      log(
+        'finalizePendingRegistrationData: Checking organization data - organizationId=$organizationId, organizationRole=$organizationRole, inviteId=$inviteId',
+      );
+
+      if (organizationId != null) {
+        log(
+          'finalizePendingRegistrationData: User registered with invite code for org $organizationId',
         );
-        if (didJoinOrg) {
+
+        // Add user to organization_members
+        try {
+          await _client.from('organization_members').insert({
+            'organization_id': organizationId,
+            'user_id': userId,
+            'role': organizationRole,
+            'is_active': true,
+            'spending_limit': null,
+            'total_spent': 0,
+          });
           log(
-            'finalizePendingRegistrationData: User joined organization via invite',
+            'finalizePendingRegistrationData: Added user to organization_members',
           );
-          // Update user role to indicate they're part of an organization
-          await _client
-              .from('users_profile')
-              .update({'role': 'requester'})
-              .eq('user_id', userId);
+
+          // Mark invite as accepted if there's an invite ID
+          if (inviteId != null) {
+            await _client
+                .from('organization_invites')
+                .update({
+                  'status': 'accepted',
+                  'redeemed_by': userId,
+                  'redeemed_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', inviteId);
+            log('finalizePendingRegistrationData: Marked invite as accepted');
+          }
+        } catch (e) {
+          log(
+            'finalizePendingRegistrationData: Error adding user to organization: $e',
+          );
+        }
+      } else {
+        // Fall back to checking pending invites by email
+        final user = _client.auth.currentUser;
+        if (user?.email != null) {
+          final didJoinOrg = await checkAndProcessPendingInvite(
+            userId,
+            user!.email!,
+          );
+          if (didJoinOrg) {
+            log(
+              'finalizePendingRegistrationData: User joined organization via invite',
+            );
+            // Update user role to indicate they're part of an organization
+            await _client
+                .from('users_profile')
+                .update({'role': 'requester'})
+                .eq('user_id', userId);
+          }
         }
       }
     }
 
     // Handle organization_admin role - create organization and membership
     if (role == 'organization_admin') {
+      // Check if organization membership already exists
+      final existingMembership =
+          await _client
+              .from('organization_members')
+              .select('id')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      if (existingMembership != null) {
+        log(
+          'finalizePendingRegistrationData: Organization membership already exists for user',
+        );
+        return;
+      }
+
+      log('finalizePendingRegistrationData: Creating organization for admin');
       await _createOrganizationFromRegistration(data, userId);
       return;
     }
@@ -1237,14 +1317,20 @@ class SupabaseService {
     Map<String, dynamic> data,
     String userId,
   ) async {
+    log('_createOrganizationFromRegistration: Starting for userId=$userId');
+
     final orgName = data['organizationName'] as String? ?? '';
     final orgEmail = data['organizationEmail'] as String? ?? '';
     final orgPhone = data['organizationPhone'] as String?;
     final orgAddress = data['organizationAddress'] as String?;
 
+    log(
+      '_createOrganizationFromRegistration: orgName=$orgName, orgEmail=$orgEmail',
+    );
+
     if (orgName.isEmpty || orgEmail.isEmpty) {
       log(
-        'Organization name or email is empty, skipping organization creation',
+        '_createOrganizationFromRegistration: Organization name or email is empty, skipping organization creation. orgName="$orgName", orgEmail="$orgEmail"',
       );
       return;
     }
@@ -1252,8 +1338,13 @@ class SupabaseService {
     try {
       // Generate a random invite code
       final inviteCode = _generateInviteCode();
+      log(
+        '_createOrganizationFromRegistration: Generated invite code: $inviteCode',
+      );
 
       // Create the organization
+      // Note: verification_status and description columns may not exist yet
+      // The organization will be active by default and reviewed by admin later
       final orgResponse =
           await _client
               .from('organizations')
@@ -1270,7 +1361,7 @@ class SupabaseService {
               .select('id')
               .single();
 
-      final orgId = orgResponse['id'];
+      final orgId = orgResponse['id'] as String;
 
       // Add the user as organization_admin member
       await _client.from('organization_members').insert({
@@ -1282,10 +1373,83 @@ class SupabaseService {
         'total_spent': 0,
       });
 
+      // TODO: Upload verification documents when organization_documents table is created
+      // await _uploadOrganizationDocuments(
+      //   orgId: orgId,
+      //   userId: userId,
+      //   businessLicensePath: businessLicensePath,
+      //   registrationCertificatePath: registrationCertificatePath,
+      //   additionalDocumentPath: additionalDocumentPath,
+      // );
+
       log('Organization created successfully: $orgId');
     } catch (e) {
       log('Error creating organization: $e');
       rethrow;
+    }
+  }
+
+  /// Uploads organization verification documents to Supabase storage
+  Future<void> _uploadOrganizationDocuments({
+    required String orgId,
+    required String userId,
+    String? businessLicensePath,
+    String? registrationCertificatePath,
+    String? additionalDocumentPath,
+  }) async {
+    final documents = <Map<String, String?>>[];
+
+    if (businessLicensePath != null && businessLicensePath.isNotEmpty) {
+      documents.add({'path': businessLicensePath, 'type': 'business_license'});
+    }
+
+    if (registrationCertificatePath != null &&
+        registrationCertificatePath.isNotEmpty) {
+      documents.add({
+        'path': registrationCertificatePath,
+        'type': 'registration_certificate',
+      });
+    }
+
+    if (additionalDocumentPath != null && additionalDocumentPath.isNotEmpty) {
+      documents.add({'path': additionalDocumentPath, 'type': 'additional'});
+    }
+
+    for (final doc in documents) {
+      try {
+        final localPath = doc['path']!;
+        final docType = doc['type']!;
+        final file = File(localPath);
+
+        if (!await file.exists()) {
+          log('Document file does not exist: $localPath');
+          continue;
+        }
+
+        final fileName = localPath.split(Platform.pathSeparator).last;
+        final storagePath = 'organization_documents/$orgId/$docType/$fileName';
+        final fileBytes = await file.readAsBytes();
+
+        // Upload to Supabase storage
+        await _client.storage
+            .from('documents')
+            .uploadBinary(storagePath, fileBytes);
+
+        // Record in organization_documents table
+        await _client.from('organization_documents').insert({
+          'organization_id': orgId,
+          'document_type': docType,
+          'storage_path': storagePath,
+          'file_name': fileName,
+          'file_size': fileBytes.length,
+          'uploaded_by': userId,
+        });
+
+        log('Uploaded $docType document: $storagePath');
+      } catch (e) {
+        log('Error uploading document ${doc['type']}: $e');
+        // Continue with other documents even if one fails
+      }
     }
   }
 
@@ -1304,42 +1468,35 @@ class SupabaseService {
   /// Validate an invite code and return organization details if valid
   Future<Map<String, dynamic>?> validateInviteCode(String inviteCode) async {
     try {
-      // First, check for personal invite in organization_invites
-      final personalInvite =
-          await _client
-              .from('organization_invites')
-              .select('*, organizations(id, name)')
-              .eq('invite_code', inviteCode.toUpperCase())
-              .eq('status', 'pending')
-              .gt('expires_at', DateTime.now().toIso8601String())
-              .maybeSingle();
+      // Use the secure database function to look up invites by code
+      // This bypasses RLS restrictions so anyone with a valid code can find it
+      final response = await _client.rpc(
+        'lookup_invite_by_code',
+        params: {'p_invite_code': inviteCode.toUpperCase()},
+      );
 
-      if (personalInvite != null) {
-        return {
-          'type': 'personal',
-          'invite': personalInvite,
-          'organization': personalInvite['organizations'],
-          'organization_id': personalInvite['organization_id'],
-          'role': personalInvite['role'] ?? 'doctor',
-          'invite_id': personalInvite['id'],
-        };
+      log('validateInviteCode response: $response');
+
+      // Handle both List and Map responses
+      Map<String, dynamic>? result;
+      if (response is List && response.isNotEmpty) {
+        result = response.first as Map<String, dynamic>;
+      } else if (response is Map<String, dynamic> && response.isNotEmpty) {
+        result = response;
       }
 
-      // Fall back to checking general org invite code in organizations table
-      final orgWithCode =
-          await _client
-              .from('organizations')
-              .select('id, name, invite_code')
-              .eq('invite_code', inviteCode.toUpperCase())
-              .maybeSingle();
-
-      if (orgWithCode != null) {
+      if (result != null && result['organization_id'] != null) {
+        final inviteType = result['invite_type'] as String;
         return {
-          'type': 'general',
-          'organization': orgWithCode,
-          'organization_id': orgWithCode['id'],
-          'role': 'doctor',
-          'invite_id': null,
+          'type': inviteType == 'personal_invite' ? 'personal' : 'general',
+          'organization': {
+            'id': result['organization_id'],
+            'name': result['organization_name'],
+            'email': result['organization_email'],
+          },
+          'organization_id': result['organization_id'],
+          'role': result['role'] ?? 'doctor',
+          'invite_id': result['invite_id'],
         };
       }
 

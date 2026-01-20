@@ -17,6 +17,7 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
     on<RegisterSubmitted>(_onRegisterSubmitted);
     on<RequesterRegisterSubmitted>(_onRequesterRegisterSubmitted);
     on<OrganizationRegisterSubmitted>(_onOrganizationRegisterSubmitted);
+    on<DoctorWithInviteRegisterSubmitted>(_onDoctorWithInviteRegisterSubmitted);
   }
 
   Future<void> _onOrganizationRegisterSubmitted(
@@ -295,5 +296,65 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
     }
 
     return null; // All validations passed
+  }
+
+  Future<void> _onDoctorWithInviteRegisterSubmitted(
+    DoctorWithInviteRegisterSubmitted event,
+    Emitter<RegisterState> emit,
+  ) async {
+    emit(RegisterLoading());
+    try {
+      // Validate input fields
+      final emailError = ErrorHandler.handleValidationError(
+        'email',
+        event.email,
+      );
+      if (emailError != null) {
+        emit(RegisterFailure(emailError.message));
+        return;
+      }
+
+      final passwordError = ErrorHandler.handleValidationError(
+        'password',
+        event.password,
+      );
+      if (passwordError != null) {
+        emit(RegisterFailure(passwordError.message));
+        return;
+      }
+
+      final usernameError = ErrorHandler.handleValidationError(
+        'username',
+        event.username,
+      );
+      if (usernameError != null) {
+        emit(RegisterFailure(usernameError.message));
+        return;
+      }
+
+      // Sign up the user
+      await _signUpAllowingPendingConfirmation(
+        email: event.email,
+        password: event.password,
+      );
+
+      // Persist pending registration locally with organization data
+      final pending = {
+        'email': event.email,
+        'role': 'requester', // Doctors are requesters in the app
+        'username': event.username,
+        'organizationId': event.organizationId,
+        'organizationRole': event.role,
+        'inviteId': event.inviteId,
+      };
+      await GetIt.I<AppPreferences>().savePendingRegistration(
+        jsonEncode(pending),
+      );
+
+      emit(RegisterSuccess());
+    } catch (e) {
+      final appError = ErrorHandler.handleAuthError(e);
+      emit(RegisterFailure(appError.message));
+    }
   }
 }

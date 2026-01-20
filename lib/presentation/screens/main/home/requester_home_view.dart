@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/data/models/language.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -33,77 +34,78 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
   String _callType = 'voice';
 
   // Medical sections with icons and colors
+  // Using Font Awesome icons for accurate medical representations
   final List<Map<String, dynamic>> _medicalSections = [
     {
       'key': 'neurology',
       'label': 'Neurology',
-      'icon': Icons.psychology,
+      'icon': FontAwesomeIcons.brain,
       'color': const Color(0xFF7C4DFF),
     },
     {
       'key': 'cardiology',
       'label': 'Cardiology',
-      'icon': Icons.favorite,
+      'icon': FontAwesomeIcons.heartPulse,
       'color': const Color(0xFFE91E63),
     },
     {
       'key': 'respiratory',
       'label': 'Respiratory',
-      'icon': Icons.air,
+      'icon': FontAwesomeIcons.lungs,
       'color': const Color(0xFF00BCD4),
     },
     {
       'key': 'gastrointestinal',
-      'label': 'GI',
-      'icon': Icons.lunch_dining,
+      'label': 'Gastrointestinal',
+      'icon': FontAwesomeIcons.disease,
       'color': const Color(0xFFFF9800),
     },
     {
       'key': 'endocrinology',
-      'label': 'Endocrine',
-      'icon': Icons.science,
+      'label': 'Endocrinology',
+      'icon': FontAwesomeIcons.vial,
       'color': const Color(0xFF9C27B0),
     },
     {
       'key': 'renal',
       'label': 'Renal',
-      'icon': Icons.water_drop,
+      'icon': FontAwesomeIcons.droplet,
       'color': const Color(0xFF2196F3),
     },
     {
       'key': 'ob_gyn',
       'label': 'OB/GYN',
-      'icon': Icons.pregnant_woman,
+      'icon': FontAwesomeIcons.personBreastfeeding,
       'color': const Color(0xFFE91E63),
     },
     {
       'key': 'oncology',
       'label': 'Oncology',
-      'icon': Icons.coronavirus,
+      'icon': FontAwesomeIcons.ribbon,
       'color': const Color(0xFF607D8B),
     },
     {
       'key': 'emergency',
       'label': 'Emergency',
-      'icon': Icons.emergency,
+      'icon': FontAwesomeIcons.truckMedical,
       'color': const Color(0xFFF44336),
     },
     {
       'key': 'psychology',
-      'label': 'Psych',
-      'icon': Icons.self_improvement,
+      'label': 'Psychology',
+      'icon': FontAwesomeIcons.commentMedical,
       'color': const Color(0xFF4CAF50),
     },
     {
       'key': 'musculoskeletal',
-      'label': 'Ortho',
-      'icon': Icons.accessibility_new,
+      'label': 'Musculoskeletal',
+      'icon': FontAwesomeIcons.bone,
       'color': const Color(0xFF795548),
     },
     {
       'key': 'dermatology',
-      'label': 'Derm',
-      'icon': Icons.face,
+      'label': 'Dermatology',
+      'icon': FontAwesomeIcons.handDots,
       'color': const Color(0xFFFFB74D),
     },
   ];
@@ -309,7 +311,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Medical Interpreter',
+                              'Welcome Doctor',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
@@ -386,7 +388,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
 
           // From Language
           _buildLanguageSelector(
-            label: 'Doctor speaks',
+            label: 'Client Speaks',
             language: _selectedFromLanguage,
             languages: _availableLanguages,
             icon: Icons.record_voice_over_rounded,
@@ -793,7 +795,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
             Expanded(
               child: _buildTypeChip(
                 title: 'Specialist',
-                subtitle: 'Advanced terms',
+                subtitle: 'Advanced Medical',
                 icon: Icons.medical_services_rounded,
                 isSelected: _interpreterType == 'specialist',
                 onTap: () {
@@ -864,7 +866,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color:
                           isSelected ? Colors.white : const Color(0xFF1E293B),
@@ -977,7 +979,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
                             color: isSelected ? color : color.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Icon(
+                          child: FaIcon(
                             section['icon'] as IconData,
                             size: 20,
                             color: isSelected ? Colors.white : color,
@@ -988,7 +990,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
                           section['label'] as String,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 7,
                             fontWeight:
                                 isSelected ? FontWeight.w600 : FontWeight.w500,
                             color: isSelected ? color : const Color(0xFF64748B),
@@ -1151,12 +1153,20 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
     if (!_canStartRequest) return;
 
     String? specialization;
+    String? medicalSection;
+
     if (_interpreterType == 'specialist' && _selectedMedicalSection != null) {
       final section = _medicalSections.firstWhere(
         (s) => s['key'] == _selectedMedicalSection,
-        orElse: () => {'label': _selectedMedicalSection},
+        orElse:
+            () => {
+              'label': _selectedMedicalSection,
+              'key': _selectedMedicalSection,
+            },
       );
       specialization = section['label'] as String?;
+      medicalSection =
+          section['key'] as String?; // e.g., 'neurology', 'cardiology'
     }
 
     Navigator.push(
@@ -1169,6 +1179,8 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
               specialization: specialization,
               urgency: 'Normal',
               callType: _callType,
+              interpreterType: _interpreterType, // 'general' or 'specialist'
+              medicalSection: medicalSection, // e.g., 'neurology', 'cardiology'
             ),
       ),
     );

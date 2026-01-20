@@ -35,6 +35,7 @@ import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/organization_register_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_dashboard_view.dart';
+import 'package:interbridge/presentation/screens/organization/organization_registration_screen.dart';
 import 'package:interbridge/presentation/screens/organization/join_organization_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_settings_view.dart';
 import 'package:interbridge/presentation/screens/interpreter/interpreter_quiz_hub_screen.dart';
@@ -211,7 +212,7 @@ class RouteGenerator {
 
       case Routes.organizationRegisterRoute:
         return MaterialPageRoute(
-          builder: (_) => const OrganizationRegisterView(),
+          builder: (_) => const OrganizationRegistrationScreen(),
         );
       case Routes.organizationDashboardRoute:
         return MaterialPageRoute(

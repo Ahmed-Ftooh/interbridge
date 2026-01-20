@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -18,20 +19,20 @@ class _MedicalSectionSelectorScreenState
     extends State<MedicalSectionSelectorScreen> {
   final _supabase = SupabaseService();
   final List<_MedicalSection> _sections = const [
-    _MedicalSection('neurology', 'Neurology', Icons.psychology),
-    _MedicalSection('cardiology', 'Cardiology', Icons.favorite),
-    _MedicalSection('respiratory', 'Respiratory', Icons.air),
-    _MedicalSection('gastrointestinal', 'Gastrointestinal', Icons.medication),
-    _MedicalSection('endocrinology', 'Endocrinology', Icons.water_drop),
-    _MedicalSection('renal', 'Renal System', Icons.opacity),
-    _MedicalSection('ob_gyn', 'OB/GYN', Icons.pregnant_woman),
-    _MedicalSection('oncology', 'Oncology', Icons.healing),
-    _MedicalSection('emergency', 'Emergency', Icons.emergency),
+    _MedicalSection('neurology', 'Neurology', FontAwesomeIcons.brain),
+    _MedicalSection('cardiology', 'Cardiology', FontAwesomeIcons.heartPulse),
+    _MedicalSection('respiratory', 'Respiratory', FontAwesomeIcons.lungs),
     _MedicalSection(
-      'dermatology',
-      'Dermatology',
-      Icons.face_retouching_natural,
+      'gastrointestinal',
+      'Gastrointestinal',
+      FontAwesomeIcons.disease,
     ),
+    _MedicalSection('endocrinology', 'Endocrinology', FontAwesomeIcons.vial),
+    _MedicalSection('renal', 'Renal System', FontAwesomeIcons.droplet),
+    _MedicalSection('ob_gyn', 'OB/GYN', FontAwesomeIcons.personBreastfeeding),
+    _MedicalSection('oncology', 'Oncology', FontAwesomeIcons.ribbon),
+    _MedicalSection('emergency', 'Emergency', FontAwesomeIcons.truckMedical),
+    _MedicalSection('dermatology', 'Dermatology', FontAwesomeIcons.handDots),
   ];
 
   Map<String, bool> _earnedBadges = {};
@@ -207,7 +208,7 @@ class _SectionCard extends StatelessWidget {
                             : ColorManager.primary2.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child: FaIcon(
                     section.icon,
                     size: 32,
                     color:

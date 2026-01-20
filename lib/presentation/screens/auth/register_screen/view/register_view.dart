@@ -79,6 +79,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? organizationPhone;
   late String? organizationAddress;
 
+  // Doctor invite data
+  late String? inviteOrganizationId;
+  late String? inviteRole;
+  late String? inviteId;
+
   @override
   void initState() {
     super.initState();
@@ -211,6 +216,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     organizationEmail = widget.data['organizationEmail'] as String?;
     organizationPhone = widget.data['organizationPhone'] as String?;
     organizationAddress = widget.data['organizationAddress'] as String?;
+
+    // Doctor invite data (for doctors joining via invite code)
+    inviteOrganizationId = widget.data['organization_id'] as String?;
+    inviteRole = widget.data['role'] as String? ?? 'doctor';
+    inviteId = widget.data['invite_id'] as String?;
 
     // Pre-fill admin fields if coming from organization registration
     if (role == 'organization_admin') {
@@ -648,7 +658,20 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                               }
 
                               // Check if user is requester, interpreter, or organization_admin
-                              if (role == 'requester') {
+                              if (role == 'doctor_with_invite' &&
+                                  inviteOrganizationId != null) {
+                                // Doctor registering via invite code
+                                context.read<RegisterBloc>().add(
+                                  DoctorWithInviteRegisterSubmitted(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                    username: _usernameController.text.trim(),
+                                    organizationId: inviteOrganizationId!,
+                                    role: inviteRole ?? 'doctor',
+                                    inviteId: inviteId,
+                                  ),
+                                );
+                              } else if (role == 'requester') {
                                 // Simple registration for requesters
                                 context.read<RegisterBloc>().add(
                                   RequesterRegisterSubmitted(

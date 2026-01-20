@@ -94,9 +94,15 @@ class _DoctorJoinOrganizationScreenState
   void _proceedToRegistration() {
     if (_validatedInvite == null) return;
 
+    // Navigate to the regular register screen with invite data
     Navigator.of(context).pushNamed(
-      Routes.doctorRegisterWithInviteRoute,
-      arguments: _validatedInvite,
+      Routes.registerRoute,
+      arguments: {
+        'role': 'doctor_with_invite',
+        'organization_id': _validatedInvite!['organization_id'],
+        'invite_id': _validatedInvite!['invite_id'],
+        ..._validatedInvite!,
+      },
     );
   }
 

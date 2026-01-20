@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -22,25 +23,45 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
   Set<String> _attemptedQuizzes = {}; // Track all attempted medical quizzes
   bool _hasAttemptedGeneralQuiz = false; // Track if general quiz was attempted
 
-  // All medical sections
+  // All medical sections with Font Awesome icons for accurate medical representations
   final List<Map<String, dynamic>> _medicalSections = [
-    {'id': 'neurology', 'title': 'Neurology', 'icon': Icons.psychology},
-    {'id': 'cardiology', 'title': 'Cardiology', 'icon': Icons.favorite},
-    {'id': 'emergency', 'title': 'Emergency Medicine', 'icon': Icons.emergency},
-    {'id': 'oncology', 'title': 'Oncology', 'icon': Icons.biotech},
-    {'id': 'respiratory', 'title': 'Respiratory', 'icon': Icons.air},
+    {'id': 'neurology', 'title': 'Neurology', 'icon': FontAwesomeIcons.brain},
+    {
+      'id': 'cardiology',
+      'title': 'Cardiology',
+      'icon': FontAwesomeIcons.heartPulse,
+    },
+    {
+      'id': 'emergency',
+      'title': 'Emergency Medicine',
+      'icon': FontAwesomeIcons.truckMedical,
+    },
+    {'id': 'oncology', 'title': 'Oncology', 'icon': FontAwesomeIcons.ribbon},
+    {
+      'id': 'respiratory',
+      'title': 'Respiratory',
+      'icon': FontAwesomeIcons.lungs,
+    },
     {
       'id': 'gastrointestinal',
       'title': 'Gastrointestinal',
-      'icon': Icons.lunch_dining,
+      'icon': FontAwesomeIcons.disease,
     },
-    {'id': 'endocrinology', 'title': 'Endocrinology', 'icon': Icons.science},
-    {'id': 'renal', 'title': 'Renal', 'icon': Icons.water_drop},
-    {'id': 'ob_gyn', 'title': 'OB/GYN', 'icon': Icons.pregnant_woman},
+    {
+      'id': 'endocrinology',
+      'title': 'Endocrinology',
+      'icon': FontAwesomeIcons.vial,
+    },
+    {'id': 'renal', 'title': 'Renal', 'icon': FontAwesomeIcons.droplet},
+    {
+      'id': 'ob_gyn',
+      'title': 'OB/GYN',
+      'icon': FontAwesomeIcons.personBreastfeeding,
+    },
     {
       'id': 'dermatology',
       'title': 'Dermatology',
-      'icon': Icons.face_retouching_natural,
+      'icon': FontAwesomeIcons.handDots,
     },
   ];
 
@@ -455,7 +476,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
                         : ColorManager.primary2.withAlpha(20),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
+              child: FaIcon(
                 icon,
                 color: isPassed ? Colors.green : ColorManager.primary2,
                 size: 28,

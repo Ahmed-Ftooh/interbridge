@@ -41,6 +41,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final userId = _supabase.getCurrentUser()?.id;
@@ -52,7 +53,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
 
       if (userId == null) {
         debugPrint('OrganizationDashboard: No user logged in');
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
         return;
       }
 
@@ -73,7 +74,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
         debugPrint(
           'OrganizationDashboard: No organization membership found for user',
         );
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
         return;
       }
 
@@ -88,11 +89,21 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
               .single();
 
       // Load members (without nested profile join - no direct FK)
+      debugPrint('OrganizationDashboard: Loading members for orgId=$orgId');
       final membersRaw = await _supabase.client
           .from('organization_members')
           .select()
           .eq('organization_id', orgId)
           .order('joined_at', ascending: false);
+
+      debugPrint(
+        'OrganizationDashboard: Found ${(membersRaw as List).length} members',
+      );
+      for (var m in membersRaw) {
+        debugPrint(
+          'OrganizationDashboard: Member user_id=${m['user_id']}, role=${m['role']}',
+        );
+      }
 
       // Load profiles for all members
       final memberUserIds =
@@ -146,6 +157,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
         'OrganizationDashboard: Found ${invites.length} pending invites',
       );
 
+      if (!mounted) return;
       setState(() {
         _organization = org;
         _members =
@@ -169,7 +181,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
     } catch (e, stackTrace) {
       debugPrint('Error loading organization data: $e');
       debugPrint('Stack trace: $stackTrace');
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -1162,7 +1174,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                                 await _sendInvitation(
                                   emailController.text.trim(),
                                 );
-                                if (context.mounted) {
+                                if (mounted) {
                                   Navigator.pop(context);
                                   CustomSnackBar.show(
                                     this.context,
@@ -1171,8 +1183,8 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                                   );
                                 }
                               } catch (e) {
-                                setDialogState(() => isLoading = false);
                                 if (context.mounted) {
+                                  setDialogState(() => isLoading = false);
                                   CustomSnackBar.show(
                                     this.context,
                                     message: 'Failed to send invitation: $e',

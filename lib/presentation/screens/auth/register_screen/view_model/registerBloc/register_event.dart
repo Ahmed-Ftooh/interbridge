@@ -130,3 +130,32 @@ class OrganizationRegisterSubmitted extends RegisterEvent {
     organizationAddress,
   ];
 }
+
+/// Event for doctors registering with an organization invite code
+class DoctorWithInviteRegisterSubmitted extends RegisterEvent {
+  final String email;
+  final String password;
+  final String username;
+  final String organizationId;
+  final String role;
+  final String? inviteId;
+
+  DoctorWithInviteRegisterSubmitted({
+    required this.email,
+    required this.password,
+    required this.username,
+    required this.organizationId,
+    required this.role,
+    this.inviteId,
+  });
+
+  @override
+  List<Object?> get props => [
+    email,
+    password,
+    username,
+    organizationId,
+    role,
+    inviteId,
+  ];
+}

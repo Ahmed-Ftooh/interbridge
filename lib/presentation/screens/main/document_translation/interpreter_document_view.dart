@@ -57,16 +57,19 @@ class _InterpreterDocumentViewState extends State<InterpreterDocumentView> {
   }
 
   Future<void> _loadAvailableRequests() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final requests =
           await instance<DocumentTranslationService>().getAvailableRequests();
+      if (!mounted) return;
       setState(() {
         _availableRequests = requests;
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Error loading requests: $e';

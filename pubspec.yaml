@@ -55,6 +55,7 @@ dependencies:
   just_audio: ^0.9.39
   syncfusion_flutter_pdfviewer: ^31.1.19
   flutter_rating_bar: ^4.0.1         # For the 5-star rating dialog
+  font_awesome_flutter: ^10.8.0      # For medical-specific icons
 
   audioplayers: ^6.5.1
   url_launcher: ^6.3.0
@@ -94,6 +95,7 @@ flutter:
     - assets/
     - assets/images/
     - assets/json/
+    - assets/audio/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

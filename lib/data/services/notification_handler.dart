@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart' as callkit;
+import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -41,10 +42,17 @@ class NotificationHandler {
       _handleNotificationNavigation(message.data);
     });
 
-    // 3. Handle foreground messages (optional, good for in-app alerts)
+    // 3. Handle foreground messages - show CallKit for incoming calls
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('Received foreground message: ${message.notification?.title}');
-      // You could show an in-app banner here if you want
+      final data = message.data;
+      final type = data['type']?.toString().toUpperCase();
+
+      // If it's an incoming call, show CallKit
+      if (type == 'INCOMING_CALL') {
+        log('Incoming call notification in foreground, showing CallKit');
+        _showIncomingCallUI(data);
+      }
     });
 
     // 4. Handle CallKit incoming call events (accept/decline from native UI)
@@ -77,6 +85,54 @@ class NotificationHandler {
           log('Unhandled CallKit event: ${event.event}');
       }
     });
+  }
+
+  /// Show incoming call UI using CallKit
+  void _showIncomingCallUI(Map<String, dynamic> data) {
+    final requestId = data['request_id'] as String?;
+    final callerName = data['caller_name'] as String? ?? 'Unknown Caller';
+    final callType = data['call_type'] as String? ?? 'voice';
+    final interpreterType = data['interpreter_type'] as String? ?? 'general';
+    final medicalSection = data['medical_section'] as String?;
+
+    if (requestId == null) {
+      log('No request_id in incoming call data, skipping CallKit');
+      return;
+    }
+
+    FlutterCallkitIncoming.showCallkitIncoming(
+      CallKitParams(
+        id: requestId,
+        nameCaller: callerName,
+        appName: 'Interbridge',
+        handle: requestId,
+        type: callType == 'video' ? 1 : 0,
+        textAccept: 'Answer',
+        textDecline: 'Decline',
+        duration: 30000, // 30 seconds
+        extra: <String, dynamic>{
+          'request_id': requestId,
+          'call_type': callType,
+          'interpreter_type': interpreterType,
+          'medical_section': medicalSection,
+        },
+        android: const AndroidParams(
+          isCustomNotification: true,
+          isShowLogo: true,
+          ringtonePath: 'call_ring', // References res/raw/call_ring.mp3
+          backgroundColor: '#0955fa',
+          actionColor: '#4CAF50',
+          textColor: '#ffffff',
+          isShowFullLockedScreen: true,
+        ),
+        ios: const IOSParams(
+          iconName: 'CallKitIcon',
+          handleType: 'generic',
+          supportsVideo: true,
+          ringtonePath: 'Call_Ring',
+        ),
+      ),
+    );
   }
 
   /// Handle accepting a call from the CallKit native UI

@@ -36,54 +36,88 @@ class _JoinOrganizationViewState extends State<JoinOrganizationView> {
 
     try {
       final code = _codeController.text.trim().toUpperCase();
+      debugPrint('Looking up invite code: $code');
 
-      // Look up the invite code
-      final invite =
-          await _supabase.client
-              .from('organization_invites')
-              .select('*, organizations(id, name, email)')
-              .eq('invite_code', code)
-              .eq('status', 'pending')
-              .gt('expires_at', DateTime.now().toIso8601String())
-              .maybeSingle();
+      // Use the secure database function to look up invites by code
+      // This bypasses RLS restrictions so anyone with a valid code can find it
+      final response = await _supabase.client.rpc(
+        'lookup_invite_by_code',
+        params: {'p_invite_code': code},
+      );
 
-      if (invite == null) {
-        // Try the organization's general invite code
-        final org =
-            await _supabase.client
-                .from('organizations')
-                .select('id, name, email')
-                .eq('invite_code', code)
-                .maybeSingle();
+      // Show debug dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder:
+              (ctx) => AlertDialog(
+                title: const Text('Debug Info'),
+                content: SingleChildScrollView(
+                  child: Text(
+                    'Code: $code\n\nResponse type: ${response.runtimeType}\n\nResponse: $response',
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+        );
+      }
 
-        if (org != null) {
-          setState(() {
-            _foundOrganization = {'type': 'org_code', 'organization': org};
-          });
-        } else {
-          if (mounted) {
-            CustomSnackBar.show(
-              context,
-              message: 'Invalid or expired invite code',
-              type: SnackBarType.error,
-            );
-          }
+      debugPrint('RPC response type: ${response.runtimeType}');
+      debugPrint('RPC response: $response');
+
+      // Handle both List and Map responses
+      Map<String, dynamic>? result;
+      if (response is List) {
+        debugPrint('Response is a List with ${response.length} items');
+        if (response.isNotEmpty) {
+          result = response.first as Map<String, dynamic>;
         }
+      } else if (response is Map<String, dynamic>) {
+        debugPrint('Response is a Map');
+        result = response;
       } else {
+        debugPrint('Response is unexpected type: ${response.runtimeType}');
+      }
+
+      if (result != null && result.isNotEmpty) {
+        final inviteType = result['invite_type'] as String;
+        debugPrint('Found invite type: $inviteType');
+        debugPrint('Organization ID: ${result['organization_id']}');
+        debugPrint('Organization Name: ${result['organization_name']}');
         setState(() {
           _foundOrganization = {
-            'type': 'personal_invite',
-            'invite': invite,
-            'organization': invite['organizations'],
+            'type': inviteType,
+            'invite_id': result!['invite_id'],
+            'organization': {
+              'id': result['organization_id'],
+              'name': result['organization_name'],
+              'email': result['organization_email'],
+            },
+            'role': result['role'],
           };
         });
+      } else {
+        debugPrint('No result found for code: $code');
+        if (mounted) {
+          CustomSnackBar.show(
+            context,
+            message: 'Invalid or expired invite code',
+            type: SnackBarType.error,
+          );
+        }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Error looking up code: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         CustomSnackBar.show(
           context,
-          message: 'Error looking up code',
+          message: 'Error: ${e.toString()}',
           type: SnackBarType.error,
         );
       }
@@ -106,6 +140,7 @@ class _JoinOrganizationViewState extends State<JoinOrganizationView> {
       final org = _foundOrganization!['organization'] as Map<String, dynamic>;
       final orgId = org['id'] as String;
       final type = _foundOrganization!['type'] as String;
+      final role = _foundOrganization!['role'] as String? ?? 'doctor';
 
       // Check if user is already a member
       final existingMember =
@@ -129,22 +164,24 @@ class _JoinOrganizationViewState extends State<JoinOrganizationView> {
 
       // If it's a personal invite, mark it as redeemed
       if (type == 'personal_invite') {
-        final invite = _foundOrganization!['invite'] as Map<String, dynamic>;
-        await _supabase.client
-            .from('organization_invites')
-            .update({
-              'status': 'accepted',
-              'redeemed_by': userId,
-              'redeemed_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', invite['id']);
+        final inviteId = _foundOrganization!['invite_id'] as String?;
+        if (inviteId != null) {
+          await _supabase.client
+              .from('organization_invites')
+              .update({
+                'status': 'accepted',
+                'redeemed_by': userId,
+                'redeemed_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', inviteId);
+        }
       }
 
       // Add user to organization
       await _supabase.client.from('organization_members').insert({
         'organization_id': orgId,
         'user_id': userId,
-        'role': 'doctor',
+        'role': role,
         'is_active': true,
         'spending_limit': null,
         'total_spent': 0,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_dashboard_view.dart';
 import 'package:interbridge/presentation/screens/main/home/interpreter_home_view.dart';
@@ -24,6 +25,7 @@ import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.da
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/data/services/chat_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:lottie/lottie.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -206,6 +208,64 @@ class _MainViewState extends State<MainView> {
     }
   }
 
+  Widget _buildAuthErrorWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSize.s24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: AppSize.s120,
+              height: AppSize.s120,
+              child: Lottie.asset(
+                'assets/json/erorr.json',
+                fit: BoxFit.contain,
+                repeat: true,
+                animate: true,
+              ),
+            ),
+            const SizedBox(height: AppSize.s24),
+            Text(
+              'Not Logged In',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: ColorManager.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSize.s8),
+            Text(
+              'Please log in to continue using the app.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ColorManager.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSize.s24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+              },
+              icon: const Icon(Icons.login),
+              label: const Text('Go to Login'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ColorManager.primary,
+                foregroundColor: ColorManager.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSize.s24,
+                  vertical: AppSize.s12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildPages() {
     if (isLoading) {
       // Build lightweight placeholders while loading
@@ -218,6 +278,17 @@ class _MainViewState extends State<MainView> {
     }
 
     if (error != null) {
+      // For authentication errors, show a login button
+      if (error!.type == ErrorType.authentication) {
+        final authErrorWidget = _buildAuthErrorWidget();
+        return [
+          authErrorWidget,
+          authErrorWidget,
+          authErrorWidget,
+          authErrorWidget,
+        ];
+      }
+
       // Show the same error page for all indices
       final errorWidget = ErrorDisplayWidget(
         error: error!,

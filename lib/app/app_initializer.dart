@@ -15,10 +15,22 @@ import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 class AppInitializer {
+  // Track if we've already handled the initial auth navigation to prevent
+  // duplicate navigations that could interrupt user flow (e.g., during quizzes)
+  static bool _hasHandledInitialAuth = false;
+
+  /// Reset the auth navigation flag. Call this when the user signs out.
+  static void resetAuthState() {
+    _hasHandledInitialAuth = false;
+  }
+
   static Future<void> initialize() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     try {
+      // Reset flag on each initialization (e.g., hot restart)
+      _hasHandledInitialAuth = false;
+
       // Initialize dependency injection first (fast - local operations only)
       await initAppModule();
 
@@ -127,7 +139,10 @@ class AppInitializer {
             );
           }
 
-          if (didFinalize) {
+          // Only navigate if we just finalized registration AND haven't already handled auth
+          // This prevents interrupting the user if they're already on a screen (e.g., quiz)
+          if (didFinalize && !_hasHandledInitialAuth) {
+            _hasHandledInitialAuth = true;
             final navigator = MyApp.navigatorKey.currentState;
             if (user != null && navigator != null) {
               await _navigateBasedOnRole(navigator, user.id);
@@ -135,16 +150,9 @@ class AppInitializer {
           }
         }
         if (type == AuthChangeEvent.tokenRefreshed) {
-          log('Auth event: tokenRefreshed');
-          final didFinalize =
-              await PendingRegistrationService().finalizePendingRegistration();
-          if (didFinalize) {
-            final navigator = MyApp.navigatorKey.currentState;
-            final user = Supabase.instance.client.auth.currentUser;
-            if (user != null && navigator != null) {
-              await _navigateBasedOnRole(navigator, user.id);
-            }
-          }
+          // Token refresh happens automatically and should NOT trigger navigation
+          // as it would interrupt the user's current activity (e.g., taking a quiz)
+          log('Auth event: tokenRefreshed (no navigation)');
         }
       });
 

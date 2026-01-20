@@ -118,7 +118,8 @@ class _SplashViewState extends State<SplashView> {
         if (user != null) {
           await _navigateBasedOnRole(user.id);
         } else {
-          Navigator.pushReplacementNamed(context, Routes.mainRoute);
+          // No user found, go to login screen instead of main
+          Navigator.pushReplacementNamed(context, Routes.loginRoute);
         }
       } else {
         _appPreferences.isOnboardingViewed().then(

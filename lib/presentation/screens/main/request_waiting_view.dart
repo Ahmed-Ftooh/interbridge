@@ -21,6 +21,8 @@ class RequestWaitingView extends StatefulWidget {
   final String urgency;
   final String? description;
   final String callType;
+  final String interpreterType; // 'general' or 'specialist'
+  final String? medicalSection; // e.g., 'neurology', 'cardiology'
 
   const RequestWaitingView({
     super.key,
@@ -30,6 +32,8 @@ class RequestWaitingView extends StatefulWidget {
     required this.urgency,
     this.description,
     this.callType = 'voice',
+    this.interpreterType = 'general',
+    this.medicalSection,
   });
 
   @override
@@ -42,6 +46,8 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
   RealtimeChannel? _channel;
   InterpreterRequest? _request;
   bool _isCreating = true;
+  Timer? _tierEscalationTimer; // Timer for tier escalation (30s intervals)
+  int _currentTier = 1;
 
   /// Build a stable int UID from the authenticated user UUID
   static int _uidFromUuid(String uuid) {
@@ -70,7 +76,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
   Future<void> _startFlow() async {
     try {
-      // 1) Create the request
+      // 1) Create the request with interpreter type and medical section
       final request = await InterpreterRequestService().createRequest(
         fromLanguage: widget.fromLanguageId,
         toLanguage: widget.toLanguageId,
@@ -78,6 +84,9 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
         urgency: widget.urgency,
         description: widget.description,
         callType: widget.callType,
+        interpreterType: widget.interpreterType, // 'general' or 'specialist'
+        medicalSection:
+            widget.medicalSection, // e.g., 'neurology', 'cardiology'
       );
       if (!mounted) return;
       setState(() {
@@ -157,6 +166,12 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
               },
             )
             ..subscribe();
+
+      // Start tier escalation timer for specialist requests
+      // Every 30 seconds, check if we need to escalate to the next tier
+      if (widget.interpreterType == 'specialist') {
+        _startTierEscalationTimer(request.id);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -166,8 +181,46 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
     }
   }
 
+  /// Start a timer to check tier escalation every 30 seconds
+  void _startTierEscalationTimer(String requestId) {
+    _tierEscalationTimer?.cancel();
+    _tierEscalationTimer = Timer.periodic(const Duration(seconds: 30), (
+      timer,
+    ) async {
+      if (!mounted || _request == null) {
+        timer.cancel();
+        return;
+      }
+
+      log(
+        'Checking tier escalation for request: $requestId (current tier: $_currentTier)',
+      );
+
+      // Only escalate up to tier 3
+      if (_currentTier >= 3) {
+        log('Already at tier 3, no more escalation');
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final escalated = await InterpreterRequestService()
+            .checkAndEscalateTier(requestId);
+        if (escalated && mounted) {
+          setState(() {
+            _currentTier++;
+          });
+          log('Escalated to tier $_currentTier');
+        }
+      } catch (e) {
+        log('Error during tier escalation: $e');
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _tierEscalationTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (_channel != null) {
       _client.removeChannel(_channel!);

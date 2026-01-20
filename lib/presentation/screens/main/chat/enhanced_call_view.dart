@@ -3,10 +3,11 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/data/services/twilio_call_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/call_feedback_dialog.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 // 1. SIMPLIFIED WIDGET: It no longer creates a BLoC
 class EnhancedCallScreen extends StatelessWidget {
@@ -46,185 +47,304 @@ class _EnhancedCallScreenBody extends StatefulWidget {
 class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   DateTime? _callStartTime;
   Duration _callDuration = Duration.zero;
-  // 2. REMOVED CallBloc reference
+  bool _hasRemoteUser = false; // Track if remote user has joined
+
+  // Twilio patient call state
+  final TwilioCallService _twilioService = TwilioCallService();
+  String? _patientCallSid;
+  String _patientCallStatus = '';
+  bool _isPatientCallLoading = false;
 
   @override
   void initState() {
     super.initState();
-    // 3. REMOVED StartCall dispatch. This is now done in ChatView.
     _saveSessionState();
   }
 
-  // 4. REMOVED didChangeDependencies
-
   @override
   void dispose() {
-    // 5. REMOVED EndCall dispatch.
-    // The call persists in the background.
+    // End any active patient call when leaving the screen
+    if (_patientCallSid != null) {
+      _twilioService.endCall(_patientCallSid!);
+    }
     super.dispose();
+  }
+
+  // ===== Patient Phone Call Methods =====
+
+  void _showCallPatientDialog() {
+    final phoneController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Add Third Party'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    hintText: '+1 (555) 123-4567',
+                    prefixIcon: Icon(Icons.phone),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Enter the patient\'s phone number to add them to the call.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _initiatePatientCall(phoneController.text.trim());
+                },
+                icon: const Icon(Icons.call),
+                label: const Text('Call'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _initiatePatientCall(String phoneNumber) async {
+    if (phoneNumber.isEmpty) {
+      _showSnackBar('Please enter a phone number', isError: true);
+      return;
+    }
+
+    setState(() {
+      _isPatientCallLoading = true;
+      _patientCallStatus = 'Initiating call...';
+    });
+
+    final result = await _twilioService.initiateCall(
+      toPhoneNumber: phoneNumber,
+      requestId: widget.channelId,
+    );
+
+    if (!mounted) return;
+
+    if (result.success) {
+      setState(() {
+        _patientCallSid = result.callSid;
+        _patientCallStatus = 'Calling ${result.toPhone}...';
+        _isPatientCallLoading = false;
+      });
+      log('Patient call initiated: ${result.callSid}');
+    } else {
+      setState(() {
+        _isPatientCallLoading = false;
+        _patientCallStatus = '';
+      });
+      _showSnackBar(
+        result.errorMessage ?? 'Failed to call patient',
+        isError: true,
+      );
+    }
+  }
+
+  Future<void> _endPatientCall() async {
+    if (_patientCallSid == null) return;
+
+    setState(() => _isPatientCallLoading = true);
+
+    final success = await _twilioService.endCall(_patientCallSid!);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isPatientCallLoading = false;
+      if (success) {
+        _patientCallSid = null;
+        _patientCallStatus = '';
+      }
+    });
+
+    if (success) {
+      _showSnackBar('Patient call ended');
+    } else {
+      _showSnackBar('Failed to end patient call', isError: true);
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
+  }
+
+  void _navigateToHome() {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+  }
+
+  Future<void> _showFeedbackAndNavigateHome() async {
+    if (!mounted) return;
+
+    // Clear session immediately so app doesn't restore to chat/call on restart
+    await SessionService.clearSession();
+    log('Session cleared after call ended');
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (dialogContext) => CallFeedbackDialog(
+            requestId: widget.channelId,
+            onComplete: () {
+              // Dialog already pops itself, just navigate to home
+              _navigateToHome();
+            },
+          ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // These BLoCs are now read from the MultiBlocProvider we set up
-    return BlocListener<ChatBloc, ChatState>(
-      listener: (context, chatState) {
-        // Listen for call ended messages from chat
-        if (chatState is ChatLoaded && chatState.messages.isNotEmpty) {
-          final lastMessage = chatState.messages.last;
-          final isCallEnded = lastMessage['content'] == '__CALL_ENDED__';
-          final isFromMe =
-              lastMessage['sender_id'] ==
-              Supabase.instance.client.auth.currentUser?.id;
-
-          if (isCallEnded && !isFromMe) {
-            // Other participant ended the call, close our call screen
-            Navigator.of(context).maybePop();
+    // Simplified - no ChatBloc listener needed for call end
+    return BlocConsumer<CallBloc, CallState>(
+      listener: (context, callState) {
+        // Listen for call state changes
+        if (callState is CallEnded) {
+          // Call ended (either by us or remote) - show feedback dialog then navigate home
+          log(
+            'Call ended (isRemote: ${callState.isRemote}). Showing feedback dialog.',
+          );
+          _showFeedbackAndNavigateHome();
+        } else if (callState is CallOngoing) {
+          // Track when remote user joins to start timer together
+          if (callState.remoteUids.isNotEmpty && !_hasRemoteUser) {
+            _hasRemoteUser = true;
+            // Start the call timer only when both sides are connected
+            _callStartTime = DateTime.now();
+            log('Remote user joined - call timer started');
           }
+        } else if (callState is CallError) {
+          // Show error dialog and then navigate to home
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder:
+                (dialogContext) => AlertDialog(
+                  title: const Text('Call Error'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(callState.error.message),
+                      if (callState.error.userAction != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          callState.error.userAction!,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop(); // Close dialog
+                        _navigateToHome(); // Navigate to home
+                      },
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+          );
         }
       },
-      child: BlocConsumer<CallBloc, CallState>(
-        // In chat/enhanced_call_view.dart
-        listener: (context, callState) {
-          // Listen for call state changes
-          if (callState is CallEnded) {
-            // --- THIS IS THE NEW LOGIC ---
-            // If the call was ended LOCALLY (by this user),
-            // send the notification message to the chat.
-            if (callState.isRemote == false) {
-              log('Local hangup detected. Sending __CALL_ENDED__ message.');
-              try {
-                context.read<ChatBloc>().add(
-                  SendCallStateMessage(
-                    requestId: widget.channelId,
-                    callState: '__CALL_ENDED__',
-                  ),
-                );
-              } catch (e) {
-                log('Error sending call ended message from UI: $e');
-              }
-            }
-            // --- END OF NEW LOGIC ---
+      builder: (context, callState) {
+        // Track call duration - only after remote user joins
+        if (callState is CallOngoing &&
+            _hasRemoteUser &&
+            _callStartTime != null) {
+          _callDuration = DateTime.now().difference(_callStartTime!);
+        }
 
-            // ChatView will now handle popping this screen.
-          } else if (callState is CallError) {
-            // Show error dialog and then pop back
-            showDialog(
-              context: context,
-              barrierDismissible: false,
-              builder:
-                  (context) => AlertDialog(
-                    title: const Text('Call Error'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(callState.error.message),
-                        if (callState.error.userAction != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            callState.error.userAction!,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: Colors.grey[600]),
-                          ),
-                        ],
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
+        // Reset start time if call is not ongoing
+        if (callState is! CallOngoing) {
+          _callStartTime = null;
+          _hasRemoteUser = false;
+        }
+
+        return Scaffold(
+          backgroundColor: ColorManager.primary2Dark,
+          body: Stack(
+            children: [
+              // Main call interface
+              _buildCallInterface(callState),
+
+              // Top controls
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.arrow_back, color: ColorManager.white),
                         onPressed: () {
-                          Navigator.of(context).pop(); // Close dialog
-                          Navigator.of(context).maybePop(); // Go back to chat
+                          // 6. CHANGED: This just pops the screen.
+                          // The call continues in the background.
+                          Navigator.of(context).maybePop();
                         },
-                        child: const Text('OK'),
+                      ),
+
+                      // End Session button
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert, color: ColorManager.white),
+                        onSelected: (value) {
+                          if (value == 'end_session') {
+                            _showEndSessionDialog(context);
+                          }
+                        },
+                        itemBuilder:
+                            (context) => [
+                              const PopupMenuItem(
+                                value: 'end_session',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.exit_to_app, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('End Session'),
+                                  ],
+                                ),
+                              ),
+                            ],
                       ),
                     ],
                   ),
-            );
-          }
-        },
-        builder: (context, callState) {
-          // Track call duration
-          if (callState is CallOngoing) {
-            if (callState.startTime != null) {
-              _callStartTime = callState.startTime;
-            } else if (_callStartTime == null) {
-              _callStartTime = DateTime.now();
-            }
-          }
-
-          if (callState is CallOngoing && _callStartTime != null) {
-            _callDuration = DateTime.now().difference(_callStartTime!);
-          }
-
-          // Reset start time if call is not ongoing
-          if (callState is! CallOngoing) {
-            _callStartTime = null;
-          }
-
-          return Scaffold(
-            backgroundColor: ColorManager.primary2Dark,
-            body: Stack(
-              children: [
-                // Main call interface
-                _buildCallInterface(callState),
-
-                // Top controls
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.arrow_back,
-                            color: ColorManager.white,
-                          ),
-                          onPressed: () {
-                            // 6. CHANGED: This just pops the screen.
-                            // The call continues in the background.
-                            Navigator.of(context).maybePop();
-                          },
-                        ),
-
-                        // End Session button
-                        PopupMenuButton<String>(
-                          icon: Icon(
-                            Icons.more_vert,
-                            color: ColorManager.white,
-                          ),
-                          onSelected: (value) {
-                            if (value == 'end_session') {
-                              _showEndSessionDialog(context);
-                            }
-                          },
-                          itemBuilder:
-                              (context) => [
-                                const PopupMenuItem(
-                                  value: 'end_session',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.exit_to_app,
-                                        color: Colors.red,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text('End Session'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -294,15 +414,13 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                   child:
                       callState.isVideoCall &&
                               callState.videoEnabled &&
-                              engine != null
+                              engine != null &&
+                              callState.remoteUids.isNotEmpty
                           ? AgoraVideoView(
                             controller: VideoViewController.remote(
                               rtcEngine: engine,
                               canvas: VideoCanvas(
-                                uid:
-                                    callState.remoteUids.isNotEmpty
-                                        ? callState.remoteUids.first
-                                        : 0,
+                                uid: callState.remoteUids.first,
                               ),
                               connection: RtcConnection(
                                 channelId: widget.channelId,
@@ -480,6 +598,44 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Patient call status indicator
+          if (_patientCallStatus.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color:
+                    _patientCallSid != null
+                        ? Colors.green.withValues(alpha: 0.2)
+                        : Colors.orange.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _patientCallSid != null ? Colors.green : Colors.orange,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _patientCallSid != null ? Icons.phone_in_talk : Icons.phone,
+                    color:
+                        _patientCallSid != null ? Colors.green : Colors.orange,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _patientCallStatus,
+                    style: TextStyle(
+                      color:
+                          _patientCallSid != null
+                              ? Colors.green
+                              : Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -509,6 +665,24 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                   // End the call and let the listener handle navigation
                   context.read<CallBloc>().add(EndCall());
                 },
+              ),
+              // Call Patient button
+              _roundIconButton(
+                icon:
+                    _patientCallSid != null
+                        ? Icons.phone_disabled
+                        : Icons.add_call,
+                label:
+                    _patientCallSid != null
+                        ? 'End Third Party'
+                        : 'Add Third Party',
+                color: _patientCallSid != null ? Colors.orange : Colors.green,
+                onTap:
+                    _isPatientCallLoading
+                        ? () {}
+                        : (_patientCallSid != null
+                            ? _endPatientCall
+                            : _showCallPatientDialog),
               ),
               // Camera switch (only for video calls with video enabled)
               if (state.isVideoCall)
@@ -554,7 +728,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         GestureDetector(
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,

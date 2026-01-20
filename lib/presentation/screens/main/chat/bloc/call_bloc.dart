@@ -161,9 +161,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _isVideoCall = e.isVideoCall;
       _videoEnabled = e.isVideoCall; // Start with video on for video calls
 
-      // 1) Check mic permission (should already be granted at login)
-      log('Checking microphone permission...');
-      final mic = await Permission.microphone.status;
+      // 1) Request microphone permission
+      log('Requesting microphone permission...');
+      var mic = await Permission.microphone.status;
+      if (!mic.isGranted) {
+        mic = await Permission.microphone.request();
+      }
       if (!mic.isGranted) {
         log(
           'Microphone permission not granted. Please enable in app settings.',
@@ -183,10 +186,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
       log('Microphone permission granted');
 
-      // 1b) Check camera permission for video calls
+      // 1b) Request camera permission for video calls
       if (e.isVideoCall) {
-        log('Checking camera permission...');
-        final camera = await Permission.camera.status;
+        log('Requesting camera permission...');
+        var camera = await Permission.camera.status;
+        if (!camera.isGranted) {
+          camera = await Permission.camera.request();
+        }
         if (!camera.isGranted) {
           log('Camera permission not granted. Please enable in app settings.');
           emit(
@@ -552,6 +558,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   void _onRemoteUserLeft(_RemoteUserLeft e, Emitter<CallState> emit) {
     _remoteUids.remove(e.uid);
+
+    // If no more remote users, the other side has ended the call - end for us too
+    if (_remoteUids.isEmpty && state is CallOngoing) {
+      log('Remote user left and no more participants - ending call');
+      add(EndCall(isRemote: true));
+      return;
+    }
+
     if (state is CallOngoing) {
       emit((state as CallOngoing).copyWith(remoteUids: {..._remoteUids}));
     }

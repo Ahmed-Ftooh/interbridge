@@ -64,7 +64,7 @@ class _InterpreterTrackSelectionScreenState
               const SizedBox(height: AppSize.s12),
               _TrackCard(
                 title: 'Entry-Level Beginner',
-                subtitle: 'Start with non-medical calls',
+                subtitle: 'Start with Basic medical calls',
                 description:
                     'Ideal for newcomers to interpreting. Support humanitarian causes and build experience.',
                 icon: Icons.volunteer_activism_rounded,
@@ -78,7 +78,7 @@ class _InterpreterTrackSelectionScreenState
               const SizedBox(height: AppSize.s16),
               _TrackCard(
                 title: 'Experienced Medical Interpreter',
-                subtitle: 'Medical & specialized badges',
+                subtitle: 'Medical & specialized calls',
                 description:
                     'For experienced interpreters. Complete medical sections and qualify for paid shifts.',
                 icon: Icons.medical_services_rounded,

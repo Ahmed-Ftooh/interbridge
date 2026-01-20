@@ -104,512 +104,492 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final myId = Supabase.instance.client.auth.currentUser?.id;
 
-    return BlocListener<CallBloc, CallState>(
-      listener: (context, state) {
-        if (state is CallEnded) {
-          Navigator.of(context).maybePop();
-          Future.delayed(const Duration(milliseconds: 400), () {
-            if (mounted) {
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder:
-                    (context) =>
-                        CallFeedbackDialog(requestId: widget.requestId),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Chat'),
+        actions: [
+          // Voice Call button
+          BlocBuilder<ChatBloc, ChatState>(
+            builder: (context, state) {
+              final isUploading = state is ChatLoaded && state.isUploading;
+              return IconButton(
+                icon: const Icon(Icons.call),
+                tooltip: 'Voice Call',
+                onPressed:
+                    isUploading
+                        ? null
+                        : () {
+                          if (myId == null) return;
+                          context.read<ChatBloc>().add(
+                            SendMessage(
+                              requestId: widget.requestId,
+                              content: '__CALL_INVITE__',
+                            ),
+                          );
+                          context.read<CallBloc>().add(
+                            StartCall(
+                              channelId: widget.requestId,
+                              localUid: _uidFromUuid(myId),
+                              isVideoCall: false,
+                            ),
+                          );
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EnhancedCallScreen(
+                                    channelId: widget.requestId,
+                                    isVideoCall: false,
+                                  ),
+                            ),
+                            (route) => false,
+                          );
+                        },
               );
-            }
-          });
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Chat'),
-          actions: [
-            // Voice Call button
-            BlocBuilder<ChatBloc, ChatState>(
-              builder: (context, state) {
-                final isUploading = state is ChatLoaded && state.isUploading;
-                return IconButton(
-                  icon: const Icon(Icons.call),
-                  tooltip: 'Voice Call',
-                  onPressed:
-                      isUploading
-                          ? null
-                          : () {
-                            if (myId == null) return;
-                            context.read<ChatBloc>().add(
-                              SendMessage(
-                                requestId: widget.requestId,
-                                content: '__CALL_INVITE__',
-                              ),
-                            );
-                            context.read<CallBloc>().add(
-                              StartCall(
-                                channelId: widget.requestId,
-                                localUid: _uidFromUuid(myId),
-                                isVideoCall: false,
-                              ),
-                            );
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => EnhancedCallScreen(
-                                      channelId: widget.requestId,
-                                      isVideoCall: false,
-                                    ),
-                              ),
-                            );
-                          },
-                );
-              },
-            ),
-            // Video Call button
-            BlocBuilder<ChatBloc, ChatState>(
-              builder: (context, state) {
-                final isUploading = state is ChatLoaded && state.isUploading;
-                return IconButton(
-                  icon: const Icon(Icons.videocam),
-                  tooltip: 'Video Call',
-                  onPressed:
-                      isUploading
-                          ? null
-                          : () {
-                            if (myId == null) return;
-                            context.read<ChatBloc>().add(
-                              SendMessage(
-                                requestId: widget.requestId,
-                                content: '__VIDEO_CALL_INVITE__',
-                              ),
-                            );
-                            context.read<CallBloc>().add(
-                              StartCall(
-                                channelId: widget.requestId,
-                                localUid: _uidFromUuid(myId),
-                                isVideoCall: true,
-                              ),
-                            );
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => EnhancedCallScreen(
-                                      channelId: widget.requestId,
-                                      isVideoCall: true,
-                                    ),
-                              ),
-                            );
-                          },
-                );
-              },
-            ),
-            // End Session button
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'end_session') {
-                  _showEndSessionDialog();
-                }
-              },
-              itemBuilder:
-                  (context) => [
-                    const PopupMenuItem(
-                      value: 'end_session',
-                      child: Row(
-                        children: [
-                          Icon(Icons.exit_to_app, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('End Session'),
-                        ],
-                      ),
-                    ),
-                  ],
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            // Call indicator
-            StreamBuilder<String?>(
-              stream: CallStateManager().activeCallStream,
-              builder: (context, snapshot) {
-                final activeChannelId = snapshot.data;
-                final isCallActive = activeChannelId == widget.requestId;
-
-                if (isCallActive) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.green,
+            },
+          ),
+          // Video Call button
+          BlocBuilder<ChatBloc, ChatState>(
+            builder: (context, state) {
+              final isUploading = state is ChatLoaded && state.isUploading;
+              return IconButton(
+                icon: const Icon(Icons.videocam),
+                tooltip: 'Video Call',
+                onPressed:
+                    isUploading
+                        ? null
+                        : () {
+                          if (myId == null) return;
+                          context.read<ChatBloc>().add(
+                            SendMessage(
+                              requestId: widget.requestId,
+                              content: '__VIDEO_CALL_INVITE__',
+                            ),
+                          );
+                          context.read<CallBloc>().add(
+                            StartCall(
+                              channelId: widget.requestId,
+                              localUid: _uidFromUuid(myId),
+                              isVideoCall: true,
+                            ),
+                          );
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EnhancedCallScreen(
+                                    channelId: widget.requestId,
+                                    isVideoCall: true,
+                                  ),
+                            ),
+                            (route) => false,
+                          );
+                        },
+              );
+            },
+          ),
+          // End Session button
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'end_session') {
+                _showEndSessionDialog();
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem(
+                    value: 'end_session',
                     child: Row(
                       children: [
-                        const Icon(Icons.call, color: Colors.white, size: 20),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Call in progress',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => EnhancedCallScreen(
-                                      channelId: widget.requestId,
-                                    ),
-                              ),
-                            );
-                          },
-                          child: const Text(
-                            'Return to call',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
+                        Icon(Icons.exit_to_app, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('End Session'),
                       ],
                     ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            Expanded(
-              // --- ADDED BlocListener for Chat Errors and Session End ---
-              child: BlocListener<ChatBloc, ChatState>(
-                listener: (context, state) {
-                  if (state is ChatLoaded && state.messages.isNotEmpty) {
-                    final lastMessage = state.messages.last;
-                    final content = lastMessage['content'];
-                    final senderId = lastMessage['sender_id'];
-                    final myId = Supabase.instance.client.auth.currentUser?.id;
+                  ),
+                ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Call indicator
+          StreamBuilder<String?>(
+            stream: CallStateManager().activeCallStream,
+            builder: (context, snapshot) {
+              final activeChannelId = snapshot.data;
+              final isCallActive = activeChannelId == widget.requestId;
 
-                    // Check for Session Ended message from the other party
-                    if (content == '__SESSION_ENDED__' && senderId != myId) {
-                      // Check if we already handled this specific message ID to avoid loops
-                      // (Though showDialog is modal, it's safer)
-                      // We can just show the dialog.
-
-                      // Ensure we aren't already showing a dialog or navigating
-                      // Ideally we should track this state, but for now:
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder:
-                            (context) => AlertDialog(
-                              title: const Text('Session Ended'),
-                              content: const Text(
-                                'The other party has ended the session.',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () async {
-                                    Navigator.of(context).pop(); // Close dialog
-
-                                    // End call if active
-                                    if (context.read<CallBloc>().state
-                                        is CallOngoing) {
-                                      context.read<CallBloc>().add(
-                                        EndCall(isRemote: true),
-                                      );
-                                    }
-
-                                    await SessionService.endSession(
-                                      requestId: widget.requestId,
-                                    );
-                                    if (context.mounted) {
-                                      Navigator.of(
-                                        context,
-                                      ).pushNamedAndRemoveUntil(
-                                        '/main',
-                                        (route) => false,
-                                      );
-                                    }
-                                  },
-                                  child: const Text('OK'),
-                                ),
-                              ],
-                            ),
-                      );
-                    }
-                  }
-
-                  if (state is ChatError) {
-                    // Show error as snackbar with actionable message
-                    String errorMessage = state.error.message;
-
-                    // Make error messages more user-friendly
-                    if (errorMessage.contains('timeout')) {
-                      errorMessage =
-                          'Upload timed out. Check your connection and try again.';
-                    } else if (errorMessage.contains('File does not exist')) {
-                      errorMessage =
-                          'Could not access the file. Please try again.';
-                    } else if (errorMessage.contains('File too large')) {
-                      errorMessage = 'File is too large. Maximum size is 50MB.';
-                    } else if (errorMessage.contains('storage')) {
-                      errorMessage = 'Storage error. Please try again later.';
-                    } else if (errorMessage.contains('not authenticated')) {
-                      errorMessage = 'Session expired. Please log in again.';
-                    }
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(errorMessage)),
-                          ],
-                        ),
-                        backgroundColor: Colors.red,
-                        duration: const Duration(seconds: 5),
-                        action: SnackBarAction(
-                          label: 'Dismiss',
-                          textColor: Colors.white,
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          },
+              if (isCallActive) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.green,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.call, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Call in progress',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    );
-                  }
-                },
-                child: BlocBuilder<ChatBloc, ChatState>(
-                  builder: (context, state) {
-                    if (state is ChatLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (state is ChatError &&
-                        state.error.type != ErrorType.validation) {
-                      // Only show full error widget if messages aren't already loaded
-                      if (state is! ChatLoaded) {
-                        return ErrorDisplayWidget(
-                          error: state.error,
-                          onRetry: () {
-                            context.read<ChatBloc>().add(
-                              LoadMessages(widget.requestId),
-                            );
-                          },
-                          title: 'Failed to load messages',
-                        );
-                      }
-                    }
-                    if (state is ChatLoaded) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _scrollToBottom();
-                      });
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EnhancedCallScreen(
+                                    channelId: widget.requestId,
+                                  ),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Return to call',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          Expanded(
+            // --- ADDED BlocListener for Chat Errors and Session End ---
+            child: BlocListener<ChatBloc, ChatState>(
+              listener: (context, state) {
+                if (state is ChatLoaded && state.messages.isNotEmpty) {
+                  final lastMessage = state.messages.last;
+                  final content = lastMessage['content'];
+                  final senderId = lastMessage['sender_id'];
+                  final myId = Supabase.instance.client.auth.currentUser?.id;
 
-                      if (state.messages.isNotEmpty) {
-                        final last = state.messages.last;
-                        final lastId = last['id']?.toString();
-                        final isInvite = last['content'] == '__CALL_INVITE__';
-                        final isCallEnded = last['content'] == '__CALL_ENDED__';
-                        final isFromMe = last['sender_id'] == myId;
+                  // Check for Session Ended message from the other party
+                  if (content == '__SESSION_ENDED__' && senderId != myId) {
+                    // Check if we already handled this specific message ID to avoid loops
+                    // (Though showDialog is modal, it's safer)
+                    // We can just show the dialog.
 
-                        if (isInvite &&
-                            !isFromMe &&
-                            lastId != null &&
-                            _handledInviteMessageId != lastId) {
-                          _handledInviteMessageId = lastId;
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!mounted || myId == null) return;
-                            context.read<CallBloc>().add(
-                              StartCall(
-                                channelId: widget.requestId,
-                                localUid: _uidFromUuid(myId),
-                              ),
-                            );
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => EnhancedCallScreen(
-                                      channelId: widget.requestId,
-                                    ),
-                              ),
-                            );
-                          });
-                        }
+                    // Ensure we aren't already showing a dialog or navigating
+                    // Ideally we should track this state, but for now:
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder:
+                          (context) => AlertDialog(
+                            title: const Text('Session Ended'),
+                            content: const Text(
+                              'The other party has ended the session.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () async {
+                                  Navigator.of(context).pop(); // Close dialog
 
-                        if (isCallEnded &&
-                            !isFromMe &&
-                            lastId != null &&
-                            _handledCallEndedMessageId != lastId) {
-                          _handledCallEndedMessageId = lastId;
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!mounted) return;
-                            context.read<CallBloc>().add(
-                              EndCall(isRemote: true),
-                            );
-                          });
-                        }
-                      }
+                                  // End call if active
+                                  if (context.read<CallBloc>().state
+                                      is CallOngoing) {
+                                    context.read<CallBloc>().add(
+                                      EndCall(isRemote: true),
+                                    );
+                                  }
 
-                      if (state.messages.isEmpty) {
-                        return const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.chat_bubble_outline,
-                                size: 64,
-                                color: Colors.grey,
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                'No messages yet',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Start the conversation by sending a message',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
-                                ),
+                                  await SessionService.endSession(
+                                    requestId: widget.requestId,
+                                  );
+                                  if (context.mounted) {
+                                    Navigator.of(
+                                      context,
+                                    ).pushNamedAndRemoveUntil(
+                                      '/main',
+                                      (route) => false,
+                                    );
+                                  }
+                                },
+                                child: const Text('OK'),
                               ),
                             ],
                           ),
-                        );
-                      }
+                    );
+                  }
+                }
 
-                      final filteredMessages =
-                          state.messages.where((message) {
-                            final content = message['content'] as String?;
-                            final senderId = message['sender_id'] as String?;
+                if (state is ChatError) {
+                  // Show error as snackbar with actionable message
+                  String errorMessage = state.error.message;
 
-                            if (content == '__CALL_INVITE__' &&
-                                senderId == myId) {
-                              return false;
-                            }
-                            if (content == '__CALL_ENDED__') {
-                              return false;
-                            }
-                            if (content == '__SESSION_ENDED__') {
-                              return false;
-                            }
-                            return true;
-                          }).toList();
+                  // Make error messages more user-friendly
+                  if (errorMessage.contains('timeout')) {
+                    errorMessage =
+                        'Upload timed out. Check your connection and try again.';
+                  } else if (errorMessage.contains('File does not exist')) {
+                    errorMessage =
+                        'Could not access the file. Please try again.';
+                  } else if (errorMessage.contains('File too large')) {
+                    errorMessage = 'File is too large. Maximum size is 50MB.';
+                  } else if (errorMessage.contains('storage')) {
+                    errorMessage = 'Storage error. Please try again later.';
+                  } else if (errorMessage.contains('not authenticated')) {
+                    errorMessage = 'Session expired. Please log in again.';
+                  }
 
-                      return ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: filteredMessages.length,
-                        itemBuilder: (context, index) {
-                          final m = filteredMessages[index];
-                          final isMe = m['sender_id'] == myId;
-                          final messageId =
-                              m['id']?.toString() ?? 'local_$index';
-                          return _ChatBubble(
-                            key: ValueKey(messageId),
-                            message: m,
-                            isMe: isMe,
-                          );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(errorMessage)),
+                        ],
+                      ),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 5),
+                      action: SnackBarAction(
+                        label: 'Dismiss',
+                        textColor: Colors.white,
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         },
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-            // Loading indicator for uploads
-            BlocBuilder<ChatBloc, ChatState>(
-              builder: (context, state) {
-                if (state is ChatLoaded && state.isUploading) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 8),
-                        Text('Uploading attachment...'),
-                      ],
+                      ),
                     ),
                   );
                 }
-                return const SizedBox.shrink();
               },
-            ),
-            // Input Row
-            SafeArea(
-              top: false,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  border: Border(
-                    top: BorderSide(color: Colors.grey.shade300, width: 1),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    // Attach button
-                    IconButton(
-                      icon: Icon(Icons.add, color: ColorManager.primary2),
-                      onPressed: _showAttachmentMenu,
-                    ),
-                    // Text Field
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                        decoration: InputDecoration(
-                          hintText: 'Type a message…',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.grey.shade400),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.grey.shade400),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(
-                              color: ColorManager.primary2,
+              child: BlocBuilder<ChatBloc, ChatState>(
+                builder: (context, state) {
+                  if (state is ChatLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (state is ChatError &&
+                      state.error.type != ErrorType.validation) {
+                    // Only show full error widget if messages aren't already loaded
+                    if (state is! ChatLoaded) {
+                      return ErrorDisplayWidget(
+                        error: state.error,
+                        onRetry: () {
+                          context.read<ChatBloc>().add(
+                            LoadMessages(widget.requestId),
+                          );
+                        },
+                        title: 'Failed to load messages',
+                      );
+                    }
+                  }
+                  if (state is ChatLoaded) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _scrollToBottom();
+                    });
+
+                    if (state.messages.isNotEmpty) {
+                      final last = state.messages.last;
+                      final lastId = last['id']?.toString();
+                      final isInvite = last['content'] == '__CALL_INVITE__';
+                      final isCallEnded = last['content'] == '__CALL_ENDED__';
+                      final isFromMe = last['sender_id'] == myId;
+
+                      if (isInvite &&
+                          !isFromMe &&
+                          lastId != null &&
+                          _handledInviteMessageId != lastId) {
+                        _handledInviteMessageId = lastId;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted || myId == null) return;
+                          context.read<CallBloc>().add(
+                            StartCall(
+                              channelId: widget.requestId,
+                              localUid: _uidFromUuid(myId),
                             ),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
+                          );
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EnhancedCallScreen(
+                                    channelId: widget.requestId,
+                                  ),
+                            ),
+                            (route) => false,
+                          );
+                        });
+                      }
+
+                      if (isCallEnded &&
+                          !isFromMe &&
+                          lastId != null &&
+                          _handledCallEndedMessageId != lastId) {
+                        _handledCallEndedMessageId = lastId;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          context.read<CallBloc>().add(EndCall(isRemote: true));
+                        });
+                      }
+                    }
+
+                    if (state.messages.isEmpty) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'No messages yet',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Start the conversation by sending a message',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    // Send Button
-                    const SizedBox(width: 4),
-                    BlocBuilder<ChatBloc, ChatState>(
-                      builder: (context, state) {
-                        final isUploading =
-                            state is ChatLoaded && state.isUploading;
-                        return IconButton(
-                          icon: Icon(Icons.send, color: ColorManager.primary2),
-                          onPressed: isUploading ? null : _send,
+                      );
+                    }
+
+                    final filteredMessages =
+                        state.messages.where((message) {
+                          final content = message['content'] as String?;
+                          final senderId = message['sender_id'] as String?;
+
+                          if (content == '__CALL_INVITE__' &&
+                              senderId == myId) {
+                            return false;
+                          }
+                          if (content == '__CALL_ENDED__') {
+                            return false;
+                          }
+                          if (content == '__SESSION_ENDED__') {
+                            return false;
+                          }
+                          return true;
+                        }).toList();
+
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: filteredMessages.length,
+                      itemBuilder: (context, index) {
+                        final m = filteredMessages[index];
+                        final isMe = m['sender_id'] == myId;
+                        final messageId = m['id']?.toString() ?? 'local_$index';
+                        return _ChatBubble(
+                          key: ValueKey(messageId),
+                          message: m,
+                          isMe: isMe,
                         );
                       },
-                    ),
-                  ],
-                ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
             ),
-          ],
-        ),
+          ),
+          // Loading indicator for uploads
+          BlocBuilder<ChatBloc, ChatState>(
+            builder: (context, state) {
+              if (state is ChatLoaded && state.isUploading) {
+                return const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 8),
+                      Text('Uploading attachment...'),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          // Input Row
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                border: Border(
+                  top: BorderSide(color: Colors.grey.shade300, width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Attach button
+                  IconButton(
+                    icon: Icon(Icons.add, color: ColorManager.primary2),
+                    onPressed: _showAttachmentMenu,
+                  ),
+                  // Text Field
+                  Expanded(
+                    child: TextField(
+                      controller: _input,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      decoration: InputDecoration(
+                        hintText: 'Type a message…',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(color: ColorManager.primary2),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  // Send Button
+                  const SizedBox(width: 4),
+                  BlocBuilder<ChatBloc, ChatState>(
+                    builder: (context, state) {
+                      final isUploading =
+                          state is ChatLoaded && state.isUploading;
+                      return IconButton(
+                        icon: Icon(Icons.send, color: ColorManager.primary2),
+                        onPressed: isUploading ? null : _send,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

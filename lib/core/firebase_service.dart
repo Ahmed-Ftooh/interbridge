@@ -30,6 +30,8 @@ class FirebaseService {
       final callerAvatar = message.data['caller_avatar'] ?? '';
       final requestId = message.data['request_id'];
       final callType = message.data['call_type'] ?? 'voice';
+      final interpreterType = message.data['interpreter_type'] ?? 'general';
+      final medicalSection = message.data['medical_section'];
 
       await CallKitService().showIncomingCall(
         callerName: callerName,
@@ -37,6 +39,8 @@ class FirebaseService {
         callerAvatar: callerAvatar,
         requestId: requestId,
         callType: callType,
+        interpreterType: interpreterType,
+        medicalSection: medicalSection,
       );
     }
 

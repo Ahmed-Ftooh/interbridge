@@ -65,54 +65,6 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
         child: Column(
           children: [
             // Header Section
-            Container(
-              width: double.infinity,
-              height: MediaQuery.of(context).size.height * 0.25,
-              decoration: BoxDecoration(
-                gradient: ColorManager.primaryGradient,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(AppSize.s30),
-                  bottomRight: Radius.circular(AppSize.s30),
-                ),
-              ),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(AppSize.s16),
-                      decoration: BoxDecoration(
-                        color: ColorManager.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(AppSize.s20),
-                      ),
-                      child: Icon(
-                        Icons.people,
-                        color: ColorManager.white,
-                        size: AppSize.s40,
-                      ),
-                    ),
-                    const SizedBox(height: AppSize.s16),
-                    Text(
-                      AppStrings.selectYourRole,
-                      style: TextStyle(
-                        fontSize: AppSize.s28,
-                        fontWeight: FontWeight.bold,
-                        color: ColorManager.white,
-                      ),
-                    ),
-                    const SizedBox(height: AppSize.s8),
-                    Text(
-                      AppStrings.chooseHowYouWantToUseInterBridge,
-                      style: TextStyle(
-                        fontSize: AppSize.s16,
-                        color: ColorManager.white.withValues(alpha: 0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
 
             // Content Section
             Expanded(
@@ -123,6 +75,7 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(AppSize.s24),
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         // Join Organization Card (for doctors)
                         Container(
@@ -175,6 +128,8 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                                     const SizedBox(width: AppSize.s20),
                                     Expanded(
                                       child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
