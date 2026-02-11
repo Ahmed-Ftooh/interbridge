@@ -221,6 +221,37 @@ class _QuizScreenState extends State<QuizScreen> {
     });
   }
 
+  /// Show confirmation dialog when user tries to leave during an active quiz
+  Future<bool> _confirmExit() async {
+    if (!_quizStarted || _quizCompleted) {
+      return true; // Allow exit before quiz starts or after completion
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Leave Quiz?'),
+            content: const Text(
+              'If you leave now, your progress will be lost and this will count as an attempt. Are you sure you want to exit?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Stay'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Leave'),
+              ),
+            ],
+          ),
+    );
+    return result ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -231,32 +262,52 @@ class _QuizScreenState extends State<QuizScreen> {
             ? 'General Interpreter Quiz'
             : 'Medical Quiz - $sectionName';
 
-    return Scaffold(
-      backgroundColor: ColorManager.backgroundPrimary,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
+    return PopScope(
+      canPop: !_quizStarted || _quizCompleted,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop && _quizStarted && !_quizCompleted) {
+          final shouldPop = await _confirmExit();
+          if (shouldPop && mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: ColorManager.backgroundPrimary,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            onPressed: () async {
+              if (_quizStarted && !_quizCompleted) {
+                final shouldPop = await _confirmExit();
+                if (shouldPop && mounted) {
+                  Navigator.of(context).pop();
+                }
+              } else {
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          title: Text(title),
+          centerTitle: true,
         ),
-        title: Text(title),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSize.s24),
-          child:
-              _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _questions.isEmpty
-                  ? Center(
-                    child: Text(
-                      'No questions available',
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                  )
-                  : _buildBody(theme),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSize.s24),
+            child:
+                _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _questions.isEmpty
+                    ? Center(
+                      child: Text(
+                        'No questions available',
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                    )
+                    : _buildBody(theme),
+          ),
         ),
       ),
     );

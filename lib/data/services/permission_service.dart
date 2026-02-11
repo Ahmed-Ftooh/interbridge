@@ -1,5 +1,5 @@
 import 'package:permission_handler/permission_handler.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'dart:developer';
 
 class PermissionService {
@@ -8,12 +8,10 @@ class PermissionService {
     try {
       final results = <String, bool>{};
 
-      // Request notification permission
-      final notificationSettings = await FirebaseMessaging.instance
-          .requestPermission(alert: true, badge: true, sound: true);
-      results['notifications'] =
-          notificationSettings.authorizationStatus ==
-          AuthorizationStatus.authorized;
+      // Request notification permission via OneSignal
+      final notificationGranted = await OneSignal
+          .Notifications.requestPermission(true);
+      results['notifications'] = notificationGranted;
 
       // Request microphone permission
       final microphoneStatus = await Permission.microphone.request();
@@ -43,12 +41,9 @@ class PermissionService {
     try {
       final results = <String, bool>{};
 
-      // Check notification permission
-      final notificationSettings =
-          await FirebaseMessaging.instance.getNotificationSettings();
-      results['notifications'] =
-          notificationSettings.authorizationStatus ==
-          AuthorizationStatus.authorized;
+      // Check notification permission via OneSignal
+      final hasPermission = OneSignal.Notifications.permission;
+      results['notifications'] = hasPermission;
 
       // Check microphone permission
       final microphoneStatus = await Permission.microphone.status;

@@ -1,4 +1,4 @@
-// Create call request and ring interpreters via FCM
+// Create call request and ring interpreters via OneSignal
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 Deno.serve(async (req) => {
@@ -26,18 +26,20 @@ Deno.serve(async (req) => {
       .select("id").single();
     if (insertErr) throw insertErr;
 
-    // Fetch FCM tokens
-    const { data: tokens } = await supabase
-      .from("fcm_tokens")
-      .select("user_id, token")
+    // Fetch OneSignal player IDs
+    const { data: playerIds } = await supabase
+      .from("onesignal_player_ids")
+      .select("user_id, player_id")
       .in("user_id", interpreters.map((i: any) => i.user_id));
 
-    // Send FCM via existing function
-    const notifyRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-fcm`, {
+    // Send notification via send-notification function
+    const notifyRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-notification`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
       body: JSON.stringify({
-        tokens: (tokens ?? []).map((t: any) => t.token),
+        title: "Incoming Call",
+        body: "You have an incoming call request",
+        player_ids: (playerIds ?? []).map((p: any) => p.player_id),
         data: { type: "INCOMING_CALL", channel_id: channelId, call_request_id: callReq.id },
       }),
     });

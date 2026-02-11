@@ -3,6 +3,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/app/app_initializer.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
@@ -20,13 +21,153 @@ class SplashView extends StatefulWidget {
 }
 
 class _SplashViewState extends State<SplashView> {
-  Timer? _timer;
   final AppPreferences _appPreferences = instance<AppPreferences>();
   final SupabaseService _supabaseService = SupabaseService();
 
-  startDelay() {
-    _timer = Timer(const Duration(seconds: AppConstants.splashDelay), _goNext);
+  /// Ensures navigation happens exactly once.
+  bool _navigated = false;
+
+  /// Auth state subscription (only used when a deep link is pending).
+  StreamSubscription<AuthState>? _authSub;
+
+  /// Timeout timer for deep-link auth resolution.
+  Timer? _timeoutTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveAuth();
   }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  // ─────────────────── Auth Gate Logic ───────────────────
+
+  Future<void> _resolveAuth() async {
+    // Brief settle time so that async deep-link / PKCE operations that
+    // started during AppInitializer.initialize() have a chance to complete.
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    // ── 1. Already have a valid session? ──
+    final session = Supabase.instance.client.auth.currentSession;
+    final user = session?.user;
+    if (user != null && user.emailConfirmedAt != null) {
+      log('SplashView: User already authenticated: ${user.email}');
+      await _finalizeAndNavigate(user.id);
+      return;
+    }
+
+    // ── 2. Deep link pending (magic link opened the app)? ──
+    if (AppInitializer.deepLinkPending) {
+      log('SplashView: Deep link pending — waiting for auth to complete');
+
+      if (!mounted) return;
+      setState(() {}); // trigger rebuild to show "Verifying…" state
+
+      // Subscribe to auth state changes.
+      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
+        event,
+      ) {
+        if (event.event == AuthChangeEvent.signedIn && event.session != null) {
+          log('SplashView: signedIn event received from deep link');
+          _authSub?.cancel();
+          _timeoutTimer?.cancel();
+          _finalizeAndNavigate(event.session!.user.id);
+        }
+      });
+
+      // Re-check immediately in case the event fired between our first check
+      // and the subscription.
+      final recheck = Supabase.instance.client.auth.currentSession;
+      if (recheck != null && recheck.user.emailConfirmedAt != null) {
+        _authSub?.cancel();
+        await _finalizeAndNavigate(recheck.user.id);
+        return;
+      }
+
+      // Timeout — if auth doesn't resolve within 15 s, fall back to login.
+      _timeoutTimer = Timer(const Duration(seconds: 15), () {
+        if (!_navigated && mounted) {
+          log('SplashView: Deep link auth timed out — going to login');
+          _authSub?.cancel();
+          _navigateOnce(() {
+            Navigator.pushReplacementNamed(context, Routes.loginRoute);
+          });
+        }
+      });
+      return;
+    }
+
+    // ── 3. Normal cold start (no deep link) ──
+    // Show the splash logo for the standard delay then check prefs.
+    await Future.delayed(const Duration(seconds: AppConstants.splashDelay));
+    if (!mounted) return;
+    _normalSplashFlow();
+  }
+
+  // ─────────────────── Navigation helpers ───────────────────
+
+  /// Finalize pending registration and then navigate based on role.
+  Future<void> _finalizeAndNavigate(String userId) async {
+    if (_navigated) return;
+    AppInitializer.markInitialAuthHandled();
+
+    try {
+      await PendingRegistrationService().finalizePendingRegistration();
+    } catch (e) {
+      log('SplashView: Error finalizing pending registration: $e');
+    }
+    if (!mounted) return;
+    await _navigateBasedOnRole(userId);
+  }
+
+  /// Navigate exactly once. Prevents race conditions.
+  void _navigateOnce(VoidCallback navigate) {
+    if (_navigated || !mounted) return;
+    _navigated = true;
+    navigate();
+  }
+
+  /// Normal flow when no deep link and no existing session.
+  void _normalSplashFlow() {
+    // Mark initial auth as handled (no deep link, no session).
+    AppInitializer.markInitialAuthHandled();
+
+    _appPreferences.isLoginViewed().then((isViewed) async {
+      if (!mounted) return;
+      if (isViewed) {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) {
+          await _navigateBasedOnRole(user.id);
+        } else {
+          _navigateOnce(() {
+            Navigator.pushReplacementNamed(context, Routes.loginRoute);
+          });
+        }
+      } else {
+        _appPreferences.isOnboardingViewed().then((isOnboardingViewed) {
+          if (!mounted) return;
+          if (isOnboardingViewed) {
+            _navigateOnce(() {
+              Navigator.pushReplacementNamed(context, Routes.loginRoute);
+            });
+          } else {
+            _navigateOnce(() {
+              Navigator.pushReplacementNamed(context, Routes.onBoardingRoute);
+            });
+          }
+        });
+      }
+    });
+  }
+
+  // ─────────────────── Role-based navigation ───────────────────
 
   Future<void> _navigateBasedOnRole(String userId) async {
     try {
@@ -37,137 +178,117 @@ class _SplashViewState extends State<SplashView> {
 
       if (profile?.role == 'organization_admin') {
         log('SplashView: Navigating to organization dashboard');
-        Navigator.pushReplacementNamed(
-          context,
-          Routes.organizationDashboardRoute,
-        );
+        _navigateOnce(() {
+          Navigator.pushReplacementNamed(
+            context,
+            Routes.organizationDashboardRoute,
+          );
+        });
       } else if (profile?.role == 'interpreter') {
-        try {
-          final client = Supabase.instance.client;
-          final profileData =
-              await client
-                  .from('users_profile')
-                  .select('employment_type')
-                  .eq('user_id', userId)
-                  .maybeSingle();
-
-          final badgesData = await client
-              .from('interpreter_badges')
-              .select('badge')
-              .eq('user_id', userId);
-
-          final employmentType = profileData?['employment_type'] ?? 'volunteer';
-          final badges =
-              (badgesData as List)
-                  .map((b) => b['badge']?.toString() ?? '')
-                  .where((b) => b.isNotEmpty)
-                  .toSet();
-
-          final hasGeneral = badges.contains('general');
-          final medicalCount = badges.where((b) => b != 'general').length;
-          final bool isExperienced = employmentType == 'paid';
-          final bool allComplete =
-              isExperienced ? (hasGeneral && medicalCount >= 3) : hasGeneral;
-
-          if (allComplete) {
+        // Only check quizzes on first login — skip if already completed once
+        final appPrefs = instance<AppPreferences>();
+        if (appPrefs.isQuizOnboardingDone()) {
+          _navigateOnce(() {
             Navigator.pushReplacementNamed(context, Routes.mainRoute);
-          } else {
-            Navigator.pushReplacementNamed(
-              context,
-              Routes.interpreterQuizHubRoute,
-            );
+          });
+        } else {
+          try {
+            final client = Supabase.instance.client;
+            final profileData =
+                await client
+                    .from('users_profile')
+                    .select('employment_type')
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+            final badgesData = await client
+                .from('interpreter_badges')
+                .select('badge')
+                .eq('user_id', userId);
+
+            final employmentType =
+                profileData?['employment_type'] ?? 'volunteer';
+            final badges =
+                (badgesData as List)
+                    .map((b) => b['badge']?.toString() ?? '')
+                    .where((b) => b.isNotEmpty)
+                    .toSet();
+
+            final hasGeneral = badges.contains('general');
+            final medicalCount = badges.where((b) => b != 'general').length;
+            final bool isExperienced = employmentType == 'paid';
+            final bool allComplete =
+                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+
+            if (!mounted) return;
+
+            if (allComplete) {
+              await appPrefs.setQuizOnboardingDone();
+              _navigateOnce(() {
+                Navigator.pushReplacementNamed(context, Routes.mainRoute);
+              });
+            } else {
+              _navigateOnce(() {
+                Navigator.pushReplacementNamed(
+                  context,
+                  Routes.interpreterQuizHubRoute,
+                );
+              });
+            }
+          } catch (e) {
+            log('SplashView: Error checking interpreter quiz status: $e');
+            if (!mounted) return;
+            _navigateOnce(() {
+              Navigator.pushReplacementNamed(context, Routes.mainRoute);
+            });
           }
-        } catch (e) {
-          log('SplashView: Error checking interpreter quiz status: $e');
-          Navigator.pushReplacementNamed(context, Routes.mainRoute);
         }
       } else {
         log('SplashView: Navigating to main route');
-        Navigator.pushReplacementNamed(context, Routes.mainRoute);
+        _navigateOnce(() {
+          Navigator.pushReplacementNamed(context, Routes.mainRoute);
+        });
       }
     } catch (e) {
       log('SplashView: Error getting user profile: $e');
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, Routes.mainRoute);
+      _navigateOnce(() {
+        Navigator.pushReplacementNamed(context, Routes.mainRoute);
+      });
     }
   }
 
-  _goNext() async {
-    // Check if user is already authenticated (e.g., from email verification deep link)
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null && user.emailConfirmedAt != null) {
-      log('SplashView: User already authenticated: ${user.email}');
-      // Try to finalize any pending registration
-      try {
-        await PendingRegistrationService().finalizePendingRegistration();
-      } catch (e) {
-        log('SplashView: Error finalizing pending registration: $e');
-      }
-      if (!mounted) return;
-
-      // Check if user is organization_admin and navigate accordingly
-      await _navigateBasedOnRole(user.id);
-      return;
-    }
-
-    _appPreferences.isLoginViewed().then((isViewed) async {
-      if (isViewed) {
-        if (!mounted) return;
-        // Check user role for navigation
-        final user = Supabase.instance.client.auth.currentUser;
-        if (user != null) {
-          await _navigateBasedOnRole(user.id);
-        } else {
-          // No user found, go to login screen instead of main
-          Navigator.pushReplacementNamed(context, Routes.loginRoute);
-        }
-      } else {
-        _appPreferences.isOnboardingViewed().then(
-          (isviewd) => {
-            if (isviewd)
-              {
-                if (mounted)
-                  Navigator.pushReplacementNamed(context, Routes.loginRoute),
-              }
-            else
-              {
-                if (mounted)
-                  Navigator.pushReplacementNamed(
-                    context,
-                    Routes.onBoardingRoute,
-                  ),
-              },
-          },
-        );
-
-        // Navigate to onboarding screen
-      }
-    });
-    {}
-  }
-
-  @override
-  void initState() {
-    startDelay();
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  // ─────────────────── UI ───────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ColorManager.white,
       body: Center(
-        child: Image.asset(
-          ImageAssets.logo2,
-          fit: BoxFit.cover,
-          width: 230,
-          height: 230,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              ImageAssets.logo2,
+              fit: BoxFit.cover,
+              width: 230,
+              height: 230,
+            ),
+            // Show a subtle loading indicator when waiting for deep link auth
+            if (AppInitializer.deepLinkPending && !_navigated) ...[
+              const SizedBox(height: 32),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Verifying your email…',
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              ),
+            ],
+          ],
         ),
       ),
     );

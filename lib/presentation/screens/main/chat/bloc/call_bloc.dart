@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/config.dart';
 import 'package:interbridge/data/services/call_service.dart';
@@ -161,54 +162,62 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _isVideoCall = e.isVideoCall;
       _videoEnabled = e.isVideoCall; // Start with video on for video calls
 
-      // 1) Request microphone permission
-      log('Requesting microphone permission...');
-      var mic = await Permission.microphone.status;
-      if (!mic.isGranted) {
-        mic = await Permission.microphone.request();
-      }
-      if (!mic.isGranted) {
-        log(
-          'Microphone permission not granted. Please enable in app settings.',
-        );
-        emit(
-          CallError(
-            AppError(
-              message: 'Microphone permission required',
-              type: ErrorType.permission,
-              userAction:
-                  'Please enable microphone permission in app settings to make voice calls.',
-              isRetryable: false,
-            ),
-          ),
-        );
-        return;
-      }
-      log('Microphone permission granted');
-
-      // 1b) Request camera permission for video calls
-      if (e.isVideoCall) {
-        log('Requesting camera permission...');
-        var camera = await Permission.camera.status;
-        if (!camera.isGranted) {
-          camera = await Permission.camera.request();
+      // 1) Request microphone permission (skip on web — browser handles via getUserMedia)
+      if (!kIsWeb) {
+        log('Requesting microphone permission...');
+        var mic = await Permission.microphone.status;
+        if (!mic.isGranted) {
+          mic = await Permission.microphone.request();
         }
-        if (!camera.isGranted) {
-          log('Camera permission not granted. Please enable in app settings.');
+        if (!mic.isGranted) {
+          log(
+            'Microphone permission not granted. Please enable in app settings.',
+          );
           emit(
             CallError(
               AppError(
-                message: 'Camera permission required',
+                message: 'Microphone permission required',
                 type: ErrorType.permission,
                 userAction:
-                    'Please enable camera permission in app settings to make video calls.',
+                    'Please enable microphone permission in app settings to make voice calls.',
                 isRetryable: false,
               ),
             ),
           );
           return;
         }
-        log('Camera permission granted');
+        log('Microphone permission granted');
+
+        // 1b) Request camera permission for video calls
+        if (e.isVideoCall) {
+          log('Requesting camera permission...');
+          var camera = await Permission.camera.status;
+          if (!camera.isGranted) {
+            camera = await Permission.camera.request();
+          }
+          if (!camera.isGranted) {
+            log(
+              'Camera permission not granted. Please enable in app settings.',
+            );
+            emit(
+              CallError(
+                AppError(
+                  message: 'Camera permission required',
+                  type: ErrorType.permission,
+                  userAction:
+                      'Please enable camera permission in app settings to make video calls.',
+                  isRetryable: false,
+                ),
+              ),
+            );
+            return;
+          }
+          log('Camera permission granted');
+        }
+      } else {
+        log(
+          'Web platform: browser will handle media permissions via getUserMedia',
+        );
       }
 
       emit(CallConnecting(e.channelId));
@@ -327,10 +336,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await _engine!.enableAudio();
       await _engine!.enableLocalAudio(true); // Explicitly enable local audio
 
-      // 4b) Enable video for video calls
+      // 4b) Enable video for video calls with optimized quality settings
       if (e.isVideoCall) {
         log('Enabling video for video call...');
         await _engine!.enableVideo();
+
+        // Set video encoder configuration for HIGHEST quality
+        // Using 1080p Full HD (1920x1080) at 30fps with high bitrate
+        await _engine!.setVideoEncoderConfiguration(
+          const VideoEncoderConfiguration(
+            dimensions: VideoDimensions(width: 1920, height: 1080),
+            frameRate: 30,
+            bitrate: 4000, // 4 Mbps for high quality 1080p
+            minBitrate: 1000, // Minimum 1 Mbps to maintain quality
+            orientationMode: OrientationMode.orientationModeAdaptive,
+            degradationPreference: DegradationPreference.maintainQuality,
+            mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
+          ),
+        );
+
         await _engine!.enableLocalVideo(true);
         await _engine!.startPreview();
         _speakerOn = true; // Video calls default to speaker

@@ -384,31 +384,32 @@ class DocumentTranslationService {
     }
   }
 
-  /// Get FCM tokens for a list of user IDs
+  /// Get OneSignal player IDs for a list of user IDs
   Future<List<String>> _getFCMTokensForUsers(List<String> userIds) async {
-    // ... (Your existing FCM token logic - no changes needed here)
+    // Note: Function name kept for compatibility, but now uses OneSignal player IDs
     try {
-      log('DEBUG: Getting FCM tokens for user IDs: $userIds');
+      log('DEBUG: Getting OneSignal player IDs for user IDs: $userIds');
       if (userIds.isEmpty) {
-        log('DEBUG: No user IDs provided to get FCM tokens.');
+        log('DEBUG: No user IDs provided to get player IDs.');
         return [];
       }
 
       final response = await _client
-          .from('fcm_tokens')
-          .select('token')
+          .from('onesignal_player_ids')
+          .select('player_id')
           .inFilter('user_id', userIds);
 
-      log('DEBUG: FCM tokens query response: $response');
+      log('DEBUG: OneSignal player IDs query response: $response');
 
-      final tokens = response.map((token) => token['token'] as String).toList();
+      final playerIds =
+          response.map((row) => row['player_id'] as String).toList();
       log(
-        'DEBUG: Extracted ${tokens.length} FCM tokens: ${tokens.map((t) => '${t.substring(0, 5)}...').toList()}', // Shorten tokens for logs
+        'DEBUG: Extracted ${playerIds.length} OneSignal player IDs: ${playerIds.map((t) => '${t.substring(0, 5)}...').toList()}', // Shorten IDs for logs
       );
 
-      return tokens;
+      return playerIds;
     } catch (e) {
-      log('Error getting FCM tokens: $e');
+      log('Error getting OneSignal player IDs: $e');
       return [];
     }
   }
@@ -442,7 +443,8 @@ class DocumentTranslationService {
           'click_action':
               'FLUTTER_NOTIFICATION_CLICK', // Standard for FCM with Flutter
         },
-        'tokens': tokens,
+        'player_ids':
+            tokens, // Changed from tokens to player_ids (variable name kept for minimal changes)
       };
 
       log(
@@ -583,7 +585,7 @@ class DocumentTranslationService {
             'type': 'document_translation_accepted',
             'click_action': 'FLUTTER_NOTIFICATION_CLICK',
           },
-          'tokens': requesterTokens,
+          'player_ids': requesterTokens, // Changed from tokens to player_ids
         };
 
         log(
@@ -787,7 +789,7 @@ class DocumentTranslationService {
             'type': 'document_translation_completed', // For client-side routing
             'click_action': 'FLUTTER_NOTIFICATION_CLICK',
           },
-          'tokens': requesterTokens,
+          'player_ids': requesterTokens, // Changed from tokens to player_ids
         };
 
         log(

@@ -196,9 +196,9 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
         'Checking tier escalation for request: $requestId (current tier: $_currentTier)',
       );
 
-      // Only escalate up to tier 3
-      if (_currentTier >= 3) {
-        log('Already at tier 3, no more escalation');
+      // Only escalate up to tier 2 (badge holders -> quiz passers)
+      if (_currentTier >= 2) {
+        log('Already at tier 2 (final tier), no more escalation');
         timer.cancel();
         return;
       }

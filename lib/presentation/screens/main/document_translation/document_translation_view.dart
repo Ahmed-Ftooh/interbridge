@@ -74,7 +74,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
   // Other state
   DateTime? _lastSubmitAt;
   List<DocumentTranslationRequest> _userRequests = [];
-  List<Language> _languages = [];
+  List<Language> _allLanguages = [];
+  List<Language> _interpreterLanguages = [];
 
   late TabController _tabController;
   late DocumentTranslationBloc _bloc;
@@ -116,10 +117,14 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
         },
         builder: (context, state) {
           bool isLoading = state is DocumentTranslationLoading;
-          List<Language> langs =
+          List<Language> allLangs =
               state is DocumentTranslationLoadSuccess
-                  ? state.languages
-                  : _languages;
+                  ? state.allLanguages
+                  : _allLanguages;
+          List<Language> interpreterLangs =
+              state is DocumentTranslationLoadSuccess
+                  ? state.interpreterLanguages
+                  : _interpreterLanguages;
           List<DocumentTranslationRequest> requests =
               state is DocumentTranslationLoadSuccess
                   ? state.requests
@@ -127,7 +132,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
 
           // Fallback to controller state ONLY if bloc not yet loaded.
           if (state is DocumentTranslationLoadSuccess) {
-            _languages = langs;
+            _allLanguages = allLangs;
+            _interpreterLanguages = interpreterLangs;
             _userRequests = requests;
           }
 
@@ -150,7 +156,11 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
             body: TabBarView(
               controller: _tabController,
               children: [
-                _buildNewRequestTab(isLoading: isLoading, langs: langs),
+                _buildNewRequestTab(
+                  isLoading: isLoading,
+                  allLangs: allLangs,
+                  interpreterLangs: interpreterLangs,
+                ),
                 _buildRequestsTab(isLoading: isLoading, requests: requests),
               ],
             ),
@@ -162,7 +172,8 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
 
   Widget _buildNewRequestTab({
     bool isLoading = false,
-    required List<Language> langs,
+    required List<Language> allLangs,
+    required List<Language> interpreterLangs,
   }) {
     return SingleChildScrollView(
       child: Padding(
@@ -172,7 +183,10 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
           children: [
             _buildMethodSelector(),
             const SizedBox(height: AppSize.s24),
-            _buildLanguageSelection(langs: langs),
+            _buildLanguageSelection(
+              allLangs: allLangs,
+              interpreterLangs: interpreterLangs,
+            ),
             const SizedBox(height: AppSize.s24),
             _buildContentInput(),
             const SizedBox(height: AppSize.s24),
@@ -407,8 +421,11 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
     );
   }
 
-  Widget _buildLanguageSelection({required List<Language> langs}) {
-    if (langs.isEmpty) {
+  Widget _buildLanguageSelection({
+    required List<Language> allLangs,
+    required List<Language> interpreterLangs,
+  }) {
+    if (allLangs.isEmpty && interpreterLangs.isEmpty) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(AppSize.s20),
@@ -424,7 +441,10 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
       );
     }
     return LanguagePairSelector(
-      languages: langs,
+      languages: allLangs, // Fallback for both if specific not provided
+      fromLanguages: allLangs, // All languages for FROM (client language)
+      toLanguages:
+          interpreterLangs, // Interpreter languages for TO (patient language)
       fromLanguage: _selectedFromLanguage,
       toLanguage: _selectedToLanguage,
       onFromChanged: (lang) => setState(() => _selectedFromLanguage = lang),
@@ -522,10 +542,7 @@ class _DocumentTranslationViewState extends State<DocumentTranslationView>
                 const Expanded(
                   child: Text(
                     'Record a voice note',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],

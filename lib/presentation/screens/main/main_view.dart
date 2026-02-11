@@ -10,6 +10,9 @@ import 'package:interbridge/presentation/screens/main/document_translation/inter
 import 'package:interbridge/presentation/screens/main/home/interpreter_home_view.dart';
 import 'package:interbridge/presentation/screens/main/home/requester_home_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/profile_view.dart';
+import 'package:interbridge/presentation/screens/main/profile/bloc/profile_bloc.dart';
+import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_view.dart';
+import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_bloc.dart';
 import 'package:interbridge/presentation/screens/main/setting/setting_view.dart';
 import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
@@ -20,10 +23,7 @@ import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/data/services/session_service.dart';
-import 'package:interbridge/presentation/screens/main/chat/chat_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
-import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
-import 'package:interbridge/data/services/chat_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:lottie/lottie.dart';
 
@@ -126,12 +126,12 @@ class _MainViewState extends State<MainView> {
           'Request was accepted while app was in background, updating session...',
         );
 
-        // Update session to reflect that request was accepted
+        // Update session to reflect that request was accepted - go to call, not chat
         await SessionService.saveSession(
           requestId: requestId,
           requesterId: session['requesterId'] as String,
           interpreterId: response['accepted_by'] as String,
-          currentScreen: 'chat', // Move directly to chat
+          currentScreen: 'call', // Go directly to call view
         );
       }
 
@@ -154,8 +154,6 @@ class _MainViewState extends State<MainView> {
       }
 
       final requestId = session['requestId'] as String;
-      final requesterId = session['requesterId'] as String;
-      final interpreterId = session['interpreterId'] as String;
       final currentScreen = session['currentScreen'] as String?;
 
       log('Restoring session: $currentScreen for request: $requestId');
@@ -170,17 +168,8 @@ class _MainViewState extends State<MainView> {
       Widget targetScreen;
 
       switch (currentScreen) {
-        case 'chat':
-          targetScreen = BlocProvider(
-            create: (_) => ChatBloc(service: instance<ChatService>()),
-            child: ChatView(
-              requestId: requestId,
-              requesterId: requesterId,
-              interpreterId: interpreterId,
-            ),
-          );
-          break;
         case 'call':
+        case 'chat': // Legacy: treat chat as call since we don't use chat anymore
           targetScreen = EnhancedCallScreen(channelId: requestId);
           break;
         default:
@@ -322,7 +311,19 @@ class _MainViewState extends State<MainView> {
         const InterpreterDashboardView()
       else
         const DocumentTranslationView(),
-      const ProfileView(),
+      // Use different profile views based on user role
+      if (isInterpreter)
+        BlocProvider(
+          key: const PageStorageKey('profile_bloc_holder'),
+          create: (context) => instance<ProfileBloc>(),
+          child: const ProfileView(),
+        )
+      else
+        BlocProvider(
+          key: const PageStorageKey('requester_profile_bloc_holder'),
+          create: (context) => instance<RequesterProfileBloc>(),
+          child: const RequesterProfileView(),
+        ),
       const SettingView(),
     ];
   }

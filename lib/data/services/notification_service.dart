@@ -62,22 +62,24 @@ class NotificationService {
         return false;
       }
 
-      // Get tokens from DB
+      // Get OneSignal player IDs from DB
       final response = await _client
-          .from('fcm_tokens')
-          .select('token')
+          .from('onesignal_player_ids')
+          .select('player_id')
           .eq('user_id', user.id);
 
-      final tokens =
+      final playerIds =
           response
-              .map((t) => t['token'] as String?)
+              .map((t) => t['player_id'] as String?)
               .where((t) => t != null && t.isNotEmpty)
               .toList();
 
-      log('DEBUG: Found ${tokens.length} FCM tokens for current user');
+      log(
+        'DEBUG: Found ${playerIds.length} OneSignal player IDs for current user',
+      );
 
-      if (tokens.isEmpty) {
-        log('DEBUG: No FCM tokens found for current user');
+      if (playerIds.isEmpty) {
+        log('DEBUG: No OneSignal player IDs found for current user');
         return false;
       }
 
@@ -90,16 +92,15 @@ class NotificationService {
           'timestamp': DateTime.now().toIso8601String(),
           'type': 'test',
         },
-        'tokens': tokens,
+        'player_ids': playerIds,
       };
 
       log('DEBUG: Sending notification with: $notificationData');
 
-      // IMPORTANT: Ensure JSON body and proper headers
+      // Pass Map directly - Supabase SDK handles JSON serialization
       final edgeResponse = await _client.functions.invoke(
         'send-notification',
-        body: jsonEncode(notificationData),
-        headers: {'Content-Type': 'application/json'},
+        body: notificationData,
       );
 
       log('DEBUG: Edge function status: ${edgeResponse.status}');

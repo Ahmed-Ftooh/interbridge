@@ -5,114 +5,24 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
-// JWT and crypto helpers
-import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+// OneSignal Configuration - Get these from your OneSignal dashboard
+// Set these as Supabase secrets:
+// supabase secrets set ONESIGNAL_APP_ID=your-app-id
+// supabase secrets set ONESIGNAL_REST_API_KEY=your-rest-api-key
+const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? '';
+const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY') ?? '';
+const ONESIGNAL_ENDPOINT = 'https://onesignal.com/api/v1/notifications';
 
-// Use embedded Firebase service account credentials
-const serviceAccount = {
-  "type": "service_account",
-  "project_id": "interbridge-6e3b8",
-  "private_key_id": "936b8bc0c418f5b2ed8a4b9dd7feac3505ce0394",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDKeJvRStwnqJ35\ns6Hty3SdD5BVyy5pcodCXtBiHWK8le9FTzj0T0ModTg5rnvofhu0+jsnTKFPkUVY\nO1xLxdiW8/j6QAEcAwx38FesqX9LKNlbiRORXBchWIqPuOjewxCVdYrj3CtzURDG\nt4zotCyPmFvLDu7mpLTmL0M2FUPRPaBHjSMWvgsSIJflgSaKlo2ZLDw3p+c+kM9a\nSvDOcgDm4Q67e6LDGQGEVjg7l3gQHk546AXIendHcTQo62rohlN1L3p/+AzDpxau\nDqHIyPw0grcoG5GJGY1aE5M5sG/d6K4RHAcak3NMcw2ExcETaJSpVIaTMiXdnJEb\n3n52j3XtAgMBAAECggEAHe+7SjTBXHPH99WhiaFdeqOEecry79BpQ1z1fqxNnwik\nOiE+kJDvoxnB2HV+CKAsxJODD4p7B2K5WBRezy1PmvIzy/yOrW+d9lXpALSHB7vg\nd3JLHGD7YojO4/U5KUa6Ov8ILCyvl/tSea9F/Fo3hHvIhruMgzmzLZ2rWGHIhzVL\nphXjEHCKQabTXxyGr0+78CQduGDzvnAu+DWKtM58ez4OYg2lQ0FQ+l7daKFWwK3K\n3TtfVwFAyGi/PE+L6/KYo3mlAnKbcaaQlmnsqqeho3U1hItdlFQJfoiVAgmiMfzz\nEKnOm6auQPpcKWKO5dJ8TAE3uQC5eTizxB1cz0RkWQKBgQD/8wxSQ9bcDq2eKF/v\n9bLPbwUeKRu13xenGyRZ3Or0zCybVfBawWpkMdOHUCWryjPP8AAM9To6Jvendqid\n6JGA8jTkxpcXYUEZrHDZ4+KuTqWQtD+4sMLMm1tFwOlsN2/onS0LrmG9u97Qs4PG\neMM0kU1hishTfw0D8dnyqf8/cwKBgQDKgtq3MFTAUBaj/AJ3hhV7sqHCDYakQkF7\nTDAulEoyXb34tDgUXC2hgTkzBSgoeZO/E2Ni6fSiG/Fyxxx8sxA6z9nCebgXWjVR\nd+gzdPsdXSZOFmr7WzqKyEgWPV7dTMaFXuGHFnT5eHf98mvEK8FgWFg0j7g4gbGA\nCepQZH5dHwKBgQCyDEtn9tVCo9tXCFMkxFCtSFfREVu7ewQjNRhmgu3XeSkWrgPT\nvnTaWmcB3Fk4ViMQ5a3DVdw5k9332u2VW7HMd7Ef7J4yn28AAxtGF+caxo8aSKmD\nO0NnvjMSJQ68PxxUPvKVC6vmpwhrOlXS/TMeIG4qCrcsjldphRbOXj+3zQKBgHta\nmb9cQUOjhSb+KsKDejKO7Nk3Q/xqH1jrX63/xfJIB5+mp0I/o8vs2tqpGX0OEWEi\nfjeSKuFUBA7WGhQbPpeUZCCB5BDVcgTd9SLi7tNEGkEWhrP1LgO7W62wVEiYq5Qx\n505R747GQtD9CYfE31XAenoJ0T0aQvSrFX9Ct3YhAoGAfggUzjlN+D+t4tHb/TRa\n576tcBkuzv5Y+tlv+v5aRqgijZKdbjLrEe0IlGhYJR5WsCySaFTrGWNLbos1ja0C\n4SdGKdIrNZPqRzFMRN21QmiBc50Jwx8kqq13AhhRqkelWkNwGMvWx+qXbwdzyWub\nmPpe745UBTbHZxM68+fir3g=\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-fbsvc@interbridge-6e3b8.iam.gserviceaccount.com",
-  "client_id": "114403210611062404525",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40interbridge-6e3b8.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-};
+console.log("OneSignal configuration loaded");
+console.log("App ID configured:", ONESIGNAL_APP_ID ? "Yes" : "No");
 
-const FCM_ENDPOINT = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
-console.log("Firebase service account loaded successfully");
-
-// Helper: Base64URL encode (convert base64 to base64url)
-function base64urlEncode(data: Uint8Array): string {
-  return encodeBase64(data)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
-
-// Helper: Create JWT for Google OAuth2
-async function createAccessToken() {
+// Helper function to safely parse JSON
+function tryParseJson(str: string): any {
   try {
-    if (!serviceAccount) {
-      throw new Error("Firebase service account not available");
-    }
-
-    console.log("Creating access token...");
-    const header = { alg: "RS256", typ: "JWT" };
-    const iat = Math.floor(Date.now() / 1000);
-    const exp = iat + 3600; // 1 hour
-    const payload = {
-      iss: serviceAccount.client_email,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
-      aud: "https://oauth2.googleapis.com/token",
-      iat,
-      exp,
-    };
-    
-    console.log("JWT payload:", payload);
-    
-    const enc = (obj: object) => base64urlEncode(new TextEncoder().encode(JSON.stringify(obj)));
-    const toSign = `${enc(header)}.${enc(payload)}`;
-    
-    console.log("Importing private key...");
-    let key;
-    try {
-      key = await crypto.subtle.importKey(
-        "pkcs8",
-        str2ab(serviceAccount.private_key),
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        false,
-        ["sign"]
-      );
-      console.log("Private key imported successfully");
-    } catch (keyError) {
-      console.error("Failed to import private key:", keyError);
-      throw new Error(`Key import failed: ${keyError.message}`);
-    }
-    
-    console.log("Signing JWT...");
-    const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(toSign));
-    const jwt = `${toSign}.${base64urlEncode(new Uint8Array(sig))}`;
-    
-    console.log("JWT created, exchanging for access token...");
-    // Exchange JWT for access token
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion: jwt,
-      }),
-    });
-    
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Failed to get access token. Status:", res.status);
-      console.error("Error response:", errorText);
-      throw new Error(`Failed to get access token: ${res.status} - ${errorText}`);
-    }
-    
-    const tokenResponse = await res.json();
-    console.log("Access token obtained successfully");
-    return tokenResponse.access_token;
-  } catch (error) {
-    console.error("Error in createAccessToken:", error);
-    throw error;
+    return JSON.parse(str);
+  } catch {
+    return null;
   }
-}
-
-// Helper: Convert PEM to ArrayBuffer
-function str2ab(pem: string): ArrayBuffer {
-  // Remove header/footer and line breaks
-  const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
-  const bin = atob(b64);
-  const buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  return buf.buffer;
 }
 
 // Main handler
@@ -137,196 +47,197 @@ Deno.serve(async (req) => {
     }
 
     const requestBody = await req.json();
-    console.log("Raw request body:", requestBody);
+    console.log("Raw request body:", JSON.stringify(requestBody));
     console.log("Raw request body type:", typeof requestBody);
-    console.log("Raw request body keys:", Object.keys(requestBody));
+    console.log("Raw request body keys:", Object.keys(requestBody || {}));
     
     // Handle different data structures that might be sent
-    let title, body, data, tokens;
+    let title, body, data, playerIds, userIds;
     
-    // Check if data is wrapped in a 'body' property (common with Supabase functions)
-    if (requestBody.body && typeof requestBody.body === 'object') {
-      console.log("Data wrapped in 'body' property, extracting...");
-      console.log("Body property content:", requestBody.body);
-      console.log("Body property keys:", Object.keys(requestBody.body));
-      title = requestBody.body.title;
-      body = requestBody.body.body;
-      data = requestBody.body.data;
-      tokens = requestBody.body.tokens;
-    } else if (requestBody.body && typeof requestBody.body === 'string') {
-      // Check if body is a JSON string that needs to be parsed
-      console.log("Body is a JSON string, parsing...");
-      try {
-        const parsedBody = JSON.parse(requestBody.body);
-        console.log("Parsed body content:", parsedBody);
-        console.log("Parsed body keys:", Object.keys(parsedBody));
-        title = parsedBody.title;
-        body = parsedBody.body;
-        data = parsedBody.data;
-        tokens = parsedBody.tokens;
-      } catch (parseError) {
-        console.error("Failed to parse JSON body:", parseError);
-        title = requestBody.title;
-        body = requestBody.body;
-        data = requestBody.data;
-        tokens = requestBody.tokens;
+    // Try to extract from various possible structures
+    // The Supabase Flutter SDK might wrap data in different ways
+    const possibleSources = [
+      requestBody,                           // Direct
+      requestBody?.body,                     // Wrapped in body
+      requestBody?.data,                     // Wrapped in data  
+      typeof requestBody?.body === 'string' ? tryParseJson(requestBody.body) : null,  // JSON string in body
+    ].filter(Boolean);
+    
+    console.log("Possible sources count:", possibleSources.length);
+    
+    for (const source of possibleSources) {
+      if (source && typeof source === 'object') {
+        console.log("Checking source:", JSON.stringify(source).substring(0, 200));
+        if (source.title && source.body) {
+          title = source.title;
+          body = source.body;
+          data = source.data;
+          playerIds = source.player_ids || source.playerIds;
+          userIds = source.user_ids || source.userIds;
+          console.log("Found data in source with title:", title);
+          break;
+        }
       }
-    } else if (requestBody.data && typeof requestBody.data === 'object') {
-      // Check if data is wrapped in a 'data' property
-      console.log("Data wrapped in 'data' property, extracting...");
-      console.log("Data property content:", requestBody.data);
-      console.log("Data property keys:", Object.keys(requestBody.data));
-      title = requestBody.data.title;
-      body = requestBody.data.body;
-      data = requestBody.data.data;
-      tokens = requestBody.data.tokens;
-    } else {
-      // Direct data structure
-      console.log("Using direct data structure...");
-      title = requestBody.title;
-      body = requestBody.body;
-      data = requestBody.data;
-      tokens = requestBody.tokens;
     }
     
-    console.log("Parsed notification request:", { title, body, data, tokenCount: tokens?.length });
-    console.log("Data types:", { 
-      titleType: typeof title, 
-      bodyType: typeof body, 
-      dataType: typeof data, 
-      tokensType: typeof tokens,
-      tokensIsArray: Array.isArray(tokens)
+    console.log("Parsed notification request:", { 
+      title, 
+      body: body?.substring?.(0, 50) || body, 
+      data, 
+      playerIdCount: playerIds?.length,
+      userIdCount: userIds?.length 
     });
-    
-    // Additional debugging for the specific fields
-    console.log("Title value:", title);
-    console.log("Body value:", body);
-    console.log("Data value:", data);
-    console.log("Tokens value:", tokens);
 
-    if (!title || !body || !Array.isArray(tokens) || tokens.length === 0) {
-      return new Response(JSON.stringify({ error: "Missing required fields: title, body, tokens" }), {
+    if (!title || !body) {
+      return new Response(JSON.stringify({ error: "Missing required fields: title, body" }), {
         status: 400,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
-    // Check if Firebase is configured
-    if (!serviceAccount || !FCM_ENDPOINT) {
-      console.log("Firebase not configured, returning success without sending notifications");
+    // We need either player_ids or user_ids to send notifications
+    const hasPlayerIds = Array.isArray(playerIds) && playerIds.length > 0;
+    const hasUserIds = Array.isArray(userIds) && userIds.length > 0;
+    
+    if (!hasPlayerIds && !hasUserIds) {
+      return new Response(JSON.stringify({ error: "Missing required fields: player_ids or user_ids" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    // Check if OneSignal is configured
+    if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY) {
+      console.log("OneSignal not configured, returning success without sending notifications");
       return new Response(JSON.stringify({ 
         success: true, 
-        successCount: tokens.length, 
+        successCount: (playerIds?.length || 0) + (userIds?.length || 0), 
         failureCount: 0, 
         errors: [],
-        message: "Firebase not configured - notifications would be sent in production"
+        message: "OneSignal not configured - notifications would be sent in production"
       }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
-    // Get access token
-    console.log("Attempting to get Firebase access token...");
-    let accessToken;
+    // Build OneSignal notification payload
+    const notificationType = data?.type;
+    const isIncomingCall = notificationType === 'INCOMING_CALL' || notificationType === 'incoming_call';
+    
+    console.log("Notification type:", notificationType);
+    console.log("Is incoming call:", isIncomingCall);
+
+    // Build base notification
+    const notification: Record<string, any> = {
+      app_id: ONESIGNAL_APP_ID,
+      headings: { en: title },
+      contents: { en: body },
+      // Additional data to be delivered to the app
+      data: data || {},
+    };
+
+    // Target by player IDs (subscription IDs) or external user IDs
+    if (hasPlayerIds) {
+      notification.include_player_ids = playerIds;
+    } else if (hasUserIds) {
+      // Use external_id for targeting by Supabase user ID
+      notification.include_external_user_ids = userIds;
+    }
+
+    // Configure for incoming calls - high priority with visible notification
+    if (isIncomingCall) {
+      // Keep visible notification - required by OneSignal for delivery
+      // The app will intercept and show CallKit full-screen UI
+      
+      // Android high priority settings
+      notification.priority = 10; // High priority (10 = max)
+      notification.ttl = 60; // 60 seconds TTL for calls
+      
+      // iOS settings for background delivery
+      notification.content_available = true; // Background delivery (iOS & Android)
+      notification.mutable_content = true; // Allow notification modification
+      
+      // Collapse key to prevent duplicate notifications
+      notification.collapse_id = `call_${data?.request_id || Date.now()}`;
+      
+      // Use default notification sound (don't specify custom sounds that may not exist)
+      // notification.ios_sound = "default";
+      // notification.android_sound = "default";
+    } else {
+      // Regular notification settings
+      notification.priority = 5; // Normal priority
+    }
+
+    console.log("Sending OneSignal notification:", JSON.stringify(notification, null, 2));
+
+    // Send notification via OneSignal REST API
     try {
-      accessToken = await createAccessToken();
-      console.log("Successfully obtained Firebase access token");
-    } catch (tokenError) {
-      console.error("Failed to create access token:", tokenError);
-      console.error("Token error details:", tokenError.message);
-      console.error("Token error stack:", tokenError.stack);
-      throw new Error(`Failed to get access token: ${tokenError.message}`);
-    }
+      const res = await fetch(ONESIGNAL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${ONESIGNAL_REST_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(notification),
+      });
 
-    // Send notification to each token (FCM HTTP v1 does not support multicast in one call)
-    let successCount = 0, failureCount = 0, errors = [];
-    const invalidTokens = [];
-    
-    for (const token of tokens) {
-      try {
-        const message = {
-          message: {
-            token,
-            notification: { title, body },
-            data: data || {},
-          },
-        };
+      const responseData = await res.json();
+      console.log("OneSignal response status:", res.status);
+      console.log("OneSignal response data:", JSON.stringify(responseData));
+      console.log("OneSignal recipients count:", responseData.recipients);
+      console.log("OneSignal notification ID:", responseData.id);
+      
+      // Check for errors in response
+      if (responseData.errors) {
+        console.log("OneSignal errors in response:", JSON.stringify(responseData.errors));
+      }
+
+      if (res.ok && !responseData.errors) {
+        const recipients = responseData.recipients || 0;
+        console.log(`Notification sent successfully to ${recipients} recipients`);
         
-        console.log("Sending notification to token:", token.substring(0, 20) + "...");
-        
-        const res = await fetch(FCM_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(message),
+        return new Response(JSON.stringify({ 
+          success: true, 
+          successCount: recipients,
+          failureCount: 0,
+          notificationId: responseData.id,
+          errors: [] 
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
+      } else {
+        const errors = responseData.errors || [];
+        const invalidPlayerIds = responseData.invalid_player_ids || [];
+        const invalidExternalUserIds = responseData.invalid_external_user_ids || [];
         
-        if (res.ok) {
-          successCount++;
-          console.log("Successfully sent notification to token");
-        } else {
-          failureCount++;
-          const errorData = await res.json();
-          console.error("Failed to send notification:", errorData);
-          
-          // Check if token is invalid/unregistered
-          if (errorData.error && 
-              (errorData.error.code === 404 || 
-               errorData.error.details?.some((detail: any) => detail.errorCode === "UNREGISTERED"))) {
-            console.log("Token is invalid/unregistered, marking for cleanup:", token.substring(0, 20) + "...");
-            invalidTokens.push(token);
-          }
-          
-          errors.push({ 
-            token: token.substring(0, 20) + "...", 
-            error: errorData,
-            isInvalid: errorData.error?.code === 404 || 
-                      errorData.error?.details?.some((detail: any) => detail.errorCode === "UNREGISTERED")
-          });
+        console.error("OneSignal errors:", errors);
+        console.log("Invalid player IDs:", invalidPlayerIds);
+        console.log("Invalid external user IDs:", invalidExternalUserIds);
+        
+        // Clean up invalid player IDs from database
+        if (invalidPlayerIds.length > 0) {
+          await cleanupInvalidPlayerIds(invalidPlayerIds);
         }
-      } catch (error) {
-        failureCount++;
-        errors.push({ token: token.substring(0, 20) + "...", error: error.message });
-        console.error("Error sending notification:", error);
-      }
-    }
-
-    // Clean up invalid tokens from database
-    if (invalidTokens.length > 0) {
-      try {
-        console.log(`Cleaning up ${invalidTokens.length} invalid tokens from database`);
         
-        // Use Supabase client to delete invalid tokens
-        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
-        
-        const { error: deleteError } = await supabase
-          .from('fcm_tokens')
-          .delete()
-          .in('token', invalidTokens);
-          
-        if (deleteError) {
-          console.error("Error cleaning up invalid tokens:", deleteError);
-        } else {
-          console.log("Successfully cleaned up invalid tokens");
-        }
-      } catch (cleanupError) {
-        console.error("Error during token cleanup:", cleanupError);
+        return new Response(JSON.stringify({ 
+          success: errors.length === 0, 
+          successCount: responseData.recipients || 0,
+          failureCount: invalidPlayerIds.length + invalidExternalUserIds.length,
+          notificationId: responseData.id,
+          errors,
+          invalidPlayerIds,
+          invalidExternalUserIds,
+        }), {
+          status: errors.length > 0 ? 400 : 200,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
       }
+    } catch (fetchError) {
+      console.error("Error sending OneSignal notification:", fetchError);
+      throw fetchError;
     }
-
-    console.log(`Notification sending completed: ${successCount} success, ${failureCount} failures`);
-    
-    return new Response(JSON.stringify({ success: true, successCount, failureCount, errors }), {
-      status: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-    });
   } catch (error) {
     console.error("Error in send-notification function:", error);
     return new Response(JSON.stringify({ error: "Internal server error", details: error.message }), {
@@ -335,4 +246,30 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+// Helper function to clean up invalid player IDs from database
+async function cleanupInvalidPlayerIds(invalidPlayerIds: string[]) {
+  try {
+    console.log(`Cleaning up ${invalidPlayerIds.length} invalid player IDs from database`);
+    
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    const { error: deleteError } = await supabase
+      .from('onesignal_player_ids')
+      .delete()
+      .in('player_id', invalidPlayerIds);
+      
+    if (deleteError) {
+      console.error("Error cleaning up invalid player IDs:", deleteError);
+    } else {
+      console.log("Successfully cleaned up invalid player IDs");
+    }
+  } catch (cleanupError) {
+    console.error("Error during player ID cleanup:", cleanupError);
+  }
+}
 

@@ -3,7 +3,8 @@ import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'dart:developer';
 
-import 'package:interbridge/data/services/firebase_messaging_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:interbridge/data/services/onesignal_service.dart';
 import 'package:interbridge/data/services/permission_service.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
@@ -163,7 +164,18 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                     await PendingRegistrationService()
                         .finalizePendingRegistration();
                     await _appPreferences.setLoginViewed();
-                    await FirebaseMessagingService().initialize();
+
+                    // Initialize OneSignal if not already initialized
+                    final oneSignalService = instance<OneSignalService>();
+                    final oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'];
+                    if (oneSignalAppId != null &&
+                        oneSignalAppId.isNotEmpty &&
+                        !oneSignalService.isInitialized) {
+                      await oneSignalService.initialize(oneSignalAppId);
+                    }
+                    // Always refresh player ID after login to ensure it's registered
+                    await oneSignalService.refreshPlayerId();
+
                     await _requestPermissionsAndNavigate();
                   }
                 });

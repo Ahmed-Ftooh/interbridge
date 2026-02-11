@@ -1,7 +1,11 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/forgot_password_view.dart';
@@ -22,6 +26,7 @@ import 'package:interbridge/presentation/screens/quiz/medical_section_selector_s
 import 'package:interbridge/presentation/screens/auth/register_screen/view/volunteer_success_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_document_view.dart';
 import 'package:interbridge/presentation/screens/main/main_view.dart';
+import 'package:interbridge/presentation/screens/main/main_view_web.dart';
 import 'package:interbridge/presentation/screens/onboarding/view/onboarding_view.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/select_role_screen.dart';
 import 'package:interbridge/presentation/screens/splash/splash_view.dart';
@@ -35,12 +40,29 @@ import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/organization_register_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_dashboard_view.dart';
+import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_bloc.dart';
 import 'package:interbridge/presentation/screens/organization/organization_registration_screen.dart';
 import 'package:interbridge/presentation/screens/organization/join_organization_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_settings_view.dart';
 import 'package:interbridge/presentation/screens/interpreter/interpreter_quiz_hub_screen.dart';
 import 'package:interbridge/presentation/screens/organization/doctor_join_organization_screen.dart';
 import 'package:interbridge/presentation/screens/organization/doctor_register_with_invite_screen.dart';
+import 'package:interbridge/presentation/screens/auth/web/login_view_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/register_view_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/forgot_password_view_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/select_role_screen_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/confirm_email_pending_view_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_track_selection_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/doctor_join_organization_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/select_language_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/language_fluency_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/select_field_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/voice_sample_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/certificate_upload_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/volunteer_success_web.dart';
+import 'package:interbridge/presentation/screens/organization/web/organization_dashboard_web_view.dart';
+import 'package:interbridge/presentation/screens/interpreter/interpreter_quiz_hub_web_screen.dart';
+import 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -126,6 +148,9 @@ class RouteGenerator {
 
     switch (settings.name) {
       case Routes.splashRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(builder: (_) => const LoginViewWeb());
+        }
         return MaterialPageRoute(builder: (_) => const SplashView());
       case Routes.emailVerificationRoute:
         return MaterialPageRoute(
@@ -133,6 +158,12 @@ class RouteGenerator {
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.confirmEmailRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const ConfirmEmailPendingViewWeb(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const ConfirmEmailPendingView(),
           settings: RouteSettings(arguments: settings.arguments),
@@ -147,54 +178,118 @@ class RouteGenerator {
           builder: (_) => const InterpreterDocumentView(),
         );
       case Routes.loginRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(builder: (_) => const LoginViewWeb());
+        }
         return MaterialPageRoute(builder: (_) => const LoginView());
       case Routes.onBoardingRoute:
         return MaterialPageRoute(builder: (_) => const OnboardingView());
       case Routes.registerRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const RegisterViewWeb(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const RegisterView(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.forgotPasswordRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const ForgotPasswordViewWeb(),
+          );
+        }
         return MaterialPageRoute(builder: (_) => const ForgotPasswordView());
       case Routes.selectRole:
+        if (kIsWeb) {
+          return MaterialPageRoute(builder: (_) => const SelectRoleScreenWeb());
+        }
         return MaterialPageRoute(builder: (_) => const SelectRoleScreen());
       case Routes.interpreterTrackSelection:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const InterpreterTrackSelectionWebScreen(),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const InterpreterTrackSelectionScreen(),
         );
       case Routes.interpreterFieldScreen:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const SelectFieldWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const InterpreterFieldScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.selectLanguage:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const LanguageSelectionWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const LanguageSelectionScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.languageFluencyScreen:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const LanguageFluencyWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const LanguageFluencyScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
 
       case Routes.voiceSampleRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const VoiceSampleWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const VoiceSampleScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.certificateUploadRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const CertificateUploadWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const CertificateUploadScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.generalQuizRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const _GeneralQuizRouteWrapperWeb(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const _GeneralQuizRouteWrapper(),
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.medicalSectionsRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const _MedicalSectionsRouteWrapperWeb(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const _MedicalSectionsRouteWrapper(),
           settings: RouteSettings(arguments: settings.arguments),
@@ -205,6 +300,12 @@ class RouteGenerator {
           settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.volunteerSuccessRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const VolunteerSuccessWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const VolunteerSuccessScreen(),
           settings: RouteSettings(arguments: settings.arguments),
@@ -215,8 +316,21 @@ class RouteGenerator {
           builder: (_) => const OrganizationRegistrationScreen(),
         );
       case Routes.organizationDashboardRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => BlocProvider(
+                  create: (context) => instance<OrganizationDashboardBloc>(),
+                  child: const OrganizationDashboardWebView(),
+                ),
+          );
+        }
         return MaterialPageRoute(
-          builder: (_) => const OrganizationDashboardView(),
+          builder:
+              (_) => BlocProvider(
+                create: (context) => instance<OrganizationDashboardBloc>(),
+                child: const OrganizationDashboardView(),
+              ),
         );
       case Routes.joinOrganizationRoute:
         return MaterialPageRoute(builder: (_) => const JoinOrganizationView());
@@ -225,10 +339,20 @@ class RouteGenerator {
           builder: (_) => const OrganizationSettingsView(),
         );
       case Routes.interpreterQuizHubRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const InterpreterQuizHubWebScreen(),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const InterpreterQuizHubScreen(),
         );
       case Routes.doctorJoinOrganizationRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const DoctorJoinOrganizationWebScreen(),
+          );
+        }
         return MaterialPageRoute(
           builder: (_) => const DoctorJoinOrganizationScreen(),
         );
@@ -241,6 +365,10 @@ class RouteGenerator {
       // Routes.interpreterOnboardingRoute is deprecated and not used anymore
 
       case Routes.mainRoute:
+        // Use web-specific main view on web platform
+        if (kIsWeb) {
+          return MaterialPageRoute(builder: (_) => const MainViewWeb());
+        }
         return MaterialPageRoute(builder: (_) => const MainView());
       case Routes.chatRoute:
         final args = settings.arguments as Map<String, dynamic>?;
@@ -420,56 +548,67 @@ class _AuthCallbackLoadingScreenState
           (route) => false,
         );
       } else if (profile.role == 'interpreter') {
-        // For interpreters, check if they still need to complete quizzes
-        try {
-          final client = Supabase.instance.client;
-          final profileData =
-              await client
-                  .from('users_profile')
-                  .select('employment_type')
-                  .eq('user_id', userId)
-                  .maybeSingle();
-
-          final badgesData = await client
-              .from('interpreter_badges')
-              .select('badge')
-              .eq('user_id', userId);
-
-          final employmentType = profileData?['employment_type'] ?? 'volunteer';
-          final badges =
-              (badgesData as List)
-                  .map((b) => b['badge']?.toString() ?? '')
-                  .where((b) => b.isNotEmpty)
-                  .toSet();
-
-          final hasGeneral = badges.contains('general');
-          final medicalCount = badges.where((b) => b != 'general').length;
-          final bool isExperienced = employmentType == 'paid';
-          final bool allComplete =
-              isExperienced ? (hasGeneral && medicalCount >= 3) : hasGeneral;
-
+        // Only check quizzes on first login — skip if already completed once
+        final appPrefs = instance<AppPreferences>();
+        if (appPrefs.isQuizOnboardingDone()) {
           if (!mounted) return;
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        } else {
+          // For interpreters, check if they still need to complete quizzes
+          try {
+            final client = Supabase.instance.client;
+            final profileData =
+                await client
+                    .from('users_profile')
+                    .select('employment_type')
+                    .eq('user_id', userId)
+                    .maybeSingle();
 
-          if (allComplete) {
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-          } else {
+            final badgesData = await client
+                .from('interpreter_badges')
+                .select('badge')
+                .eq('user_id', userId);
+
+            final employmentType =
+                profileData?['employment_type'] ?? 'volunteer';
+            final badges =
+                (badgesData as List)
+                    .map((b) => b['badge']?.toString() ?? '')
+                    .where((b) => b.isNotEmpty)
+                    .toSet();
+
+            final hasGeneral = badges.contains('general');
+            final medicalCount = badges.where((b) => b != 'general').length;
+            final bool isExperienced = employmentType == 'paid';
+            final bool allComplete =
+                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+
+            if (!mounted) return;
+
+            if (allComplete) {
+              await appPrefs.setQuizOnboardingDone();
+              Navigator.of(
+                context,
+              ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+            } else {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                Routes.interpreterQuizHubRoute,
+                (route) => false,
+              );
+            }
+          } catch (e) {
+            log(
+              '_AuthCallbackLoadingScreen: Error checking interpreter quiz status: $e',
+            );
+            if (!mounted) return;
+            // Fallback to quiz hub for new interpreters
             Navigator.of(context).pushNamedAndRemoveUntil(
               Routes.interpreterQuizHubRoute,
               (route) => false,
             );
           }
-        } catch (e) {
-          log(
-            '_AuthCallbackLoadingScreen: Error checking interpreter quiz status: $e',
-          );
-          if (!mounted) return;
-          // Fallback to quiz hub for new interpreters
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.interpreterQuizHubRoute,
-            (route) => false,
-          );
         }
       } else {
         Navigator.of(
@@ -685,6 +824,167 @@ class _GeneralQuizRouteWrapperState extends State<_GeneralQuizRouteWrapper> {
       }
     } else {
       // Not passed or cancelled: return to previous screen
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  }
+}
+
+// Web wrapper for general quiz route with navigation handling
+class _GeneralQuizRouteWrapperWeb extends StatefulWidget {
+  const _GeneralQuizRouteWrapperWeb();
+
+  @override
+  State<_GeneralQuizRouteWrapperWeb> createState() =>
+      _GeneralQuizRouteWrapperWebState();
+}
+
+class _GeneralQuizRouteWrapperWebState
+    extends State<_GeneralQuizRouteWrapperWeb> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _navigateToQuiz();
+    });
+  }
+
+  Future<void> _navigateToQuiz() async {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+
+    // Launch general quiz (web version)
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder:
+            (_) => const QuizWebScreen(quizType: 'general', isRequired: true),
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Handle navigation based on quiz outcome and selected track
+    if (result != null && result['passed'] == true) {
+      args['generalQuizPassed'] = true;
+      args['generalQuizScore'] = result['score'];
+
+      final track =
+          args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];
+      final isPaid =
+          track == 'paid' ||
+          track == 'pro' ||
+          (track is String &&
+              (track.toLowerCase().contains('paid') ||
+                  track.toLowerCase().contains('pro')));
+
+      if (isPaid) {
+        // Paid: proceed to medical sections (web)
+        Navigator.of(
+          context,
+        ).pushReplacementNamed(Routes.medicalSectionsRoute, arguments: args);
+      } else {
+        // Volunteer: proceed to success screen
+        Navigator.of(
+          context,
+        ).pushReplacementNamed(Routes.volunteerSuccessRoute, arguments: args);
+      }
+    } else {
+      // Not passed or cancelled: return to previous screen
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  }
+}
+
+// Web wrapper for medical sections route
+class _MedicalSectionsRouteWrapperWeb extends StatefulWidget {
+  const _MedicalSectionsRouteWrapperWeb();
+
+  @override
+  State<_MedicalSectionsRouteWrapperWeb> createState() =>
+      _MedicalSectionsRouteWrapperWebState();
+}
+
+class _MedicalSectionsRouteWrapperWebState
+    extends State<_MedicalSectionsRouteWrapperWeb> {
+  final List<String> _allSections = [
+    'neurology',
+    'cardiology',
+    'respiratory',
+    'gastrointestinal',
+    'endocrinology',
+    'renal',
+    'ob_gyn',
+    'oncology',
+    'emergency',
+    'psychology',
+    'musculoskeletal',
+  ];
+
+  Set<String> _earnedSections = {};
+  int _currentSectionIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startSequentialQuizzes();
+    });
+  }
+
+  Future<void> _startSequentialQuizzes() async {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+
+    // Load existing sections if any
+    _earnedSections =
+        (args['medicalSectionsPassed'] as Set<String>?) ?? <String>{};
+
+    // Start sequential quizzes using web quiz screen
+    while (_currentSectionIndex < _allSections.length && mounted) {
+      final sectionId = _allSections[_currentSectionIndex];
+
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder:
+              (_) =>
+                  QuizWebScreen(quizType: 'medical', medicalSection: sectionId),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result != null && result['passed'] == true) {
+        setState(() {
+          _earnedSections.add(sectionId);
+        });
+      }
+
+      _currentSectionIndex++;
+    }
+
+    // All sections completed - update args and continue
+    if (!mounted) return;
+    args['medicalSectionsPassed'] = _earnedSections;
+
+    // Check if at least one section is earned
+    if (_earnedSections.isNotEmpty) {
+      // All quizzes done - go to register
+      Navigator.of(
+        context,
+      ).pushReplacementNamed(Routes.registerRoute, arguments: args);
+    } else {
+      // No badges earned - go back
       Navigator.of(context).pop();
     }
   }

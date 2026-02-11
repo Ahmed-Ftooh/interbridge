@@ -45,10 +45,6 @@ class _EnhancedCallScreenBody extends StatefulWidget {
 }
 
 class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
-  DateTime? _callStartTime;
-  Duration _callDuration = Duration.zero;
-  bool _hasRemoteUser = false; // Track if remote user has joined
-
   // Twilio patient call state
   final TwilioCallService _twilioService = TwilioCallService();
   String? _patientCallSid;
@@ -58,7 +54,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   @override
   void initState() {
     super.initState();
-    _saveSessionState();
   }
 
   @override
@@ -234,14 +229,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
             'Call ended (isRemote: ${callState.isRemote}). Showing feedback dialog.',
           );
           _showFeedbackAndNavigateHome();
-        } else if (callState is CallOngoing) {
-          // Track when remote user joins to start timer together
-          if (callState.remoteUids.isNotEmpty && !_hasRemoteUser) {
-            _hasRemoteUser = true;
-            // Start the call timer only when both sides are connected
-            _callStartTime = DateTime.now();
-            log('Remote user joined - call timer started');
-          }
         } else if (callState is CallError) {
           // Show error dialog and then navigate to home
           showDialog(
@@ -279,19 +266,6 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         }
       },
       builder: (context, callState) {
-        // Track call duration - only after remote user joins
-        if (callState is CallOngoing &&
-            _hasRemoteUser &&
-            _callStartTime != null) {
-          _callDuration = DateTime.now().difference(_callStartTime!);
-        }
-
-        // Reset start time if call is not ongoing
-        if (callState is! CallOngoing) {
-          _callStartTime = null;
-          _hasRemoteUser = false;
-        }
-
         return Scaffold(
           backgroundColor: ColorManager.primary2Dark,
           body: Stack(
@@ -316,27 +290,27 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                       ),
 
                       // End Session button
-                      PopupMenuButton<String>(
-                        icon: Icon(Icons.more_vert, color: ColorManager.white),
-                        onSelected: (value) {
-                          if (value == 'end_session') {
-                            _showEndSessionDialog(context);
-                          }
-                        },
-                        itemBuilder:
-                            (context) => [
-                              const PopupMenuItem(
-                                value: 'end_session',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.exit_to_app, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('End Session'),
-                                  ],
-                                ),
-                              ),
-                            ],
-                      ),
+                      // PopupMenuButton<String>(
+                      //   icon: Icon(Icons.more_vert, color: ColorManager.white),
+                      //   onSelected: (value) {
+                      //     if (value == 'end_session') {
+                      //       _showEndSessionDialog(context);
+                      //     }
+                      //   },
+                      //   itemBuilder:
+                      //       (context) => [
+                      //         const PopupMenuItem(
+                      //           value: 'end_session',
+                      //           child: Row(
+                      //             children: [
+                      //               Icon(Icons.exit_to_app, color: Colors.red),
+                      //               SizedBox(width: 8),
+                      //               Text('End Session'),
+                      //             ],
+                      //           ),
+                      //         ),
+                      //       ],
+                      // ),
                     ],
                   ),
                 ),
@@ -494,7 +468,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                                     ),
                                   ),
                                   child: Text(
-                                    _formatDuration(_callDuration),
+                                    _formatDuration(callState.elapsed),
                                     style: TextStyle(
                                       color: ColorManager.white,
                                       fontSize: 36,
@@ -547,7 +521,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        _formatDuration(_callDuration),
+                        _formatDuration(callState.elapsed),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -565,19 +539,164 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       );
     }
 
-    // Default: Show "Call Ended" or idle state
+    // Handle CallIdle state (initial state before connecting)
+    if (callState is CallIdle) {
+      log('_buildCallInterface - Showing idle/initializing screen');
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: ColorManager.primary.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: CircularProgressIndicator(
+                color: ColorManager.primary,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Initializing...',
+              style: TextStyle(
+                color: ColorManager.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Setting up your call',
+              style: TextStyle(
+                color: ColorManager.white.withValues(alpha: 0.7),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Handle CallEnded state explicitly
+    if (callState is CallEnded) {
+      log('_buildCallInterface - Showing call ended screen');
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.call_end, size: 80, color: ColorManager.error),
+            const SizedBox(height: 16),
+            Text(
+              'Call ended',
+              style: TextStyle(
+                color: ColorManager.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await SessionService.clearSession();
+                _navigateToHome();
+              },
+              icon: const Icon(Icons.home),
+              label: const Text('Return to Home'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ColorManager.primary2,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Handle CallError state
+    if (callState is CallError) {
+      log(
+        '_buildCallInterface - Showing error screen: ${callState.error.message}',
+      );
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 80, color: ColorManager.error),
+            const SizedBox(height: 16),
+            Text(
+              'Call Error',
+              style: TextStyle(
+                color: ColorManager.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                callState.error.message,
+                style: TextStyle(
+                  color: ColorManager.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await SessionService.clearSession();
+                _navigateToHome();
+              },
+              icon: const Icon(Icons.home),
+              label: const Text('Return to Home'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ColorManager.primary2,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Fallback for any unknown state - show initializing to be safe
+    log(
+      '_buildCallInterface - Unknown state: ${callState.runtimeType}, showing initializing',
+    );
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.call_end, size: 80, color: ColorManager.error),
-          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: ColorManager.primary.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: CircularProgressIndicator(
+              color: ColorManager.primary,
+              strokeWidth: 3,
+            ),
+          ),
+          const SizedBox(height: 24),
           Text(
-            'Call ended',
+            'Please wait...',
             style: TextStyle(
               color: ColorManager.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -636,8 +755,10 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 ],
               ),
             ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Wrap(
+            alignment: WrapAlignment.spaceEvenly,
+            spacing: 8,
+            runSpacing: 16,
             children: [
               _roundIconButton(
                 icon: state.muted ? Icons.mic_off : Icons.mic,
@@ -650,7 +771,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 _roundIconButton(
                   icon:
                       state.videoEnabled ? Icons.videocam : Icons.videocam_off,
-                  label: state.videoEnabled ? 'Camera On' : 'Camera Off',
+                  label: state.videoEnabled ? 'Camera' : 'Camera Off',
                   color:
                       state.videoEnabled
                           ? ColorManager.primary
@@ -659,7 +780,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 ),
               _roundIconButton(
                 icon: Icons.call_end,
-                label: 'Hang up',
+                label: 'End Call',
                 color: ColorManager.error,
                 onTap: () {
                   // End the call and let the listener handle navigation
@@ -672,10 +793,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                     _patientCallSid != null
                         ? Icons.phone_disabled
                         : Icons.add_call,
-                label:
-                    _patientCallSid != null
-                        ? 'End Third Party'
-                        : 'Add Third Party',
+                label: _patientCallSid != null ? 'End Party' : 'Add Party',
                 color: _patientCallSid != null ? Colors.orange : Colors.green,
                 onTap:
                     _isPatientCallLoading
@@ -728,6 +846,8 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         GestureDetector(
           onTap: onTap,
           child: Container(
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
@@ -740,16 +860,20 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 ),
               ],
             ),
-            child: Icon(icon, color: color, size: 28),
+            child: Center(child: Icon(icon, color: color, size: 26)),
           ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          label,
-          style: TextStyle(
-            color: ColorManager.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: ColorManager.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -768,71 +892,71 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     }
   }
 
-  void _saveSessionState() {
-    SessionService.saveSession(
-      requestId: widget.channelId,
-      requesterId: '', // These will be handled by the session
-      interpreterId: '',
-      currentScreen: 'call',
-    );
-  }
+  // void _saveSessionState() {
+  //   SessionService.saveSession(
+  //     requestId: widget.channelId,
+  //     requesterId: '', // These will be handled by the session
+  //     interpreterId: '',
+  //     currentScreen: 'call',
+  //   );
+  // }
 
-  void _showEndSessionDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('End Session'),
-            content: const Text(
-              'Are you sure you want to end this session? You will be returned to the home screen.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    // Close the dialog first
-                    Navigator.of(context).pop();
+  // void _showEndSessionDialog(BuildContext context) {
+  //   showDialog(
+  //     context: context,
+  //     builder:
+  //         (context) => AlertDialog(
+  //           title: const Text('End Session'),
+  //           content: const Text(
+  //             'Are you sure you want to end this session? You will be returned to the home screen.',
+  //           ),
+  //           actions: [
+  //             TextButton(
+  //               onPressed: () => Navigator.of(context).pop(),
+  //               child: const Text('Cancel'),
+  //             ),
+  //             ElevatedButton(
+  //               onPressed: () async {
+  //                 try {
+  //                   // Close the dialog first
+  //                   Navigator.of(context).pop();
 
-                    // End the call first if it's ongoing
-                    if (mounted) {
-                      context.read<CallBloc>().add(EndCall());
-                    }
+  //                   // End the call first if it's ongoing
+  //                   if (mounted) {
+  //                     context.read<CallBloc>().add(EndCall());
+  //                   }
 
-                    // Wait a moment for call to end
-                    await Future.delayed(const Duration(milliseconds: 1000));
+  //                   // Wait a moment for call to end
+  //                   await Future.delayed(const Duration(milliseconds: 1000));
 
-                    // End the session
-                    await SessionService.endSession();
+  //                   // End the session
+  //                   await SessionService.endSession();
 
-                    // Ensure we're still mounted before navigating
-                    if (mounted) {
-                      // Navigate to home screen without clearing the entire stack
-                      Navigator.of(
-                        context,
-                      ).pushNamedAndRemoveUntil('/main', (route) => false);
-                    }
-                  } catch (e) {
-                    log('Error ending session: $e');
-                    // If there's an error, still try to navigate back
-                    if (mounted) {
-                      Navigator.of(
-                        context,
-                      ).pushNamedAndRemoveUntil('/main', (route) => false);
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('End Session'),
-              ),
-            ],
-          ),
-    );
-  }
+  //                   // Ensure we're still mounted before navigating
+  //                   if (mounted) {
+  //                     // Navigate to home screen without clearing the entire stack
+  //                     Navigator.of(
+  //                       context,
+  //                     ).pushNamedAndRemoveUntil('/main', (route) => false);
+  //                   }
+  //                 } catch (e) {
+  //                   log('Error ending session: $e');
+  //                   // If there's an error, still try to navigate back
+  //                   if (mounted) {
+  //                     Navigator.of(
+  //                       context,
+  //                     ).pushNamedAndRemoveUntil('/main', (route) => false);
+  //                   }
+  //                 }
+  //               },
+  //               style: ElevatedButton.styleFrom(
+  //                 backgroundColor: Colors.red,
+  //                 foregroundColor: Colors.white,
+  //               ),
+  //               child: const Text('End Session'),
+  //             ),
+  //           ],
+  //         ),
+  //   );
+  // }
 }

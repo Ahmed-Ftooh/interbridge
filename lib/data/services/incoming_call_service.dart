@@ -31,6 +31,15 @@ class IncomingCallService {
       return;
     }
 
+    // Check if interpreter is online before starting to listen
+    final isOnline = await _checkIsOnline(userId);
+    if (!isOnline) {
+      log(
+        'IncomingCallService: Interpreter is offline, not listening for calls',
+      );
+      return;
+    }
+
     // Load interpreter's languages
     await _loadInterpreterLanguages(userId);
 
@@ -43,18 +52,19 @@ class IncomingCallService {
     _shownRequestIds.clear();
 
     // Subscribe to new interpreter requests
-    _subscription = Supabase.instance.client
-        .channel('incoming_calls_$userId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'interpreter_requests',
-          callback: (payload) async {
-            log('IncomingCallService: New request detected');
-            await _handleNewRequest(payload.newRecord);
-          },
-        )
-        .subscribe();
+    _subscription =
+        Supabase.instance.client
+            .channel('incoming_calls_$userId')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.insert,
+              schema: 'public',
+              table: 'interpreter_requests',
+              callback: (payload) async {
+                log('IncomingCallService: New request detected');
+                await _handleNewRequest(payload.newRecord);
+              },
+            )
+            .subscribe();
 
     log('IncomingCallService: Started listening for incoming calls');
 
@@ -83,10 +93,28 @@ class IncomingCallService {
           response.map((row) => row['language_id'].toString()).toList();
 
       log(
-          'IncomingCallService: Loaded ${_interpreterLanguageIds!.length} languages');
+        'IncomingCallService: Loaded ${_interpreterLanguageIds!.length} languages',
+      );
     } catch (e) {
       log('IncomingCallService: Error loading languages: $e');
       _interpreterLanguageIds = [];
+    }
+  }
+
+  /// Check if interpreter is currently online
+  Future<bool> _checkIsOnline(String userId) async {
+    try {
+      final response =
+          await Supabase.instance.client
+              .from('interpreter_details')
+              .select('is_online')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      return response?['is_online'] == true;
+    } catch (e) {
+      log('IncomingCallService: Error checking online status: $e');
+      return false;
     }
   }
 
@@ -106,10 +134,11 @@ class IncomingCallService {
             .from('interpreter_declined_jobs')
             .select('request_id')
             .eq('interpreter_id', userId);
-        declinedJobIds = declinedRows
-            .map((row) => row['request_id']?.toString())
-            .whereType<String>()
-            .toSet();
+        declinedJobIds =
+            declinedRows
+                .map((row) => row['request_id']?.toString())
+                .whereType<String>()
+                .toSet();
         _declinedRequestIds = declinedJobIds;
       } catch (e) {
         log('IncomingCallService: Could not fetch declined jobs: $e');
@@ -130,7 +159,9 @@ class IncomingCallService {
         // Skip if already shown or declined
         if (!_shownRequestIds.contains(request.id) &&
             !_declinedRequestIds.contains(request.id)) {
-          log('IncomingCallService: Found existing pending request: ${request.id}');
+          log(
+            'IncomingCallService: Found existing pending request: ${request.id}',
+          );
           await _showIncomingCallScreen(request);
         }
       }
@@ -145,7 +176,9 @@ class IncomingCallService {
 
       // Skip if not pending
       if (request.status != 'pending') {
-        log('IncomingCallService: Request status is ${request.status}, skipping');
+        log(
+          'IncomingCallService: Request status is ${request.status}, skipping',
+        );
         return;
       }
 
@@ -161,14 +194,30 @@ class IncomingCallService {
         return;
       }
 
+      // Check if interpreter is online
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final isOnline = await _checkIsOnline(userId);
+        if (!isOnline) {
+          log(
+            'IncomingCallService: Interpreter is offline, skipping incoming call',
+          );
+          return;
+        }
+      }
+
       // Check if this request matches interpreter's languages
       if (_interpreterLanguageIds == null ||
           !_interpreterLanguageIds!.contains(request.toLanguage)) {
-        log('IncomingCallService: Request language ${request.toLanguage} does not match interpreter languages');
+        log(
+          'IncomingCallService: Request language ${request.toLanguage} does not match interpreter languages',
+        );
         return;
       }
 
-      log('IncomingCallService: Showing incoming call for request: ${request.id}');
+      log(
+        'IncomingCallService: Showing incoming call for request: ${request.id}',
+      );
       await _showIncomingCallScreen(request);
     } catch (e) {
       log('IncomingCallService: Error handling new request: $e');
@@ -211,20 +260,20 @@ class IncomingCallService {
       await navigator.push(
         PageRouteBuilder(
           opaque: false,
-          pageBuilder: (_, __, ___) => IncomingCallScreen(
-            request: request,
-            fromLanguageName: fromLanguageName,
-            toLanguageName: toLanguageName,
-          ),
+          pageBuilder:
+              (_, __, ___) => IncomingCallScreen(
+                request: request,
+                fromLanguageName: fromLanguageName,
+                toLanguageName: toLanguageName,
+              ),
           transitionsBuilder: (_, animation, __, child) {
             return SlideTransition(
               position: Tween<Offset>(
                 begin: const Offset(0, 1),
                 end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOut,
-              )),
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOut),
+              ),
               child: child,
             );
           },

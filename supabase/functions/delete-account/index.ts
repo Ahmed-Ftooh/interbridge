@@ -170,9 +170,10 @@ serve(async (req: Request): Promise<Response> => {
     await adminClient.from('admin_interpreter_messages').delete().eq('interpreter_id', targetUserId);
     await adminClient.from('admin_interpreter_messages').delete().eq('admin_id', targetUserId);
 
-    // Delete notifications and FCM tokens
+    // Delete notifications and OneSignal player IDs (and legacy FCM tokens if any)
     await adminClient.from('notifications').delete().eq('user_id', targetUserId);
-    await adminClient.from('fcm_tokens').delete().eq('user_id', targetUserId);
+    await adminClient.from('onesignal_player_ids').delete().eq('user_id', targetUserId);
+    await adminClient.from('fcm_tokens').delete().eq('user_id', targetUserId); // Legacy cleanup
 
     // Delete original tables from the function
     await adminClient.from('chat_messages').delete().eq('sender_id', targetUserId);

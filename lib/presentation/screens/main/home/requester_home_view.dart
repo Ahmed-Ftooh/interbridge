@@ -14,8 +14,10 @@ class RequesterHomeView extends StatefulWidget {
 
 class _RequesterHomeViewState extends State<RequesterHomeView>
     with SingleTickerProviderStateMixin {
-  // Languages - populated dynamically from interpreter registrations
-  List<Language> _availableLanguages = [];
+  // All languages for "from" selection (client speaks)
+  List<Language> _allLanguages = [];
+  // Languages available from interpreters for "to" selection (patient speaks)
+  List<Language> _interpreterLanguages = [];
   Language? _selectedFromLanguage;
   Language? _selectedToLanguage;
   bool _isLoadingLanguages = true;
@@ -132,15 +134,24 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
 
   Future<void> _loadLanguages() async {
     try {
-      // Get languages that interpreters have registered
-      final languages =
-          await SupabaseService().getAvailableInterpreterLanguages();
+      final supabaseService = SupabaseService();
+      // Load all languages for "from" (client speaks) and interpreter languages for "to" (patient speaks)
+      final results = await Future.wait([
+        supabaseService.getLanguages(),
+        supabaseService.getAvailableInterpreterLanguages(),
+      ]);
+
       if (mounted) {
+        final allLangs = results[0];
+        final interpreterLangs = results[1];
+
         // Sort alphabetically
-        languages.sort((a, b) => a.name.compareTo(b.name));
+        allLangs.sort((a, b) => a.name.compareTo(b.name));
+        interpreterLangs.sort((a, b) => a.name.compareTo(b.name));
 
         setState(() {
-          _availableLanguages = languages;
+          _allLanguages = allLangs;
+          _interpreterLanguages = interpreterLangs;
           _isLoadingLanguages = false;
         });
         _animationController.forward();
@@ -386,11 +397,11 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
           ),
           const SizedBox(height: 20),
 
-          // From Language
+          // From Language (Client Speaks) - All languages
           _buildLanguageSelector(
             label: 'Client Speaks',
             language: _selectedFromLanguage,
-            languages: _availableLanguages,
+            languages: _allLanguages,
             icon: Icons.record_voice_over_rounded,
             color: const Color(0xFF3B82F6),
             onSelect: (lang) => setState(() => _selectedFromLanguage = lang),
@@ -415,11 +426,11 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
             ),
           ),
 
-          // To Language
+          // To Language (Patient Speaks) - Only interpreter languages
           _buildLanguageSelector(
             label: 'Patient speaks',
             language: _selectedToLanguage,
-            languages: _availableLanguages,
+            languages: _interpreterLanguages,
             icon: Icons.person_rounded,
             color: const Color(0xFF10B981),
             onSelect: (lang) => setState(() => _selectedToLanguage = lang),

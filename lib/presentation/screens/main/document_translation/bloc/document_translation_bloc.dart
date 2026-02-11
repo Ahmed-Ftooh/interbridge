@@ -28,19 +28,31 @@ class DocumentTranslationBloc
       emit(DocumentTranslationLoading());
     }
     try {
-      final languages =
-          await supabaseService.getSupportedInterpreterLanguages();
+      // Load all languages for "from" and interpreter languages for "to"
+      final results = await Future.wait([
+        supabaseService.getLanguages(),
+        supabaseService.getSupportedInterpreterLanguages(),
+      ]);
+      final allLanguages = results[0];
+      final interpreterLanguages = results[1];
+
       // Preserve existing requests if we have them
       if (state is DocumentTranslationLoadSuccess) {
         final currentState = state as DocumentTranslationLoadSuccess;
         emit(
           DocumentTranslationLoadSuccess(
-            languages: languages,
+            allLanguages: allLanguages,
+            interpreterLanguages: interpreterLanguages,
             requests: currentState.requests,
           ),
         );
       } else {
-        emit(DocumentTranslationLoadSuccess(languages: languages));
+        emit(
+          DocumentTranslationLoadSuccess(
+            allLanguages: allLanguages,
+            interpreterLanguages: interpreterLanguages,
+          ),
+        );
       }
     } catch (e) {
       emit(DocumentTranslationOperationFailure(e.toString()));
@@ -62,7 +74,8 @@ class DocumentTranslationBloc
         final currentState = state as DocumentTranslationLoadSuccess;
         emit(
           DocumentTranslationLoadSuccess(
-            languages: currentState.languages,
+            allLanguages: currentState.allLanguages,
+            interpreterLanguages: currentState.interpreterLanguages,
             requests: requests,
           ),
         );

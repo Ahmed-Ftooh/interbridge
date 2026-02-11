@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -71,7 +73,65 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // First check badges (same as splash) to immediately redirect if complete
+    // This prevents any flash of quiz screen for users who already completed quizzes
+    _quickBadgeCheck().then((_) {
+      // Only load full data if not redirected
+      if (mounted) {
+        _loadData();
+      }
+    });
+  }
+
+  /// Quick check of badges to redirect immediately if quizzes are complete
+  /// This mirrors the splash screen logic to prevent any UI flash
+  Future<void> _quickBadgeCheck() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final client = Supabase.instance.client;
+
+      // Fetch badges and employment type separately to avoid type casting issues
+      final profileData =
+          await client
+              .from('users_profile')
+              .select('employment_type')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      final badgesData = await client
+          .from('interpreter_badges')
+          .select('badge')
+          .eq('user_id', userId);
+
+      if (!mounted) return;
+
+      final employmentType = profileData?['employment_type'] ?? 'volunteer';
+      final badges =
+          (badgesData as List)
+              .map((b) => b['badge']?.toString() ?? '')
+              .where((b) => b.isNotEmpty)
+              .toSet();
+
+      final hasGeneral = badges.contains('general');
+      final medicalCount = badges.where((b) => b != 'general').length;
+      final bool isExperienced = employmentType == 'paid';
+      final bool allComplete =
+          isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+
+      if (allComplete && mounted) {
+        // Mark quiz onboarding as done so we don't check again on next login
+        await instance<AppPreferences>().setQuizOnboardingDone();
+        // Immediately navigate to main without showing any quiz UI
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    } catch (e) {
+      debugPrint('Quick badge check failed: $e');
+      // Continue to load data normally, don't fail silently
+    }
   }
 
   Future<void> _loadData() async {
@@ -140,6 +200,8 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
     }
 
     if (allQuizzesAttempted) {
+      // Mark quiz onboarding as done so we don't check again on next login
+      instance<AppPreferences>().setQuizOnboardingDone();
       // Navigate to main screen with pending verification status
       Navigator.of(
         context,

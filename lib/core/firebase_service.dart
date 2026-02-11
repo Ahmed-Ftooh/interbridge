@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get_it/get_it.dart';
 import 'package:interbridge/firebase_options.dart';
-import 'package:interbridge/data/services/firebase_messaging_service.dart';
-import 'package:interbridge/data/services/callkit_service.dart';
+import 'package:interbridge/data/services/onesignal_service.dart';
 
 class FirebaseService {
   static FirebaseService? _instance;
@@ -12,52 +11,24 @@ class FirebaseService {
 
   FirebaseService._();
 
-  // Top-level function for background message handling
-  @pragma('vm:entry-point')
-  static Future<void> _firebaseMessagingBackgroundHandler(
-    RemoteMessage message,
-  ) async {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint('Handling a background message: ${message.messageId}');
-
-    // Check for incoming call
-    if (message.data['type'] == 'INCOMING_CALL' ||
-        message.data['type'] == 'incoming_call') {
-      final callerName = message.data['caller_name'] ?? 'Incoming Call Request';
-      final callerId = message.data['caller_id'] ?? 'unknown';
-      final callerAvatar = message.data['caller_avatar'] ?? '';
-      final requestId = message.data['request_id'];
-      final callType = message.data['call_type'] ?? 'voice';
-      final interpreterType = message.data['interpreter_type'] ?? 'general';
-      final medicalSection = message.data['medical_section'];
-
-      await CallKitService().showIncomingCall(
-        callerName: callerName,
-        callerId: callerId,
-        callerAvatar: callerAvatar,
-        requestId: requestId,
-        callType: callType,
-        interpreterType: interpreterType,
-        medicalSection: medicalSection,
-      );
-    }
-
-    // Background message handling is minimal - just log for now
-    // The main FirebaseMessagingService handles the rest when app is active
-  }
-
   Future<void> initialize() async {
-    // Initialize Firebase
+    // Initialize Firebase Core (still needed for other Firebase features if any)
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Set background message handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // Initialize the comprehensive Firebase messaging service using GetIt
-    await GetIt.instance<FirebaseMessagingService>().initialize();
+    // Initialize OneSignal for push notifications
+    // Get OneSignal App ID from environment variables
+    final oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'];
+    if (oneSignalAppId != null && oneSignalAppId.isNotEmpty) {
+      final oneSignalService = GetIt.instance<OneSignalService>();
+      await oneSignalService.initialize(oneSignalAppId);
+      debugPrint('✅ OneSignal initialized successfully');
+      // Refresh player ID in case user is already logged in
+      await oneSignalService.refreshPlayerId();
+    } else {
+      debugPrint('⚠ ONESIGNAL_APP_ID not found in environment variables');
+      debugPrint('   Add ONESIGNAL_APP_ID=your-app-id to assets/.env');
+    }
   }
 }

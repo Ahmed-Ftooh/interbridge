@@ -152,15 +152,16 @@ class InterpreterRequestService {
       log('Matching user IDs by languages: ${matchingUserIds.length}');
 
       // === GENERAL INTERPRETER TYPE ===
-      // Only return volunteer/entry-level interpreters
+      // Only return volunteer/entry-level interpreters who are ONLINE
       if (type == 'general') {
-        log('Finding GENERAL (volunteer) interpreters only');
+        log('Finding GENERAL (volunteer) interpreters who are ONLINE');
 
-        // Get volunteer interpreters from interpreter_details
+        // Get volunteer interpreters from interpreter_details who are online
         final volunteerInterpreters = await _client
             .from('interpreter_details')
             .select('user_id')
             .eq('employment_type', 'volunteer')
+            .eq('is_online', true) // Only online interpreters
             .inFilter('user_id', matchingUserIds);
 
         final volunteerIds =
@@ -185,11 +186,12 @@ class InterpreterRequestService {
         'Finding SPECIALIST (paid) interpreters for section: $section, Tier: $tier',
       );
 
-      // Get paid interpreters from interpreter_details
+      // Get paid interpreters from interpreter_details who are ONLINE
       final paidInterpreters = await _client
           .from('interpreter_details')
           .select('user_id')
           .eq('employment_type', 'paid')
+          .eq('is_online', true) // Only online interpreters
           .inFilter('user_id', matchingUserIds);
 
       final paidIds =
@@ -200,10 +202,22 @@ class InterpreterRequestService {
 
       if (section != null && section.isNotEmpty) {
         final medicalSectionKey = _specializationToMedicalSection(section);
+        log(
+          'Medical section key converted: "$section" -> "$medicalSectionKey"',
+        );
+        log('Paid interpreter IDs to filter: $paidIds');
 
         if (tier == 1) {
           // Tier 1: Interpreters with badges (80%+ score)
           log('Tier 1: Looking for interpreters with badges (80%+)');
+
+          // First check what badges exist for these paid interpreters
+          final allBadges = await _client
+              .from('interpreter_badges')
+              .select('user_id, badge, score')
+              .inFilter('user_id', paidIds);
+          log('All badges for paid interpreters: $allBadges');
+
           final badgeQuery = await _client
               .from('interpreter_badges')
               .select('user_id, score')
@@ -237,21 +251,6 @@ class InterpreterRequestService {
               passedQuery.map((q) => q['user_id'] as String).toSet().toList();
           log(
             'Found ${tierInterpreterIds.length} interpreters who passed (50-79%)',
-          );
-        } else if (tier == 3) {
-          // Tier 3: Fallback to volunteer/entry-level interpreters
-          log('Tier 3: Fallback to volunteer interpreters');
-
-          final volunteerInterpreters = await _client
-              .from('interpreter_details')
-              .select('user_id')
-              .eq('employment_type', 'volunteer')
-              .inFilter('user_id', matchingUserIds);
-
-          tierInterpreterIds =
-              volunteerInterpreters.map((u) => u['user_id'] as String).toList();
-          log(
-            'Found ${tierInterpreterIds.length} volunteer interpreters for fallback',
           );
         }
       } else {
@@ -298,28 +297,28 @@ class InterpreterRequestService {
         specialization.toLowerCase().replaceAll('/', '_').replaceAll(' ', '_');
   }
 
-  /// Get FCM tokens for a list of user IDs
-  Future<List<String>> _getFCMTokensForUsers(List<String> userIds) async {
+  /// Get OneSignal player IDs for a list of user IDs
+  Future<List<String>> _getPlayerIdsForUsers(List<String> userIds) async {
     try {
-      log('Getting FCM tokens for user IDs: $userIds');
+      log('Getting OneSignal player IDs for user IDs: $userIds');
 
       final response = await _client
-          .from('fcm_tokens')
-          .select('token')
+          .from('onesignal_player_ids')
+          .select('player_id')
           .inFilter('user_id', userIds);
 
-      final tokens =
+      final playerIds =
           response
-              .map((t) => t['token'] as String?)
+              .map((t) => t['player_id'] as String?)
               .where((t) => t != null && t.isNotEmpty)
               .cast<String>()
               .toList();
 
-      log('Found ${tokens.length} valid FCM tokens');
+      log('Found ${playerIds.length} valid OneSignal player IDs');
 
-      return tokens;
+      return playerIds;
     } catch (e) {
-      log('Error getting FCM tokens: $e');
+      log('Error getting OneSignal player IDs: $e');
       return [];
     }
   }
@@ -327,8 +326,7 @@ class InterpreterRequestService {
   /// Ring matching interpreters based on tier
   /// Uses tiered matching for specialist requests:
   ///   - Tier 1: Badge holders (80%+ score) - wait 30s
-  ///   - Tier 2: Passed quiz (50-79% score) - wait 30s
-  ///   - Tier 3: Volunteer interpreters (fallback)
+  ///   - Tier 2: Passed quiz (50-79% score) - final tier
   Future<void> _ringMatchingInterpreters(
     InterpreterRequest request, {
     required String interpreterType,
@@ -386,8 +384,8 @@ class InterpreterRequestService {
       if (matchingInterpreters.isEmpty) {
         log('No interpreters found for tier $tier');
 
-        // If specialist and no interpreters in current tier, try next tier
-        if (interpreterType == 'specialist' && tier < 3) {
+        // If specialist and no interpreters in current tier, try next tier (max 2 tiers)
+        if (interpreterType == 'specialist' && tier < 2) {
           log('Escalating to tier ${tier + 1}');
           await _updateRequestTier(request.id, tier + 1);
           await _ringInterpretersForTier(
@@ -397,7 +395,7 @@ class InterpreterRequestService {
             medicalSection: medicalSection,
           );
         } else {
-          log('No more tiers to try, request may timeout');
+          log('No more tiers to try (tier 2 is final), request may timeout');
         }
         return;
       }
@@ -407,15 +405,15 @@ class InterpreterRequestService {
               .map((interpreter) => interpreter['user_id'] as String)
               .toList();
 
-      final fcmTokens = await _getFCMTokensForUsers(interpreterIds);
-      log('Found ${fcmTokens.length} FCM tokens for tier $tier');
+      final playerIds = await _getPlayerIdsForUsers(interpreterIds);
+      log('Found ${playerIds.length} OneSignal player IDs for tier $tier');
 
-      if (fcmTokens.isEmpty) {
-        log('No FCM tokens available for tier $tier');
+      if (playerIds.isEmpty) {
+        log('No OneSignal player IDs available for tier $tier');
 
-        // Escalate to next tier if possible
-        if (interpreterType == 'specialist' && tier < 3) {
-          log('No tokens, escalating to tier ${tier + 1}');
+        // Escalate to next tier if possible (max 2 tiers)
+        if (interpreterType == 'specialist' && tier < 2) {
+          log('No player IDs, escalating to tier ${tier + 1}');
           await _updateRequestTier(request.id, tier + 1);
           await _ringInterpretersForTier(
             request: request,
@@ -432,7 +430,7 @@ class InterpreterRequestService {
 
       // Send ring notification to interpreters
       await _sendRingNotification(
-        tokens: fcmTokens,
+        playerIds: playerIds,
         request: request,
         interpreterType: interpreterType,
         medicalSection: medicalSection,
@@ -459,9 +457,9 @@ class InterpreterRequestService {
     }
   }
 
-  /// Send ring notification via FCM with CallKit data
+  /// Send ring notification via OneSignal with CallKit data
   Future<void> _sendRingNotification({
-    required List<String> tokens,
+    required List<String> playerIds,
     required InterpreterRequest request,
     required String interpreterType,
     String? medicalSection,
@@ -469,7 +467,7 @@ class InterpreterRequestService {
   }) async {
     try {
       log(
-        'Sending ring notification to ${tokens.length} interpreters (tier $tier)',
+        'Sending ring notification to ${playerIds.length} interpreters (tier $tier)',
       );
       final fromLanguageName = await _findLanguageById(request.fromLanguage);
       final toLanguageName = await _findLanguageById(request.toLanguage);
@@ -503,14 +501,15 @@ class InterpreterRequestService {
           'caller_name': callerName, // For CallKit display
           'caller_id': request.id, // Use request ID as caller ID
         },
-        'tokens': tokens,
+        'player_ids': playerIds, // OneSignal player IDs
       };
 
       log('Ring notification payload: $notificationData');
 
+      // Pass Map directly - Supabase SDK handles JSON serialization
       final response = await _client.functions.invoke(
         'send-notification',
-        body: jsonEncode(notificationData),
+        body: notificationData,
       );
 
       log('Edge function response status: ${response.status}');
@@ -558,8 +557,8 @@ class InterpreterRequestService {
         return false;
       }
 
-      // Only escalate for specialist requests
-      if (interpreterType == 'specialist' && currentTier < 3) {
+      // Only escalate for specialist requests (max 2 tiers)
+      if (interpreterType == 'specialist' && currentTier < 2) {
         log('Escalating from tier $currentTier to tier ${currentTier + 1}');
 
         // Create a minimal request object for ringing
@@ -584,7 +583,7 @@ class InterpreterRequestService {
         return true;
       }
 
-      log('Cannot escalate further, tier $currentTier is final');
+      log('Cannot escalate further, tier 2 is final');
       return false;
     } catch (e) {
       log('Error checking tier escalation: $e');

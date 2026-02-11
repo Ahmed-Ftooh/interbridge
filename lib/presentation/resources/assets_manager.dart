@@ -6,6 +6,7 @@ class ImageAssets {
   static const onbording2 = '${imagePath}onboarding2.jpg';
   static const onbording3 = '${imagePath}onboarding3.jpg';
   static const logo2 = '${imagePath}logo2.jpeg';
+  static const appIcon = '${imagePath}app_icon.jpeg';
 }
 
 class JsonAssets {

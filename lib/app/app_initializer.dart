@@ -1,9 +1,9 @@
 import 'dart:developer';
 
-import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/firebase_service.dart';
 import 'package:interbridge/core/network_service.dart';
@@ -14,14 +14,31 @@ import 'package:interbridge/app/app.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 
+// Conditional import for app_links (not available on web)
+import 'app_initializer_mobile.dart'
+    if (dart.library.html) 'app_initializer_web.dart'
+    as platform;
+
 class AppInitializer {
   // Track if we've already handled the initial auth navigation to prevent
   // duplicate navigations that could interrupt user flow (e.g., during quizzes)
   static bool _hasHandledInitialAuth = false;
 
+  /// Whether a deep link (magic link) is pending processing during cold start.
+  /// The Splash / Auth Gate checks this to wait for the auth session to resolve
+  /// instead of navigating prematurely.
+  static bool deepLinkPending = false;
+
   /// Reset the auth navigation flag. Call this when the user signs out.
   static void resetAuthState() {
     _hasHandledInitialAuth = false;
+    deepLinkPending = false;
+  }
+
+  /// Mark the initial auth as handled. Called by the Splash / Auth Gate once
+  /// it has resolved the auth state and navigated.
+  static void markInitialAuthHandled() {
+    _hasHandledInitialAuth = true;
   }
 
   static Future<void> initialize() async {
@@ -30,6 +47,7 @@ class AppInitializer {
     try {
       // Reset flag on each initialization (e.g., hot restart)
       _hasHandledInitialAuth = false;
+      deepLinkPending = false;
 
       // Initialize dependency injection first (fast - local operations only)
       await initAppModule();
@@ -109,8 +127,8 @@ class AppInitializer {
       // These are not critical for app startup and can complete after the app launches
       _initializeNonCriticalServices();
 
-      // Set up deep link handling for auth callbacks
-      _setupDeepLinkHandling();
+      // Set up deep link handling for auth callbacks (platform-specific)
+      platform.setupDeepLinkHandling(_handleDeepLink);
 
       // Listen for Supabase auth deep-link redirects to handle password reset
       // and email verification inside the app.
@@ -125,13 +143,16 @@ class AppInitializer {
         }
         if (type == AuthChangeEvent.signedIn) {
           log('Auth event: signedIn');
+
+          // Determine whether this is a cold-start or warm-start sign-in.
+          final wasColdStart = !_hasHandledInitialAuth;
+
+          // Always run finalization / invite check regardless of cold/warm
           final didFinalize =
               await PendingRegistrationService().finalizePendingRegistration();
 
-          // Check for pending organization invites for existing users
           final user = Supabase.instance.client.auth.currentUser;
           if (user != null && user.email != null && !didFinalize) {
-            // Only check if we didn't just finalize registration (which already checks)
             final supabaseService = SupabaseService();
             await supabaseService.checkAndProcessPendingInvite(
               user.id,
@@ -139,12 +160,23 @@ class AppInitializer {
             );
           }
 
-          // Only navigate if we just finalized registration AND haven't already handled auth
-          // This prevents interrupting the user if they're already on a screen (e.g., quiz)
-          if (didFinalize && !_hasHandledInitialAuth) {
+          if (wasColdStart) {
+            // Cold start: The Splash / Auth Gate will detect the session and
+            // navigate. We just mark initial auth as handled to prevent the
+            // Splash from racing with us.
+            _hasHandledInitialAuth = true;
+            log(
+              'Auth event: signedIn (cold start) — splash will handle navigation',
+            );
+          } else {
+            // Warm start: The user tapped a magic link while the app was
+            // already running. Navigate from here.
             _hasHandledInitialAuth = true;
             final navigator = MyApp.navigatorKey.currentState;
             if (user != null && navigator != null) {
+              log(
+                'Auth event: signedIn (warm start) — navigating based on role',
+              );
               await _navigateBasedOnRole(navigator, user.id);
             }
           }
@@ -179,51 +211,62 @@ class AppInitializer {
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
-        // For interpreters, check if they still need to complete qualification quizzes
-        try {
-          // Query employment_type and badges directly to decide navigation
-          final client = Supabase.instance.client;
-          final profileData =
-              await client
-                  .from('users_profile')
-                  .select('employment_type')
-                  .eq('user_id', userId)
-                  .maybeSingle();
+        // Only check quizzes on first login — skip if already completed once
+        final appPrefs = instance<AppPreferences>();
+        if (appPrefs.isQuizOnboardingDone()) {
+          navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        } else {
+          // For interpreters, check if they still need to complete qualification quizzes
+          try {
+            // Query employment_type and badges directly to decide navigation
+            final client = Supabase.instance.client;
+            final profileData =
+                await client
+                    .from('users_profile')
+                    .select('employment_type')
+                    .eq('user_id', userId)
+                    .maybeSingle();
 
-          final badgesData = await client
-              .from('interpreter_badges')
-              .select('badge')
-              .eq('user_id', userId);
+            final badgesData = await client
+                .from('interpreter_badges')
+                .select('badge')
+                .eq('user_id', userId);
 
-          final employmentType = profileData?['employment_type'] ?? 'volunteer';
-          final badges =
-              (badgesData as List)
-                  .map((b) => b['badge']?.toString() ?? '')
-                  .where((b) => b.isNotEmpty)
-                  .toSet();
+            final employmentType =
+                profileData?['employment_type'] ?? 'volunteer';
+            final badges =
+                (badgesData as List)
+                    .map((b) => b['badge']?.toString() ?? '')
+                    .where((b) => b.isNotEmpty)
+                    .toSet();
 
-          final hasGeneral = badges.contains('general');
-          final medicalCount = badges.where((b) => b != 'general').length;
+            final hasGeneral = badges.contains('general');
+            final medicalCount = badges.where((b) => b != 'general').length;
 
-          final bool isExperienced = employmentType == 'paid';
-          final bool allComplete =
-              isExperienced ? (hasGeneral && medicalCount >= 3) : hasGeneral;
+            final bool isExperienced = employmentType == 'paid';
+            final bool allComplete =
+                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
 
-          if (allComplete) {
+            if (allComplete) {
+              await appPrefs.setQuizOnboardingDone();
+              navigator.pushNamedAndRemoveUntil(
+                Routes.mainRoute,
+                (route) => false,
+              );
+            } else {
+              navigator.pushNamedAndRemoveUntil(
+                Routes.interpreterQuizHubRoute,
+                (route) => false,
+              );
+            }
+          } catch (e) {
+            // On error, fallback to main route
+            log('Error checking interpreter quiz status: $e');
             navigator.pushNamedAndRemoveUntil(
               Routes.mainRoute,
               (route) => false,
             );
-          } else {
-            navigator.pushNamedAndRemoveUntil(
-              Routes.interpreterQuizHubRoute,
-              (route) => false,
-            );
           }
-        } catch (e) {
-          // On error, fallback to main route
-          log('Error checking interpreter quiz status: $e');
-          navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
         }
       } else {
         navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
@@ -234,25 +277,6 @@ class AppInitializer {
     }
   }
 
-  // Set up deep link handling for auth callbacks
-  static void _setupDeepLinkHandling() {
-    final appLinks = AppLinks();
-
-    // Handle deep link when app is already running (warm start)
-    appLinks.uriLinkStream.listen((Uri uri) {
-      log('Deep link received (warm): $uri');
-      _handleDeepLink(uri);
-    });
-
-    // Handle deep link when app is launched from deep link (cold start)
-    appLinks.getInitialLink().then((Uri? uri) {
-      if (uri != null) {
-        log('Deep link received (cold): $uri');
-        _handleDeepLink(uri);
-      }
-    });
-  }
-
   static Future<void> _handleDeepLink(Uri uri) async {
     log('Processing deep link: $uri');
 
@@ -260,13 +284,15 @@ class AppInitializer {
     if (uri.scheme == 'io.supabase.flutter' ||
         uri.host == 'login-callback' ||
         uri.toString().contains('login-callback')) {
-      log('Deep link is auth callback, navigating to auth loading screen');
+      log('Deep link is auth callback — marking as pending');
 
-      // Navigate to the auth callback loading screen
-      final navigator = MyApp.navigatorKey.currentState;
-      if (navigator != null) {
-        navigator.pushNamedAndRemoveUntil(uri.toString(), (route) => false);
-      }
+      // Mark deep link as pending so the Splash / Auth Gate waits for
+      // the auth session to resolve before navigating.
+      deepLinkPending = true;
+
+      // Do NOT push a route here. Supabase's internal PKCE handler will
+      // process the auth code and fire onAuthStateChange.signedIn.
+      // The Splash (mobile) or LoginViewWeb (web) will listen and navigate.
     }
   }
 

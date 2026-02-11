@@ -14,14 +14,19 @@ class DocumentTranslationInitial extends DocumentTranslationState {}
 class DocumentTranslationLoading extends DocumentTranslationState {}
 
 class DocumentTranslationLoadSuccess extends DocumentTranslationState {
-  final List<Language> languages;
+  /// All languages for "from" selection (client language)
+  final List<Language> allLanguages;
+
+  /// Interpreter languages for "to" selection (patient language)
+  final List<Language> interpreterLanguages;
   final List<DocumentTranslationRequest> requests;
   const DocumentTranslationLoadSuccess({
-    this.languages = const [],
+    this.allLanguages = const [],
+    this.interpreterLanguages = const [],
     this.requests = const [],
   });
   @override
-  List<Object?> get props => [languages, requests];
+  List<Object?> get props => [allLanguages, interpreterLanguages, requests];
 }
 
 class DocumentTranslationOperationSuccess extends DocumentTranslationState {}

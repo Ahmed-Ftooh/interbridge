@@ -148,57 +148,68 @@ class SupabaseService {
 
   Future<void> createUserProfileAfterSignUp(UserProfile profile) async {
     // Method specifically for creating profile after signup
-    try {
-      // Check if user is authenticated
-      final user = _client.auth.currentUser;
+    log('createUserProfileAfterSignUp: Starting for userId=${profile.id}');
 
-      // Ensure the profile user_id matches the authenticated user
-      if (user != null && profile.id != user.id) {
-        throw Exception('Profile user_id must match authenticated user');
-      }
+    // Check if user is authenticated
+    final user = _client.auth.currentUser;
+    log('createUserProfileAfterSignUp: currentUser=${user?.id}');
 
-      // Create the data map explicitly to match table structure
-      final data = {
-        'user_id': profile.id,
-        'username': profile.username ?? '',
-        'role': profile.role ?? '',
-        'profile_image': profile.profileImage ?? '',
-        'gender': profile.gender ?? '',
-        'country': profile.country,
-        // created_at will be set automatically by the database
-      };
+    // Ensure the profile user_id matches the authenticated user
+    if (user != null && profile.id != user.id) {
+      log(
+        'createUserProfileAfterSignUp: User ID mismatch - profile.id=${profile.id}, user.id=${user.id}',
+      );
+      throw Exception('Profile user_id must match authenticated user');
+    }
 
-      // Ensure we're using the authenticated user's context
-      if (user == null) {
-        throw Exception('User must be authenticated to create profile');
-      }
+    // Ensure we're using the authenticated user's context
+    if (user == null) {
+      log('createUserProfileAfterSignUp: User is null, cannot create profile');
+      throw Exception('User must be authenticated to create profile');
+    }
 
-      // Use upsert with ignoreDuplicates to prevent duplicate profiles
-      await _client
-          .from('users_profile')
-          .upsert(data, onConflict: 'user_id', ignoreDuplicates: true);
-    } catch (e) {
-      // Try alternative approach with explicit error handling
-      try {
-        final fallbackData = {
-          'user_id': profile.id,
-          'username': profile.username ?? '',
-          'role': profile.role ?? '',
-          'profile_image': profile.profileImage ?? '',
-          'gender': profile.gender ?? '',
-          'country': profile.country,
-        };
+    // Create the data map explicitly to match table structure
+    final data = {
+      'user_id': profile.id,
+      'username': profile.username ?? '',
+      'role': profile.role ?? '',
+      'profile_image': profile.profileImage ?? '',
+      'gender': profile.gender ?? '',
+      'country': profile.country,
+      // created_at will be set automatically by the database
+    };
 
+    log('createUserProfileAfterSignUp: Inserting profile data: $data');
+
+    // First, check if profile already exists
+    final existingProfile =
         await _client
             .from('users_profile')
-            .upsert(
-              fallbackData,
-              onConflict: 'user_id',
-              ignoreDuplicates: true,
-            );
-      } catch (e2) {
-        throw Exception('Failed to create user profile: $e2');
+            .select('user_id')
+            .eq('user_id', profile.id)
+            .maybeSingle();
+
+    if (existingProfile != null) {
+      log('createUserProfileAfterSignUp: Profile already exists, skipping');
+      return;
+    }
+
+    // Use insert instead of upsert with ignoreDuplicates to catch actual errors
+    try {
+      await _client.from('users_profile').insert(data);
+      log('createUserProfileAfterSignUp: Profile created successfully');
+    } catch (e) {
+      log('createUserProfileAfterSignUp: Insert failed with error: $e');
+
+      // If it's a duplicate error, that's fine - profile exists
+      if (e.toString().contains('duplicate') ||
+          e.toString().contains('23505')) {
+        log('createUserProfileAfterSignUp: Duplicate detected, profile exists');
+        return;
       }
+
+      // Re-throw other errors
+      throw Exception('Failed to create user profile: $e');
     }
   }
 
@@ -207,6 +218,41 @@ class SupabaseService {
         .from('users_profile')
         .update(profile.toJson())
         .eq('user_id', profile.id);
+  }
+
+  /// Get user's organization membership with organization details
+  Future<Map<String, dynamic>?> getUserOrganizationMembership(
+    String userId,
+  ) async {
+    try {
+      final response =
+          await _client
+              .from('organization_members')
+              .select('''
+            id,
+            organization_id,
+            role,
+            is_active,
+            organizations!inner(name, email)
+          ''')
+              .eq('user_id', userId)
+              .eq('is_active', true)
+              .maybeSingle();
+
+      if (response == null) return null;
+
+      return {
+        'id': response['id'],
+        'organization_id': response['organization_id'],
+        'role': response['role'],
+        'is_active': response['is_active'],
+        'organization_name': response['organizations']?['name'],
+        'organization_email': response['organizations']?['email'],
+      };
+    } catch (e) {
+      log('getUserOrganizationMembership error: $e');
+      return null;
+    }
   }
 
   Future<Map<String, dynamic>?> getInstitutionStatus(
@@ -530,7 +576,10 @@ class SupabaseService {
     );
     log('finalizePendingRegistrationData: data=$data');
 
-    // Check if user profile already exists to prevent duplicate registration
+    final username = (data['username'] as String?) ?? '';
+    final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
+
+    // Check if user profile already exists
     bool profileExists = false;
     try {
       final existingProfile =
@@ -542,20 +591,13 @@ class SupabaseService {
 
       profileExists = existingProfile != null;
       log('finalizePendingRegistrationData: Profile exists=$profileExists');
-
-      if (profileExists) {
-        log('User profile already exists for $userId');
-        // Don't return yet - still need to check if organization needs to be created
-      }
     } catch (e) {
       log('Error checking existing profile: $e');
     }
 
-    final username = (data['username'] as String?) ?? '';
-    final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
-
-    // Only create profile if it doesn't exist
+    // Create or update profile
     if (!profileExists) {
+      // Profile doesn't exist - create it
       final profile = UserProfile(
         id: userId,
         role: role,
@@ -566,27 +608,67 @@ class SupabaseService {
       );
 
       log(
-        'finalizePendingRegistrationData: Creating profile with role=$role, username=$username, employmentType=$employmentType',
+        'finalizePendingRegistrationData: Creating profile with role=$role, username=$username',
       );
 
       try {
         await createUserProfileAfterSignUp(profile);
         log('finalizePendingRegistrationData: Profile created successfully');
-
-        // Update employment_type for interpreters
-        if (role == 'interpreter') {
-          await _client
-              .from('users_profile')
-              .update({'employment_type': employmentType})
-              .eq('user_id', userId);
-          log(
-            'finalizePendingRegistrationData: Employment type set to $employmentType',
-          );
-        }
       } catch (e) {
         log('finalizePendingRegistrationData: Error creating profile: $e');
-        // Re-throw to prevent organization creation without profile
-        rethrow;
+        // Try upsert as fallback
+        try {
+          await _client.from('users_profile').upsert({
+            'user_id': userId,
+            'username': username,
+            'role': role,
+            'profile_image': data['profileImage'] ?? '',
+            'gender': data['gender'] ?? '',
+            'country': data['country'],
+          }, onConflict: 'user_id');
+          log('finalizePendingRegistrationData: Profile upserted via fallback');
+        } catch (e2) {
+          log(
+            'finalizePendingRegistrationData: Fallback upsert also failed: $e2',
+          );
+          rethrow;
+        }
+      }
+    } else {
+      // Profile exists (possibly auto-created by trigger) - update it with registration data
+      log('finalizePendingRegistrationData: Updating existing profile');
+      try {
+        await _client
+            .from('users_profile')
+            .update({
+              'username': username,
+              'role': role,
+              if (data['profileImage'] != null)
+                'profile_image': data['profileImage'],
+              if (data['gender'] != null) 'gender': data['gender'],
+              if (data['country'] != null) 'country': data['country'],
+            })
+            .eq('user_id', userId);
+        log('finalizePendingRegistrationData: Profile updated successfully');
+      } catch (e) {
+        log('finalizePendingRegistrationData: Error updating profile: $e');
+      }
+    }
+
+    // Update employment_type for interpreters
+    if (role == 'interpreter') {
+      try {
+        await _client
+            .from('users_profile')
+            .update({'employment_type': employmentType})
+            .eq('user_id', userId);
+        log(
+          'finalizePendingRegistrationData: Employment type set to $employmentType',
+        );
+      } catch (e) {
+        log(
+          'finalizePendingRegistrationData: Error setting employment type: $e',
+        );
       }
     }
 
@@ -1233,7 +1315,47 @@ class SupabaseService {
   Future<void> submitQuizAttempt(Map<String, dynamic> attempt) async {
     log('submitQuizAttempt called with: $attempt');
     try {
-      await _client.from('quiz_attempts').insert(attempt);
+      // Use upsert to update existing attempt if one exists
+      // This allows retaking quizzes while preventing true duplicates
+      final userId = attempt['user_id'];
+      final quizType = attempt['quiz_type'];
+      final medicalSection = attempt['medical_section'];
+
+      // Check if an attempt already exists
+      var query = _client
+          .from('quiz_attempts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('quiz_type', quizType);
+
+      if (medicalSection != null) {
+        query = query.eq('medical_section', medicalSection);
+      } else {
+        query = query.isFilter('medical_section', null);
+      }
+
+      final existing = await query.maybeSingle();
+
+      if (existing != null) {
+        // Update existing attempt with new results
+        log('Updating existing quiz attempt: ${existing['id']}');
+        await _client
+            .from('quiz_attempts')
+            .update({
+              'total_questions': attempt['total_questions'],
+              'correct_answers': attempt['correct_answers'],
+              'score_percentage': attempt['score_percentage'],
+              'time_taken_seconds': attempt['time_taken_seconds'],
+              'passed': attempt['passed'],
+              'taken_at': attempt['taken_at'],
+            })
+            .eq('id', existing['id']);
+      } else {
+        // Insert new attempt
+        log('Inserting new quiz attempt');
+        await _client.from('quiz_attempts').insert(attempt);
+      }
+
       log('Quiz attempt submitted successfully');
     } catch (e, stackTrace) {
       log('Error submitting quiz attempt: $e');
@@ -1523,8 +1645,10 @@ class SupabaseService {
       final userId = authResponse.user!.id;
 
       // Create user profile as 'requester' (doctor role in the app)
+      // Set both username and full_name so profile displays correctly
       await _client.from('users_profile').insert({
         'user_id': userId,
+        'username': fullName,
         'full_name': fullName,
         'role': 'requester',
         'email': email.toLowerCase(),

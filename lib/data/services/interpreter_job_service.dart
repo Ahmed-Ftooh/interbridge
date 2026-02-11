@@ -209,43 +209,44 @@ class InterpreterJobService {
             'requester_id': requesterId, // ✅ ADDED for navigation
             'type': 'request_accepted',
           },
-          'tokens': requesterTokens,
+          'player_ids': requesterTokens, // Changed from tokens to player_ids
         };
 
         log('DEBUG: Sending notification: $notificationData');
 
+        // Pass Map directly - Supabase SDK handles JSON serialization
         await _client.functions.invoke(
           'send-notification',
-          body: jsonEncode(notificationData), // ✅ fixed
+          body: notificationData,
         );
       } else {
-        log('No FCM tokens found for requester $requesterId');
+        log('No OneSignal player IDs found for requester $requesterId');
       }
     } catch (e) {
       log('Error notifying requester: $e');
     }
   }
 
-  /// Get FCM tokens for a list of user IDs
+  /// Get OneSignal player IDs for a list of user IDs
   Future<List<String>> _getFCMTokensForUsers(List<String> userIds) async {
     try {
       final response = await _client
-          .from('fcm_tokens')
-          .select('token')
+          .from('onesignal_player_ids')
+          .select('player_id')
           .inFilter('user_id', userIds);
 
-      final tokens =
+      final playerIds =
           response
-              .map((t) => t['token'] as String?)
+              .map((t) => t['player_id'] as String?)
               .where((t) => t != null && t.isNotEmpty)
               .cast<String>()
               .toList();
 
-      log('DEBUG: Extracted ${tokens.length} valid FCM tokens');
+      log('DEBUG: Extracted ${playerIds.length} valid OneSignal player IDs');
 
-      return tokens;
+      return playerIds;
     } catch (e) {
-      log('Error getting FCM tokens: $e');
+      log('Error getting OneSignal player IDs: $e');
       return [];
     }
   }

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Interbridge - Professional Medical Interpretation Services">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#0955fa">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Interbridge">
+  
+  <!-- iOS icons -->
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Interbridge</title>
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Google Fonts for modern typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    
+    /* Loading Screen */
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0955fa 0%, #1e3a8a 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+    }
+    
+    #loading-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .loading-logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 32px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .loading-logo svg {
+      width: 100%;
+      height: 100%;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.9; }
+    }
+    
+    .loading-title {
+      color: white;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+    
+    .loading-subtitle {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 16px;
+      font-weight: 400;
+      margin-bottom: 48px;
+    }
+    
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading-progress {
+      margin-top: 24px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+    }
+    
+    /* Error state */
+    .error-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+    }
+    
+    .error-container.show {
+      display: flex;
+    }
+    
+    .error-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .error-message {
+      color: white;
+      font-size: 18px;
+      margin-bottom: 24px;
+      max-width: 400px;
+    }
+    
+    .retry-button {
+      background: white;
+      color: #0955fa;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .retry-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loading-logo">
+      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="45" stroke="white" stroke-width="2" fill="none" opacity="0.3"/>
+        <circle cx="50" cy="50" r="35" stroke="white" stroke-width="2" fill="none" opacity="0.5"/>
+        <circle cx="50" cy="50" r="25" fill="white" opacity="0.9"/>
+        <path d="M35 50 L45 60 L65 40" stroke="#0955fa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <h1 class="loading-title">Interbridge</h1>
+    <p class="loading-subtitle">Professional Medical Interpretation</p>
+    <div class="loading-spinner"></div>
+    <p class="loading-progress" id="loading-status">Loading...</p>
+    
+    <div class="error-container" id="error-container">
+      <div class="error-icon">⚠️</div>
+      <p class="error-message" id="error-message">Failed to load. Please check your connection and try again.</p>
+      <button class="retry-button" onclick="location.reload()">Retry</button>
+    </div>
+  </div>
+
+  <script>
+    // Update loading status
+    function updateStatus(message) {
+      const status = document.getElementById('loading-status');
+      if (status) status.textContent = message;
+    }
+    
+    // Show error
+    function showError(message) {
+      const spinner = document.querySelector('.loading-spinner');
+      const status = document.getElementById('loading-status');
+      const errorContainer = document.getElementById('error-container');
+      const errorMessage = document.getElementById('error-message');
+      
+      if (spinner) spinner.style.display = 'none';
+      if (status) status.style.display = 'none';
+      if (errorContainer) errorContainer.classList.add('show');
+      if (errorMessage) errorMessage.textContent = message;
+    }
+    
+    // Hide loading screen when Flutter is ready
+    window.addEventListener('flutter-first-frame', function() {
+      const loadingScreen = document.getElementById('loading-screen');
+      if (loadingScreen) {
+        loadingScreen.classList.add('fade-out');
+        setTimeout(() => loadingScreen.remove(), 500);
+      }
+    });
+    
+    // Timeout for loading
+    setTimeout(function() {
+      const loadingScreen = document.getElementById('loading-screen');
+      if (loadingScreen && !loadingScreen.classList.contains('fade-out')) {
+        showError('Loading is taking longer than expected. Please refresh the page.');
+      }
+    }, 30000);
+  </script>
+  
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get_it/get_it.dart';
 import 'package:interbridge/app/app_prf.dart';
-import 'package:interbridge/data/services/firebase_messaging_service.dart';
+import 'package:interbridge/data/services/onesignal_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,8 +16,7 @@ class PendingRegistrationService {
 
   final AppPreferences _preferences = GetIt.I<AppPreferences>();
   final SupabaseService _supabaseService = GetIt.I<SupabaseService>();
-  final FirebaseMessagingService _messagingService =
-      GetIt.I<FirebaseMessagingService>();
+  final OneSignalService _oneSignalService = GetIt.I<OneSignalService>();
 
   bool _isProcessing = false;
 
@@ -50,7 +50,16 @@ class PendingRegistrationService {
 
       await _preferences.clearPendingRegistration();
       await _preferences.setLoginViewed();
-      await _messagingService.initialize();
+
+      // Initialize OneSignal if not already initialized
+      final oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'];
+      if (oneSignalAppId != null &&
+          oneSignalAppId.isNotEmpty &&
+          !_oneSignalService.isInitialized) {
+        await _oneSignalService.initialize(oneSignalAppId);
+      }
+      // Refresh player ID to ensure it's registered
+      await _oneSignalService.refreshPlayerId();
       return true;
     } catch (e, stackTrace) {
       log(

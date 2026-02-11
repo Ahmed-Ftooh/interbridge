@@ -18,7 +18,8 @@ class InterpreterHomeView extends StatefulWidget {
   State<InterpreterHomeView> createState() => _InterpreterHomeViewState();
 }
 
-class _InterpreterHomeViewState extends State<InterpreterHomeView> {
+class _InterpreterHomeViewState extends State<InterpreterHomeView>
+    with WidgetsBindingObserver {
   bool isProcessingJob = false; // To show button loading state
   String? processingJobId; // Track which job is being accepted/declined
   bool _isVerified = false;
@@ -54,11 +55,12 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadInterpreterProfile();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _safeAddToJobsBloc(LoadAvailableJobs());
-        // Start listening for incoming calls
+        // Start listening for incoming calls (will check online status internally)
         _incomingCallService.startListening();
       }
     });
@@ -66,8 +68,26 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _incomingCallService.stopListening();
     super.dispose();
+  }
+
+  /// Handle app lifecycle changes - refresh jobs when app returns to foreground
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('🔄 App resumed - refreshing jobs');
+      // Refresh jobs when app comes back to foreground
+      _safeAddToJobsBloc(LoadAvailableJobs());
+      // Re-check incoming call listening based on online status
+      if (_isOnline) {
+        _incomingCallService.startListening();
+      }
+    } else if (state == AppLifecycleState.paused) {
+      debugPrint('⏸️ App paused');
+    }
   }
 
   bool _isOnline = false;
@@ -85,7 +105,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
               .eq('user_id', userId)
               .maybeSingle();
 
-      // 2. Get user profile for employment type (to show online/offline toggle for paid only)
+      // 2. Get user profile for employment type
       final profileData =
           await Supabase.instance.client
               .from('users_profile')
@@ -121,7 +141,9 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
   }
 
   Future<void> _toggleOnlineStatus(bool value) async {
+    final previousValue = _isOnline;
     setState(() => _isOnline = value);
+
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) return;
@@ -130,11 +152,18 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
           .from('interpreter_details')
           .update({'is_online': value})
           .eq('user_id', userId);
+
+      // Start or stop listening for incoming calls based on online status
+      if (value) {
+        _incomingCallService.startListening();
+      } else {
+        _incomingCallService.stopListening();
+      }
     } catch (e) {
       debugPrint('Error updating online status: $e');
       // Revert on error
       if (mounted) {
-        setState(() => _isOnline = !value);
+        setState(() => _isOnline = previousValue);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to update status: $e'),
@@ -152,13 +181,37 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
     // Reload jobs to ensure fresh data
     if (mounted) {
       _safeAddToJobsBloc(LoadAvailableJobs());
-      _loadInterpreterProfile(); // Reload profile stats too
+      _loadProfileStats(); // Only reload stats, not online status
+    }
+  }
+
+  /// Load only profile stats without changing the online status toggle
+  Future<void> _loadProfileStats() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Count total completed sessions (calls)
+      final sessionsCount = await Supabase.instance.client
+          .from('interpreter_requests')
+          .count(CountOption.exact)
+          .eq('accepted_by', userId)
+          .eq('status', 'completed');
+
+      if (mounted) {
+        setState(() {
+          _totalSessions = sessionsCount;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile stats: $e');
     }
   }
 
   Future<void> _refreshJobs() async {
     _safeAddToJobsBloc(RefreshJobs());
-    await _loadInterpreterProfile();
+    // Only refresh stats, don't reset online toggle
+    await _loadProfileStats();
     // Optionally await bloc state change here if you want
     await Future.delayed(const Duration(milliseconds: 500));
   }
@@ -189,132 +242,42 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
           child: ListView(
             padding: const EdgeInsets.all(AppSize.s16),
             children: [
-              // Header with status
-              Container(
-                padding: const EdgeInsets.all(AppSize.s16),
-                decoration: BoxDecoration(
-                  color: ColorManager.primary2,
-                  borderRadius: BorderRadius.circular(AppSize.s12),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: AppSize.s24,
-                      backgroundColor: ColorManager.white,
-                      child: Icon(
-                        Icons.person,
-                        color: ColorManager.primary2,
-                        size: AppSize.s24,
-                      ),
-                    ),
-                    const SizedBox(width: AppSize.s12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome back!',
-                            style: TextStyle(
-                              color: ColorManager.white,
-                              fontSize: AppSize.s18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: AppSize.s4),
-                          Text(
-                            _isVerified
-                                ? 'Verified Interpreter'
-                                : 'Pending Verification',
-                            style: TextStyle(
-                              color: ColorManager.white.withValues(alpha: 0.8),
-                              fontSize: AppSize.s14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Only show online/offline toggle for experienced (paid) interpreters
-                    if (_isVerified &&
-                        !_isSuspended &&
-                        _employmentType == 'paid')
-                      Column(
-                        children: [
-                          Switch(
-                            value: _isOnline,
-                            onChanged: _toggleOnlineStatus,
-                            activeColor: ColorManager.white,
-                            activeTrackColor: ColorManager.success,
-                            inactiveThumbColor: ColorManager.white,
-                            inactiveTrackColor: ColorManager.grey,
-                          ),
-                          Text(
-                            _isOnline ? 'Online' : 'Offline',
-                            style: TextStyle(
-                              color: ColorManager.white,
-                              fontSize: AppSize.s12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSize.s16),
+              // Online/Offline Toggle Card - Prominent at top
+              if (_isVerified && !_isSuspended) _buildOnlineToggleCard(),
+              if (_isVerified && !_isSuspended)
+                const SizedBox(height: AppSize.s16),
 
-              // Total Sessions Card
-              Container(
-                padding: const EdgeInsets.all(AppSize.s20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(AppSize.s12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+              // Stats Cards Row
+              Row(
+                children: [
+                  // Total Sessions Card
+                  Expanded(
+                    child: _buildStatCard(
+                      icon: Icons.headset_mic,
+                      title: 'Sessions',
+                      value: _isLoadingProfile ? '...' : '$_totalSessions',
+                      color: ColorManager.primary2,
                     ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: ColorManager.primary2.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.history,
-                        color: ColorManager.primary2,
-                        size: 28,
-                      ),
+                  ),
+                  const SizedBox(width: AppSize.s12),
+                  // Status Card
+                  Expanded(
+                    child: _buildStatCard(
+                      icon: _isVerified ? Icons.verified : Icons.pending,
+                      title: 'Status',
+                      value:
+                          _isSuspended
+                              ? 'Suspended'
+                              : (_isVerified ? 'Verified' : 'Pending'),
+                      color:
+                          _isSuspended
+                              ? ColorManager.error
+                              : (_isVerified
+                                  ? ColorManager.success
+                                  : Colors.orange),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Total Sessions',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: ColorManager.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _isLoadingProfile ? '...' : '$_totalSessions',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: ColorManager.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSize.s24),
 
@@ -447,31 +410,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
                     }
                     if (state is InterpreterJobLoaded) {
                       if (state.jobs.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.work_off,
-                                size: AppSize.s60,
-                                color: ColorManager.grey,
-                              ),
-                              const SizedBox(height: AppSize.s16),
-                              Text(
-                                'No available jobs',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: AppSize.s8),
-                              Text(
-                                'Check back later for new interpreter requests',
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: ColorManager.grey),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: AppSize.s16),
-                            ],
-                          ),
-                        );
+                        return _buildEmptyJobsView();
                       }
 
                       return Column(
@@ -820,5 +759,206 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView> {
     } else {
       return '${difference.inDays} days ago';
     }
+  }
+
+  /// Build the prominent online/offline toggle card
+  Widget _buildOnlineToggleCard() {
+    return Container(
+      padding: const EdgeInsets.all(AppSize.s16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors:
+              _isOnline
+                  ? [
+                    ColorManager.success,
+                    ColorManager.success.withOpacity(0.8),
+                  ]
+                  : [ColorManager.grey, ColorManager.grey.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppSize.s16),
+        boxShadow: [
+          BoxShadow(
+            color: (_isOnline ? ColorManager.success : ColorManager.grey)
+                .withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Status Icon
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _isOnline ? Icons.wifi : Icons.wifi_off,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: AppSize.s16),
+          // Status Text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _isOnline ? 'You are Online' : 'You are Offline',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _isOnline
+                      ? 'Ready to receive incoming calls'
+                      : 'Toggle on to receive calls',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Toggle Switch
+          Transform.scale(
+            scale: 1.2,
+            child: Switch(
+              value: _isOnline,
+              onChanged: _toggleOnlineStatus,
+              activeColor: Colors.white,
+              activeTrackColor: Colors.white.withOpacity(0.4),
+              inactiveThumbColor: Colors.white,
+              inactiveTrackColor: Colors.white.withOpacity(0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build a stat card widget
+  Widget _buildStatCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(AppSize.s16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppSize.s12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: ColorManager.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(fontSize: 13, color: ColorManager.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build the empty jobs view with online status hint
+  Widget _buildEmptyJobsView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: ColorManager.primary2.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isOnline ? Icons.hourglass_empty : Icons.wifi_off,
+                size: 48,
+                color: ColorManager.primary2,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              _isOnline ? 'No Available Jobs' : 'You are Offline',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: ColorManager.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _isOnline
+                  ? 'New interpreter requests will appear here.\nStay online to receive incoming calls.'
+                  : 'Go online to start receiving interpreter requests and incoming calls.',
+              style: TextStyle(
+                fontSize: 15,
+                color: ColorManager.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (!_isOnline) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => _toggleOnlineStatus(true),
+                icon: const Icon(Icons.wifi),
+                label: const Text('Go Online'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ColorManager.success,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

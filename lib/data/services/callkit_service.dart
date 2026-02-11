@@ -42,14 +42,17 @@ class CallKitService {
           'medical_section': medicalSection,
         },
         android: const AndroidParams(
-          isCustomNotification: true,
+          isCustomNotification:
+              false, // Use system incoming call UI for full screen
           isShowLogo: true,
-          ringtonePath: 'call_ring', // References res/raw/call_ring.mp3
+          ringtonePath: 'system_ringtone_default', // Use system ringtone
           backgroundColor: '#0955fa',
           backgroundUrl: '',
           actionColor: '#4CAF50',
           textColor: '#ffffff',
           isShowFullLockedScreen: true,
+          incomingCallNotificationChannelName: 'Incoming Calls',
+          isShowCallID: false,
         ),
         ios: const IOSParams(
           iconName: 'CallKitIcon',

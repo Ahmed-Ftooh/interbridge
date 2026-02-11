@@ -6,6 +6,7 @@ import 'package:interbridge/data/services/translation_cache_service.dart';
 const ONBOARDING_VIEWD_KEY = 'ONBOARDING_VIEWD_KEY';
 const LOGIN_VIEWD_KEY = 'LOGIN_VIEWD_KEY';
 const PENDING_REGISTRATION_KEY = 'PENDING_REGISTRATION_KEY';
+const QUIZ_ONBOARDING_DONE_KEY = 'QUIZ_ONBOARDING_DONE_KEY';
 
 class AppPreferences {
   final SharedPreferences _sharedPreferences;
@@ -29,6 +30,7 @@ class AppPreferences {
 
   Future<void> logout() async {
     _sharedPreferences.remove(LOGIN_VIEWD_KEY);
+    _sharedPreferences.remove(QUIZ_ONBOARDING_DONE_KEY);
     // Clear translation cache when user logs out
     await TranslationCacheService().clearCache();
   }
@@ -43,5 +45,13 @@ class AppPreferences {
 
   Future<void> clearPendingRegistration() async {
     await _sharedPreferences.remove(PENDING_REGISTRATION_KEY);
+  }
+
+  Future<void> setQuizOnboardingDone() async {
+    await _sharedPreferences.setBool(QUIZ_ONBOARDING_DONE_KEY, true);
+  }
+
+  bool isQuizOnboardingDone() {
+    return _sharedPreferences.getBool(QUIZ_ONBOARDING_DONE_KEY) ?? false;
   }
 }

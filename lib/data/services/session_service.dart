@@ -8,7 +8,7 @@ class SessionService {
   static const String _chatStateKey = 'chat_state';
   static const String _callStateKey = 'call_state';
 
-  /// Save current session state
+  /// Save current session state (for active call sessions only)
   static Future<void> saveSession({
     required String requestId,
     required String requesterId,
@@ -24,7 +24,7 @@ class SessionService {
         'requestId': requestId,
         'requesterId': requesterId,
         'interpreterId': interpreterId,
-        'currentScreen': currentScreen,
+        'currentScreen': currentScreen ?? 'call', // Default to call, not chat
         'chatData': chatData,
         'callData': callData,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -47,12 +47,12 @@ class SessionService {
 
       final sessionData = jsonDecode(sessionJson) as Map<String, dynamic>;
 
-      // Check if session is not too old (24 hours)
+      // Check if session is not too old (2 hours for calls)
       final timestamp = sessionData['timestamp'] as int;
       final sessionTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
       final now = DateTime.now();
 
-      if (now.difference(sessionTime).inHours > 24) {
+      if (now.difference(sessionTime).inHours > 2) {
         await clearSession();
         return null;
       }
@@ -80,31 +80,6 @@ class SessionService {
       log('Session cleared successfully');
     } catch (e) {
       log('Error clearing session: $e');
-    }
-  }
-
-  /// Save chat state
-  static Future<void> saveChatState(Map<String, dynamic> chatState) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_chatStateKey, jsonEncode(chatState));
-    } catch (e) {
-      log('Error saving chat state: $e');
-    }
-  }
-
-  /// Get chat state
-  static Future<Map<String, dynamic>?> getChatState() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final chatJson = prefs.getString(_chatStateKey);
-
-      if (chatJson == null) return null;
-
-      return jsonDecode(chatJson) as Map<String, dynamic>;
-    } catch (e) {
-      log('Error getting chat state: $e');
-      return null;
     }
   }
 

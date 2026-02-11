@@ -61,7 +61,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     context.read<ChatBloc>().add(LoadMessages(widget.requestId));
-    _saveSessionState();
+    // _saveSessionState();
 
     // REMOVED: Polling is no longer needed because real-time subscription
     // in ChatBloc already handles new messages including voice messages.
@@ -189,27 +189,27 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
             },
           ),
           // End Session button
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'end_session') {
-                _showEndSessionDialog();
-              }
-            },
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem(
-                    value: 'end_session',
-                    child: Row(
-                      children: [
-                        Icon(Icons.exit_to_app, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('End Session'),
-                      ],
-                    ),
-                  ),
-                ],
-          ),
+          // PopupMenuButton<String>(
+          //   icon: const Icon(Icons.more_vert),
+          //   onSelected: (value) {
+          //     if (value == 'end_session') {
+          //       _showEndSessionDialog();
+          //     }
+          //   },
+          //   itemBuilder:
+          //       (context) => [
+          //         const PopupMenuItem(
+          //           value: 'end_session',
+          //           child: Row(
+          //             children: [
+          //               Icon(Icons.exit_to_app, color: Colors.red),
+          //               SizedBox(width: 8),
+          //               Text('End Session'),
+          //             ],
+          //           ),
+          //         ),
+          //       ],
+          // ),
         ],
       ),
       body: Column(
@@ -301,9 +301,9 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                                     );
                                   }
 
-                                  await SessionService.endSession(
-                                    requestId: widget.requestId,
-                                  );
+                                  // await SessionService.endSession(
+                                  //   requestId: widget.requestId,
+                                  // );
                                   if (context.mounted) {
                                     Navigator.of(
                                       context,
@@ -605,87 +605,86 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
       ),
     );
     _input.clear();
-    _saveSessionState();
+    // _saveSessionState();
     _scrollToBottom();
   }
 
-  void _saveSessionState() {
-    SessionService.saveSession(
-      requestId: widget.requestId,
-      requesterId: widget.requesterId,
-      interpreterId: widget.interpreterId,
-      currentScreen: 'chat',
-    );
-  }
+  // void _saveSessionState() {
+  //   SessionService.saveSession(
+  //     requestId: widget.requestId,
+  //     requesterId: widget.requesterId,
+  //     interpreterId: widget.interpreterId,
+  //     currentScreen: 'chat',
+  //   );
+  // }
 
-  void _showEndSessionDialog() {
-    // Capture blocs to avoid using dialog context
-    final chatBloc = context.read<ChatBloc>();
-    final callBloc = context.read<CallBloc>();
+  // void _showEndSessionDialog() {
+  //   // Capture blocs to avoid using dialog context
+  //   final chatBloc = context.read<ChatBloc>();
+  //   final callBloc = context.read<CallBloc>();
 
-    showDialog(
-      context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('End Session'),
-            content: const Text(
-              'Are you sure you want to end this session? You will be returned to the home screen.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    Navigator.of(dialogContext).pop();
+  //   showDialog(
+  //     context: context,
+  //     builder:
+  //         (dialogContext) => AlertDialog(
+  //           title: const Text('End Session'),
+  //           content: const Text(
+  //             'Are you sure you want to end this session? You will be returned to the home screen.',
+  //           ),
+  //           actions: [
+  //             TextButton(
+  //               onPressed: () => Navigator.of(dialogContext).pop(),
+  //               child: const Text('Cancel'),
+  //             ),
+  //             ElevatedButton(
+  //               onPressed: () async {
+  //                 try {
+  //                   Navigator.of(dialogContext).pop();
 
-                    // Send session ended message to notify the other party
-                    chatBloc.add(
-                      SendMessage(
-                        requestId: widget.requestId,
-                        content: '__SESSION_ENDED__',
-                        messageType: 'text',
-                      ),
-                    );
+  //                   // Send session ended message to notify the other party
+  //                   chatBloc.add(
+  //                     SendMessage(
+  //                       requestId: widget.requestId,
+  //                       content: '__SESSION_ENDED__',
+  //                       messageType: 'text',
+  //                     ),
+  //                   );
 
-                    if (callBloc.state is CallOngoing) {
-                      callBloc.add(EndCall());
-                      await Future.delayed(const Duration(milliseconds: 500));
-                    }
+  //                   if (callBloc.state is CallOngoing) {
+  //                     callBloc.add(EndCall());
+  //                     await Future.delayed(const Duration(milliseconds: 500));
+  //                   }
 
-                    await SessionService.endSession(
-                      requestId: widget.requestId,
-                    );
+  //                   await SessionService.endSession(
+  //                     requestId: widget.requestId,
+  //                   );
 
-                    // Use the root navigator to ensure we exit the chat flow completely
-                    if (mounted) {
-                      Navigator.of(
-                        context,
-                        rootNavigator: true,
-                      ).pushNamedAndRemoveUntil('/main', (route) => false);
-                    }
-                  } catch (e) {
-                    log('Error ending session: $e');
-                    if (mounted) {
-                      Navigator.of(
-                        context,
-                        rootNavigator: true,
-                      ).pushNamedAndRemoveUntil('/main', (route) => false);
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('End Session'),
-              ),
-            ],
-          ),
-    );
-  }
+  //                   // Use the root navigator to ensure we exit the chat flow completely
+  //                   if (mounted) {
+  //                     Navigator.of(
+  //                       context,
+  //                       rootNavigator: true,
+  //                     ).pushNamedAndRemoveUntil('/main', (route) => false);
+  //                   }
+  //                 } catch (e) {
+  //                   log('Error ending session: $e');
+  //                   if (mounted) {
+  //                     Navigator.of(
+  //                       context,
+  //                       rootNavigator: true,
+  //                     ).pushNamedAndRemoveUntil('/main', (route) => false);
+  //                   }
+  //                 }
+  //               },
+  //               style: ElevatedButton.styleFrom(
+  //                 backgroundColor: Colors.red,
+  //                 foregroundColor: Colors.white,
+  //               ),
+  //               child: const Text('End Session'),
+  //             ),
+  //           ],
+  //         ),
+  //   );
 
   void _showAttachmentMenu() {
     showModalBottomSheet(
