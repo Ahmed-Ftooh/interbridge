@@ -307,6 +307,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
   Widget build(BuildContext context) {
     final isVideoCall = widget.request.callType == 'video';
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isCompact = screenHeight < 700;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -322,49 +324,55 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
             ),
           ),
           child: Center(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: screenWidth > 800 ? 520 : screenWidth * 0.9,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                vertical: isCompact ? 24 : 40,
+                horizontal: 16,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Call type badge
-                  _buildCallTypeBadge(isVideoCall),
-                  const SizedBox(height: 32),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth > 800 ? 520 : screenWidth * 0.9,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Call type badge
+                    _buildCallTypeBadge(isVideoCall),
+                    SizedBox(height: isCompact ? 16 : 32),
 
-                  // "Incoming Call" title
-                  Text(
-                    'Incoming Interpretation Request',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 1.2,
+                    // "Incoming Call" title
+                    Text(
+                      'Incoming Interpretation Request',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: isCompact ? 14 : 16,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 1.2,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_elapsedSeconds}s',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      fontSize: 13,
-                      fontFamily: 'monospace',
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_elapsedSeconds}s',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 13,
+                        fontFamily: 'monospace',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 40),
+                    SizedBox(height: isCompact ? 20 : 40),
 
-                  // Animated avatar with ring waves
-                  _buildAnimatedAvatar(),
-                  const SizedBox(height: 48),
+                    // Animated avatar with ring waves
+                    _buildAnimatedAvatar(isCompact),
+                    SizedBox(height: isCompact ? 24 : 48),
 
-                  // Language info card
-                  _buildLanguageCard(),
-                  const SizedBox(height: 48),
+                    // Language info card
+                    _buildLanguageCard(isCompact),
+                    SizedBox(height: isCompact ? 28 : 48),
 
-                  // Action buttons
-                  _buildActionButtons(isVideoCall),
-                ],
+                    // Action buttons
+                    _buildActionButtons(isVideoCall, isCompact),
+                  ],
+                ),
               ),
             ),
           ),
@@ -414,10 +422,15 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     );
   }
 
-  Widget _buildAnimatedAvatar() {
+  Widget _buildAnimatedAvatar(bool isCompact) {
+    final double avatarSize = isCompact ? 90 : 120;
+    final double ringBase = isCompact ? 100 : 140;
+    final double ringExpand = isCompact ? 40 : 60;
+    final double containerSize = isCompact ? 150 : 200;
+
     return SizedBox(
-      width: 200,
-      height: 200,
+      width: containerSize,
+      height: containerSize,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -426,8 +439,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
             animation: _ring1Animation,
             builder: (context, child) {
               return Container(
-                width: 140 + (_ring1Animation.value * 60),
-                height: 140 + (_ring1Animation.value * 60),
+                width: ringBase + (_ring1Animation.value * ringExpand),
+                height: ringBase + (_ring1Animation.value * ringExpand),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
@@ -445,8 +458,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
             animation: _ring2Animation,
             builder: (context, child) {
               return Container(
-                width: 140 + (_ring2Animation.value * 60),
-                height: 140 + (_ring2Animation.value * 60),
+                width: ringBase + (_ring2Animation.value * ringExpand),
+                height: ringBase + (_ring2Animation.value * ringExpand),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
@@ -464,8 +477,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
             animation: _ring3Animation,
             builder: (context, child) {
               return Container(
-                width: 140 + (_ring3Animation.value * 60),
-                height: 140 + (_ring3Animation.value * 60),
+                width: ringBase + (_ring3Animation.value * ringExpand),
+                height: ringBase + (_ring3Animation.value * ringExpand),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
@@ -482,8 +495,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
           ScaleTransition(
             scale: _pulseAnimation,
             child: Container(
-              width: 120,
-              height: 120,
+              width: avatarSize,
+              height: avatarSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: const LinearGradient(
@@ -499,9 +512,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
                   ),
                 ],
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.medical_services_rounded,
-                size: 56,
+                size: isCompact ? 40 : 56,
                 color: Colors.white,
               ),
             ),
@@ -511,9 +524,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     );
   }
 
-  Widget _buildLanguageCard() {
+  Widget _buildLanguageCard(bool isCompact) {
     return Container(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(isCompact ? 18 : 28),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(24),
@@ -642,7 +655,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     );
   }
 
-  Widget _buildActionButtons(bool isVideoCall) {
+  Widget _buildActionButtons(bool isVideoCall, bool isCompact) {
+    final double buttonSize = isCompact ? 60 : 72;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -653,9 +667,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
           label: 'Decline',
           color: const Color(0xFFEF4444),
           isLoading: _isDeclining,
-          size: 72,
+          size: buttonSize,
         ),
-        const SizedBox(width: 60),
+        SizedBox(width: isCompact ? 40 : 60),
         // Accept button
         _buildActionButton(
           onTap: _isAccepting ? null : _acceptCall,
@@ -663,7 +677,7 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
           label: 'Accept',
           color: const Color(0xFF22C55E),
           isLoading: _isAccepting,
-          size: 72,
+          size: buttonSize,
         ),
       ],
     );
