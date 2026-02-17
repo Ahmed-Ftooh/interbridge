@@ -1,10 +1,15 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/incoming_call_service.dart';
-import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
+import 'package:interbridge/data/services/interpreter_job_service.dart';
+import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 
 /// Modern web-specific interpreter home view with dashboard layout
@@ -54,9 +59,59 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _safeAddToJobsBloc(LoadAvailableJobs());
-        _incomingCallService.startListening();
+        // Auto-set online on web and start listening for calls
+        _autoGoOnlineAndListen();
       }
     });
+  }
+
+  /// On web, automatically set interpreter online and start listening.
+  /// This ensures ringing works without manually toggling the switch.
+  Future<void> _autoGoOnlineAndListen() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Check current online status first
+      final data =
+          await Supabase.instance.client
+              .from('interpreter_details')
+              .select('is_online, is_verified, is_suspended')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      final isVerified = data?['is_verified'] ?? false;
+      final isSuspended = data?['is_suspended'] ?? false;
+      final isAlreadyOnline = data?['is_online'] ?? false;
+
+      // Only auto-enable for verified, non-suspended interpreters
+      if (!isVerified || isSuspended) {
+        log(
+          'Web: Not auto-enabling online (verified=$isVerified, suspended=$isSuspended)',
+        );
+        return;
+      }
+
+      // Set online in DB if not already
+      if (!isAlreadyOnline) {
+        await Supabase.instance.client
+            .from('interpreter_details')
+            .update({'is_online': true})
+            .eq('user_id', userId);
+        log('Web: Auto-set interpreter online');
+      }
+
+      if (mounted) {
+        setState(() => _isOnline = true);
+      }
+
+      // Now start listening — skip online check since we just wrote is_online=true
+      _incomingCallService.startListening(skipOnlineCheck: true);
+    } catch (e) {
+      log('Web: Error auto-enabling online: $e');
+      // Fallback: try listening anyway
+      _incomingCallService.startListening(skipOnlineCheck: true);
+    }
   }
 
   @override
@@ -893,24 +948,54 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) throw Exception('Not authenticated');
 
-      // Update request status
-      await Supabase.instance.client
-          .from('interpreter_requests')
-          .update({
-            'status': 'accepted',
-            'accepted_by': userId,
-            'accepted_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', job.id);
+      // Use InterpreterJobService for atomic accept (only if still pending)
+      final jobService = InterpreterJobService();
+      final acceptedRequest = await jobService.acceptJob(job.id);
 
-      // Navigate to call
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => EnhancedCallScreen(channelId: job.id),
-          ),
-        );
+      if (acceptedRequest == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This request was already accepted by another interpreter',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
       }
+
+      // Save session for recovery
+      await SessionService.saveSession(
+        requestId: job.id,
+        requesterId: job.requesterId,
+        interpreterId: userId,
+        currentScreen: 'call',
+      );
+
+      if (!mounted) return;
+
+      // Fire StartCall on CallBloc BEFORE navigating
+      final isVideoCall = job.callType == 'video';
+      final myUid = _uidFromUuid(userId);
+
+      context.read<CallBloc>().add(
+        StartCall(channelId: job.id, localUid: myUid, isVideoCall: isVideoCall),
+      );
+
+      log('Web: Accepted job ${job.id}, starting call (video: $isVideoCall)');
+
+      // Navigate to web call screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => EnhancedCallScreenWeb(
+                channelId: job.id,
+                isVideoCall: isVideoCall,
+              ),
+        ),
+      );
     } catch (e) {
       debugPrint('Error accepting job: $e');
       if (mounted) {

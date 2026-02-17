@@ -446,6 +446,18 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                       child: Image.network(
                         widget.userAvatar!,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Center(
+                            child: Text(
+                              (widget.userName ?? 'U')[0].toUpperCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     )
                     : Center(

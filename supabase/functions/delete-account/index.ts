@@ -26,8 +26,19 @@ const adminClient = createClient(SUPABASE_URL!, SERVICE_ROLE_KEY!, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 serve(async (req: Request): Promise<Response> => {
   try {
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
+    }
+
     if (req.method !== 'POST') {
       return json({ error: 'Method not allowed' }, 405);
     }
@@ -198,7 +209,7 @@ serve(async (req: Request): Promise<Response> => {
 function json(obj: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
 }
 

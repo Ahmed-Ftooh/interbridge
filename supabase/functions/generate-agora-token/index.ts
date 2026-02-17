@@ -4,15 +4,26 @@ import { RtcTokenBuilder, RtcRole } from 'npm:agora-access-token'
 const APP_ID = Deno.env.get('AGORA_APP_ID') || ''
 const APP_CERTIFICATE = Deno.env.get('AGORA_APP_CERTIFICATE') || ''
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   })
 }
 
 serve(async (req) => {
   try {
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders })
+    }
+
     // Only allow POST
     if (req.method !== 'POST') {
       return jsonResponse({ error: 'Method Not Allowed' }, 405)

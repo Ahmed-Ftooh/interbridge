@@ -328,46 +328,56 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       await _engine!.setAudioProfile(
         profile: AudioProfileType.audioProfileSpeechStandard,
       );
-      await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
-      await _engine!.setDefaultAudioRouteToSpeakerphone(
-        e.isVideoCall, // Use speaker for video calls
-      );
+
+      // setAudioScenario & setDefaultAudioRouteToSpeakerphone are NOT
+      // supported on web (Iris returns -4). Skip them on web.
+      if (!kIsWeb) {
+        await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
+        await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
+      }
 
       await _engine!.enableAudio();
-      await _engine!.enableLocalAudio(true); // Explicitly enable local audio
+      if (!kIsWeb) {
+        await _engine!.enableLocalAudio(true);
+      }
 
       // 4b) Enable video for video calls with optimized quality settings
       if (e.isVideoCall) {
         log('Enabling video for video call...');
         await _engine!.enableVideo();
 
-        // Set video encoder configuration for HIGHEST quality
-        // Using 1080p Full HD (1920x1080) at 30fps with high bitrate
-        await _engine!.setVideoEncoderConfiguration(
-          const VideoEncoderConfiguration(
-            dimensions: VideoDimensions(width: 1920, height: 1080),
-            frameRate: 30,
-            bitrate: 4000, // 4 Mbps for high quality 1080p
-            minBitrate: 1000, // Minimum 1 Mbps to maintain quality
-            orientationMode: OrientationMode.orientationModeAdaptive,
-            degradationPreference: DegradationPreference.maintainQuality,
-            mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
-          ),
-        );
+        // Video encoder config — some settings may not be supported on web
+        try {
+          await _engine!.setVideoEncoderConfiguration(
+            const VideoEncoderConfiguration(
+              dimensions: VideoDimensions(width: 1920, height: 1080),
+              frameRate: 30,
+              bitrate: 4000,
+              minBitrate: 1000,
+              orientationMode: OrientationMode.orientationModeAdaptive,
+              degradationPreference: DegradationPreference.maintainQuality,
+              mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
+            ),
+          );
+        } catch (videoConfigErr) {
+          log('Warning: Could not set video encoder config: $videoConfigErr');
+        }
 
         await _engine!.enableLocalVideo(true);
-        await _engine!.startPreview();
+        if (!kIsWeb) {
+          await _engine!.startPreview();
+        }
         _speakerOn = true; // Video calls default to speaker
       } else {
         _speakerOn = false; // Voice calls start on earpiece
       }
 
-      await _engine!.setClientRole(
-        role: ClientRoleType.clientRoleBroadcaster,
-      ); // Explicitly set role
+      await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
       await _engine!.muteLocalAudioStream(_muted);
       try {
-        await _engine!.setEnableSpeakerphone(_speakerOn);
+        if (!kIsWeb) {
+          await _engine!.setEnableSpeakerphone(_speakerOn);
+        }
       } catch (e) {
         log(
           'Warning: Could not set speakerphone, continuing with default audio route: $e',

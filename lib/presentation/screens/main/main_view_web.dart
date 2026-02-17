@@ -10,7 +10,7 @@ import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
-import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_dashboard_view.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
@@ -167,7 +167,7 @@ class _MainViewWebState extends State<MainViewWeb> {
       switch (currentScreen) {
         case 'call':
         case 'chat':
-          targetScreen = EnhancedCallScreen(channelId: requestId);
+          targetScreen = EnhancedCallScreenWeb(channelId: requestId);
           break;
         default:
           log('Unknown screen type: $currentScreen');

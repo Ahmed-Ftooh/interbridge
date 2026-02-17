@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:interbridge/app/app.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/presentation/screens/interpreter/incoming_call_screen.dart';
+import 'package:interbridge/presentation/screens/interpreter/incoming_call_web_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service to listen for incoming call requests and show ringing screen
@@ -21,8 +23,11 @@ class IncomingCallService {
   bool _isShowingIncomingCall = false;
   List<String>? _interpreterLanguageIds;
 
-  /// Start listening for incoming calls for the interpreter
-  Future<void> startListening() async {
+  /// Start listening for incoming calls for the interpreter.
+  /// Set [skipOnlineCheck] to true when the caller has already ensured
+  /// the interpreter is online (e.g. right after writing is_online=true to DB)
+  /// to avoid a race-condition stale read.
+  Future<void> startListening({bool skipOnlineCheck = false}) async {
     if (_isListening) return;
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -32,12 +37,16 @@ class IncomingCallService {
     }
 
     // Check if interpreter is online before starting to listen
-    final isOnline = await _checkIsOnline(userId);
-    if (!isOnline) {
-      log(
-        'IncomingCallService: Interpreter is offline, not listening for calls',
-      );
-      return;
+    if (!skipOnlineCheck) {
+      final isOnline = await _checkIsOnline(userId);
+      if (!isOnline) {
+        log(
+          'IncomingCallService: Interpreter is offline, not listening for calls',
+        );
+        return;
+      }
+    } else {
+      log('IncomingCallService: Skipping online check (caller verified)');
     }
 
     // Load interpreter's languages
@@ -194,17 +203,9 @@ class IncomingCallService {
         return;
       }
 
-      // Check if interpreter is online
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId != null) {
-        final isOnline = await _checkIsOnline(userId);
-        if (!isOnline) {
-          log(
-            'IncomingCallService: Interpreter is offline, skipping incoming call',
-          );
-          return;
-        }
-      }
+      // Note: We don't re-check online status here.
+      // If startListening() was called, the interpreter was verified online.
+      // Re-querying the DB can return stale data and block valid calls.
 
       // Check if this request matches interpreter's languages
       if (_interpreterLanguageIds == null ||
@@ -256,17 +257,29 @@ class IncomingCallService {
     }
 
     try {
-      // Navigate to incoming call screen
-      await navigator.push(
-        PageRouteBuilder(
-          opaque: false,
-          pageBuilder:
-              (_, __, ___) => IncomingCallScreen(
+      // Navigate to incoming call screen (web or mobile)
+      final Widget incomingScreen =
+          kIsWeb
+              ? IncomingCallWebScreen(
                 request: request,
                 fromLanguageName: fromLanguageName,
                 toLanguageName: toLanguageName,
-              ),
+              )
+              : IncomingCallScreen(
+                request: request,
+                fromLanguageName: fromLanguageName,
+                toLanguageName: toLanguageName,
+              );
+
+      await navigator.push(
+        PageRouteBuilder(
+          opaque: !kIsWeb, // Transparent overlay on web
+          pageBuilder: (_, __, ___) => incomingScreen,
           transitionsBuilder: (_, animation, __, child) {
+            if (kIsWeb) {
+              // Fade in on web
+              return FadeTransition(opacity: animation, child: child);
+            }
             return SlideTransition(
               position: Tween<Offset>(
                 begin: const Offset(0, 1),
