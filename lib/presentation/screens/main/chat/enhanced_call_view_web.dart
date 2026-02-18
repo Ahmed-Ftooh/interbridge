@@ -565,14 +565,14 @@ class _EnhancedCallScreenWebBodyState
               isWide
                   ? Row(
                     children: [
-                      // Video / Avatar area
+                      // Video / Avatar area — takes most of the space
                       Expanded(
-                        flex: 3,
+                        flex: 4,
                         child: _buildMainVideoArea(state, engine),
                       ),
-                      // Side panel
+                      // Side panel — compact info
                       Container(
-                        width: 320,
+                        width: 260,
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E293B),
                           border: Border(
@@ -698,19 +698,22 @@ class _EnhancedCallScreenWebBodyState
   }
 
   Widget _buildMainVideoArea(CallOngoing state, RtcEngine? engine) {
-    // Video call with remote video
+    // Video call with remote video — show remote full + local PiP
     if (state.isVideoCall &&
         state.videoEnabled &&
         engine != null &&
         state.remoteUids.isNotEmpty) {
       return Stack(
         children: [
-          // Remote video
+          // Remote video - full area
           Positioned.fill(
             child: AgoraVideoView(
               controller: VideoViewController.remote(
                 rtcEngine: engine,
-                canvas: VideoCanvas(uid: state.remoteUids.first),
+                canvas: VideoCanvas(
+                  uid: state.remoteUids.first,
+                  renderMode: RenderModeType.renderModeHidden,
+                ),
                 connection: RtcConnection(channelId: widget.channelId),
               ),
             ),
@@ -720,8 +723,8 @@ class _EnhancedCallScreenWebBodyState
             top: 16,
             right: 16,
             child: Container(
-              width: 200,
-              height: 150,
+              width: 240,
+              height: 180,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
@@ -739,7 +742,52 @@ class _EnhancedCallScreenWebBodyState
               child: AgoraVideoView(
                 controller: VideoViewController(
                   rtcEngine: engine,
-                  canvas: const VideoCanvas(uid: 0),
+                  canvas: const VideoCanvas(
+                    uid: 0,
+                    renderMode: RenderModeType.renderModeHidden,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Video call with local camera but no remote user yet — show local full screen
+    if (state.isVideoCall && state.videoEnabled && engine != null) {
+      return Stack(
+        children: [
+          // Local camera preview — full area
+          Positioned.fill(
+            child: AgoraVideoView(
+              controller: VideoViewController(
+                rtcEngine: engine,
+                canvas: const VideoCanvas(
+                  uid: 0,
+                  renderMode: RenderModeType.renderModeHidden,
+                ),
+              ),
+            ),
+          ),
+          // "Waiting" overlay
+          Positioned(
+            bottom: 24,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Waiting for participant to join...',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ),
             ),

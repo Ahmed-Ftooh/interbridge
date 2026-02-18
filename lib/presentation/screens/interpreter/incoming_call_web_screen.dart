@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:developer';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
@@ -30,7 +31,7 @@ class IncomingCallWebScreen extends StatefulWidget {
 
 class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     with TickerProviderStateMixin {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  html.AudioElement? _audioElement;
   late AnimationController _pulseController;
   late AnimationController _ringController;
   late AnimationController _fadeController;
@@ -114,19 +115,14 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     });
   }
 
-  Future<void> _playRingtone() async {
+  void _playRingtone() {
     try {
-      await _audioPlayer.setSourceAsset('audio/Call_Ring.mp3');
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.resume();
-      log('Web: Ringtone started playing');
+      _audioElement = html.AudioElement('assets/audio/Call_Ring.mp3');
+      _audioElement!.loop = true;
+      _audioElement!.play();
+      log('Web: Ringtone started playing via HTML Audio');
     } catch (e) {
       log('Web: Error playing ringtone: $e');
-      try {
-        await _audioPlayer.play(AssetSource('audio/Call_Ring.mp3'));
-      } catch (e2) {
-        log('Web: Error playing ringtone (fallback): $e2');
-      }
     }
   }
 
@@ -134,8 +130,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     if (_isRingtoneStopped) return;
     _isRingtoneStopped = true;
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.dispose();
+      _audioElement?.pause();
+      _audioElement?.remove();
+      _audioElement = null;
     } catch (e) {
       log('Web: Error stopping ringtone: $e');
     }

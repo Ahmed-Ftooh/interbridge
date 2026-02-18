@@ -364,8 +364,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         }
 
         await _engine!.enableLocalVideo(true);
-        if (!kIsWeb) {
+        try {
           await _engine!.startPreview();
+        } catch (previewErr) {
+          log('Warning: startPreview failed (may still render via AgoraVideoView): $previewErr');
         }
         _speakerOn = true; // Video calls default to speaker
       } else {
@@ -406,8 +408,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             token: token,
             channelId: e.channelId,
             uid: e.localUid,
-            options: const ChannelMediaOptions(
+            options: ChannelMediaOptions(
               clientRoleType: ClientRoleType.clientRoleBroadcaster,
+              publishCameraTrack: e.isVideoCall,
+              publishMicrophoneTrack: true,
+              autoSubscribeVideo: e.isVideoCall,
+              autoSubscribeAudio: true,
             ),
           )
           .timeout(
@@ -540,10 +546,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _videoEnabled = !_videoEnabled;
     try {
       await _engine?.muteLocalVideoStream(!_videoEnabled);
-      if (_videoEnabled) {
-        await _engine?.startPreview();
-      } else {
-        await _engine?.stopPreview();
+      try {
+        if (_videoEnabled) {
+          await _engine?.startPreview();
+        } else {
+          await _engine?.stopPreview();
+        }
+      } catch (previewErr) {
+        log('Warning: preview toggle not supported on this platform: $previewErr');
       }
     } catch (err) {
       log('Warning: Could not toggle video: $err');
