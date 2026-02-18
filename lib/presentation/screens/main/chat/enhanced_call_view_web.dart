@@ -700,21 +700,27 @@ class _EnhancedCallScreenWebBodyState
         state.videoEnabled &&
         engine != null &&
         state.remoteUids.isNotEmpty) {
-      return Stack(
-        children: [
-          // Remote video - full area
-          Positioned.fill(
-            child: AgoraVideoView(
-              controller: VideoViewController.remote(
-                rtcEngine: engine,
-                canvas: VideoCanvas(
-                  uid: state.remoteUids.first,
-                  renderMode: RenderModeType.renderModeHidden,
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Remote video - full area
+            // Use renderModeFit so portrait phone video shows fully without cropping the face
+            Positioned.fill(
+              child: SizedBox.expand(
+                child: AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: engine,
+                    canvas: VideoCanvas(
+                      uid: state.remoteUids.first,
+                      renderMode: RenderModeType.renderModeFit,
+                    ),
+                    connection: RtcConnection(channelId: widget.channelId),
+                  ),
                 ),
-                connection: RtcConnection(channelId: widget.channelId),
               ),
             ),
-          ),
           // Local video PiP
           Positioned(
             top: 16,
@@ -783,25 +789,31 @@ class _EnhancedCallScreenWebBodyState
             ),
           ),
         ],
+        ),
       );
     }
 
     // Video call with local camera but no remote user yet — show local full screen
     if (state.isVideoCall && state.videoEnabled && engine != null) {
-      return Stack(
-        children: [
-          // Local camera preview — full area
-          Positioned.fill(
-            child: AgoraVideoView(
-              controller: VideoViewController(
-                rtcEngine: engine,
-                canvas: const VideoCanvas(
-                  uid: 0,
-                  renderMode: RenderModeType.renderModeHidden,
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Local camera preview — full area
+            Positioned.fill(
+              child: SizedBox.expand(
+                child: AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: engine,
+                    canvas: const VideoCanvas(
+                      uid: 0,
+                      renderMode: RenderModeType.renderModeHidden,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
           // "Waiting" overlay
           Positioned(
             bottom: 24,
@@ -825,6 +837,7 @@ class _EnhancedCallScreenWebBodyState
             ),
           ),
         ],
+        ),
       );
     }
 
