@@ -367,7 +367,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         try {
           await _engine!.startPreview();
         } catch (previewErr) {
-          log('Warning: startPreview failed (may still render via AgoraVideoView): $previewErr');
+          log(
+            'Warning: startPreview failed (may still render via AgoraVideoView): $previewErr',
+          );
         }
         _speakerOn = true; // Video calls default to speaker
       } else {
@@ -553,7 +555,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           await _engine?.stopPreview();
         }
       } catch (previewErr) {
-        log('Warning: preview toggle not supported on this platform: $previewErr');
+        log(
+          'Warning: preview toggle not supported on this platform: $previewErr',
+        );
       }
     } catch (err) {
       log('Warning: Could not toggle video: $err');

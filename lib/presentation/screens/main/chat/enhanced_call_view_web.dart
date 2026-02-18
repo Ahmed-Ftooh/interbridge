@@ -553,24 +553,25 @@ class _EnhancedCallScreenWebBodyState
     final engine = context.read<CallBloc>().engine;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth > 900;
+    final showSidePanel = isWide && !state.isVideoCall;
 
     return Column(
       children: [
-        // Top bar
+        // Top bar — compact for video calls
         _buildTopBar(state),
 
         // Main content
         Expanded(
           child:
-              isWide
+              showSidePanel
                   ? Row(
                     children: [
-                      // Video / Avatar area — takes most of the space
+                      // Voice call area
                       Expanded(
                         flex: 4,
                         child: _buildMainVideoArea(state, engine),
                       ),
-                      // Side panel — compact info
+                      // Side panel — only for voice calls on wide screens
                       Container(
                         width: 260,
                         decoration: BoxDecoration(
@@ -585,11 +586,7 @@ class _EnhancedCallScreenWebBodyState
                       ),
                     ],
                   )
-                  : Column(
-                    children: [
-                      Expanded(child: _buildMainVideoArea(state, engine)),
-                    ],
-                  ),
+                  : _buildMainVideoArea(state, engine),
         ),
 
         // Bottom controls
@@ -747,6 +744,41 @@ class _EnhancedCallScreenWebBodyState
                     renderMode: RenderModeType.renderModeHidden,
                   ),
                 ),
+              ),
+            ),
+          ),
+          // Duration overlay
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF22C55E),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDuration(state.elapsed),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
