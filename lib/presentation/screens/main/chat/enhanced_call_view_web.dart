@@ -561,9 +561,7 @@ class _EnhancedCallScreenWebBodyState
         fit: StackFit.expand,
         children: [
           // Video fills entire area edge-to-edge
-          Positioned.fill(
-            child: _buildMainVideoArea(state, engine),
-          ),
+          Positioned.fill(child: _buildMainVideoArea(state, engine)),
           // Top bar overlay — semi-transparent
           Positioned(
             top: 0,

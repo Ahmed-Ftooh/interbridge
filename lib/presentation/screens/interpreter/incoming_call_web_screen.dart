@@ -653,89 +653,107 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
   }
 
   Widget _buildActionButtons(bool isVideoCall, bool isCompact) {
-    final double buttonSize = isCompact ? 60 : 72;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        // Decline button
-        _buildActionButton(
+        // Accept button — large and prominent
+        _buildLargeActionButton(
+          onTap: _isAccepting ? null : _acceptCall,
+          icon: isVideoCall ? Icons.videocam_rounded : Icons.call_rounded,
+          label: isVideoCall ? 'Accept Video Call' : 'Accept Call',
+          color: const Color(0xFF22C55E),
+          isLoading: _isAccepting,
+          isCompact: isCompact,
+        ),
+        const SizedBox(height: 16),
+        // Decline button — secondary style
+        _buildLargeActionButton(
           onTap: _isDeclining ? null : _declineCall,
           icon: Icons.call_end_rounded,
           label: 'Decline',
           color: const Color(0xFFEF4444),
           isLoading: _isDeclining,
-          size: buttonSize,
-        ),
-        SizedBox(width: isCompact ? 40 : 60),
-        // Accept button
-        _buildActionButton(
-          onTap: _isAccepting ? null : _acceptCall,
-          icon: isVideoCall ? Icons.videocam_rounded : Icons.call_rounded,
-          label: 'Accept',
-          color: const Color(0xFF22C55E),
-          isLoading: _isAccepting,
-          size: buttonSize,
+          isCompact: isCompact,
+          isSecondary: true,
         ),
       ],
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildLargeActionButton({
     required VoidCallback? onTap,
     required IconData icon,
     required String label,
     required Color color,
     required bool isLoading,
-    required double size,
+    required bool isCompact,
+    bool isSecondary = false,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        MouseRegion(
-          cursor:
-              onTap != null
-                  ? SystemMouseCursors.click
-                  : SystemMouseCursors.basic,
-          child: GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.4),
-                    blurRadius: 24,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child:
-                  isLoading
-                      ? const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
+    return MouseRegion(
+      cursor:
+          onTap != null
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(
+            vertical: isCompact ? 16 : 20,
+          ),
+          decoration: BoxDecoration(
+            color: isSecondary ? color.withValues(alpha: 0.15) : color,
+            borderRadius: BorderRadius.circular(20),
+            border:
+                isSecondary
+                    ? Border.all(color: color.withValues(alpha: 0.5), width: 1.5)
+                    : null,
+            boxShadow:
+                isSecondary
+                    ? null
+                    : [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.4),
+                        blurRadius: 24,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+          ),
+          child:
+              isLoading
+                  ? Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: isSecondary ? color : Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                  )
+                  : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        icon,
+                        color: isSecondary ? color : Colors.white,
+                        size: isCompact ? 24 : 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: isSecondary ? color : Colors.white,
+                          fontSize: isCompact ? 16 : 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
                         ),
-                      )
-                      : Icon(icon, color: Colors.white, size: 32),
-            ),
-          ),
+                      ),
+                    ],
+                  ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
