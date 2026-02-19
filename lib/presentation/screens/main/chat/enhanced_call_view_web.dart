@@ -555,23 +555,46 @@ class _EnhancedCallScreenWebBodyState
     final isWide = screenWidth > 900;
     final showSidePanel = isWide && !state.isVideoCall;
 
+    // For video calls: video fills 100% of screen, controls overlaid on top
+    if (state.isVideoCall && state.videoEnabled) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Video fills entire area edge-to-edge
+          Positioned.fill(
+            child: _buildMainVideoArea(state, engine),
+          ),
+          // Top bar overlay — semi-transparent
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _buildTopBarOverlay(state),
+          ),
+          // Bottom controls overlay — semi-transparent
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomControlsOverlay(state, isWide),
+          ),
+        ],
+      );
+    }
+
+    // Voice calls / video off: traditional column layout
     return Column(
       children: [
-        // Top bar — compact for video calls
         _buildTopBar(state),
-
-        // Main content
         Expanded(
           child:
               showSidePanel
                   ? Row(
                     children: [
-                      // Voice call area
                       Expanded(
                         flex: 4,
                         child: _buildMainVideoArea(state, engine),
                       ),
-                      // Side panel — only for voice calls on wide screens
                       Container(
                         width: 260,
                         decoration: BoxDecoration(
@@ -588,8 +611,6 @@ class _EnhancedCallScreenWebBodyState
                   )
                   : _buildMainVideoArea(state, engine),
         ),
-
-        // Bottom controls
         _buildBottomControls(state, isWide),
       ],
     );
@@ -694,73 +715,36 @@ class _EnhancedCallScreenWebBodyState
     );
   }
 
-  Widget _buildMainVideoArea(CallOngoing state, RtcEngine? engine) {
-    // Video call with remote video — show remote full + local PiP
-    if (state.isVideoCall &&
-        state.videoEnabled &&
-        engine != null &&
-        state.remoteUids.isNotEmpty) {
-      return Container(
-        color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
+  /// Semi-transparent top bar overlaid on video — gradient fades into video
+  Widget _buildTopBarOverlay(CallOngoing state) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.7),
+            Colors.black.withValues(alpha: 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.7, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
           children: [
-            // Remote video - full area
-            // Use renderModeFit so portrait phone video shows fully without cropping the face
-            Positioned.fill(
-              child: SizedBox.expand(
-                child: AgoraVideoView(
-                  controller: VideoViewController.remote(
-                    rtcEngine: engine,
-                    canvas: VideoCanvas(
-                      uid: state.remoteUids.first,
-                      renderMode: RenderModeType.renderModeFit,
-                    ),
-                    connection: RtcConnection(channelId: widget.channelId),
-                  ),
-                ),
-              ),
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              onPressed: () => Navigator.of(context).maybePop(),
+              tooltip: 'Minimize',
             ),
-          // Local video PiP
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Container(
-              width: 240,
-              height: 180,
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: AgoraVideoView(
-                controller: VideoViewController(
-                  rtcEngine: engine,
-                  canvas: const VideoCanvas(
-                    uid: 0,
-                    renderMode: RenderModeType.renderModeHidden,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Duration overlay
-          Positioned(
-            top: 16,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -775,20 +759,188 @@ class _EnhancedCallScreenWebBodyState
                     ),
                   ),
                   const SizedBox(width: 8),
+                  const Text(
+                    'Video Call',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.timer_outlined,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
                   Text(
                     _formatDuration(state.elapsed),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
                     ),
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Semi-transparent bottom controls overlaid on video
+  Widget _buildBottomControlsOverlay(CallOngoing state, bool isWide) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 48 : 24, vertical: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.7),
+            Colors.black.withValues(alpha: 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.7, 1.0],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildControlButton(
+            icon: state.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            label: state.muted ? 'Unmute' : 'Mute',
+            isActive: state.muted,
+            activeColor: const Color(0xFFEF4444),
+            onTap: () => context.read<CallBloc>().add(ToggleMute()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon:
+                state.videoEnabled
+                    ? Icons.videocam_rounded
+                    : Icons.videocam_off_rounded,
+            label: state.videoEnabled ? 'Camera' : 'Camera Off',
+            isActive: !state.videoEnabled,
+            activeColor: const Color(0xFFEF4444),
+            onTap: () => context.read<CallBloc>().add(ToggleVideo()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon: Icons.call_end_rounded,
+            label: 'End Call',
+            isActive: true,
+            activeColor: const Color(0xFFEF4444),
+            isEndCall: true,
+            onTap: () => context.read<CallBloc>().add(EndCall()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon:
+                _patientCallSid != null
+                    ? Icons.phone_disabled_rounded
+                    : Icons.add_call,
+            label: _patientCallSid != null ? 'End Party' : 'Add Party',
+            isActive: _patientCallSid != null,
+            activeColor: const Color(0xFFF59E0B),
+            onTap:
+                _isPatientCallLoading
+                    ? () {}
+                    : (_patientCallSid != null
+                        ? _endPatientCall
+                        : _showCallPatientDialog),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon: Icons.cameraswitch_rounded,
+            label: 'Flip',
+            isActive: false,
+            activeColor: Colors.white,
+            onTap:
+                state.videoEnabled
+                    ? () => context.read<CallBloc>().add(SwitchCamera())
+                    : () {},
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMainVideoArea(CallOngoing state, RtcEngine? engine) {
+    // Video call with remote video — show remote full + local PiP
+    if (state.isVideoCall &&
+        state.videoEnabled &&
+        engine != null &&
+        state.remoteUids.isNotEmpty) {
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Remote video - full area, fills entire screen
+            Positioned.fill(
+              child: SizedBox.expand(
+                child: AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: engine,
+                    canvas: VideoCanvas(
+                      uid: state.remoteUids.first,
+                      renderMode: RenderModeType.renderModeHidden,
+                    ),
+                    connection: RtcConnection(channelId: widget.channelId),
+                  ),
+                ),
+              ),
+            ),
+            // Local video PiP — offset down to avoid top bar overlay
+            Positioned(
+              top: 70,
+              right: 16,
+              child: Container(
+                width: 240,
+                height: 180,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: engine,
+                    canvas: const VideoCanvas(
+                      uid: 0,
+                      renderMode: RenderModeType.renderModeHidden,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -814,29 +966,29 @@ class _EnhancedCallScreenWebBodyState
                 ),
               ),
             ),
-          // "Waiting" overlay
-          Positioned(
-            bottom: 24,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Waiting for participant to join...',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+            // "Waiting" overlay
+            Positioned(
+              bottom: 24,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Waiting for participant to join...',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
         ),
       );
     }
