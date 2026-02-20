@@ -173,7 +173,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     // Web: get certificate bytes if available
     certificateBytes = widget.data['certificateBytes'] as Uint8List?;
     certificateName = widget.data['certificateName'] as String?;
-    medicalCertificateBytes = widget.data['medicalCertificateBytes'] as Uint8List?;
+    medicalCertificateBytes =
+        widget.data['medicalCertificateBytes'] as Uint8List?;
     medicalCertificateName = widget.data['medicalCertificateName'] as String?;
     bio = widget.data['bio'] as String?;
     yearsExperience =
@@ -729,8 +730,10 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                         medicalCertificatePath,
                                     certificateBytes: certificateBytes,
                                     certificateName: certificateName,
-                                    medicalCertificateBytes: medicalCertificateBytes,
-                                    medicalCertificateName: medicalCertificateName,
+                                    medicalCertificateBytes:
+                                        medicalCertificateBytes,
+                                    medicalCertificateName:
+                                        medicalCertificateName,
                                     bio: bio,
                                     yearsExperience: yearsExperience,
                                     preferredShift: preferredShift,

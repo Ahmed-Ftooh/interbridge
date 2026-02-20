@@ -30,7 +30,10 @@ Deno.serve(async (req) => {
     const userRes = await supabase.auth.getUser();
     if (!userRes.data.user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json", ...cors } });
 
-    const { error } = await supabase.from("quiz_attempts").insert({ ...attempt, user_id: userRes.data.user.id });
+    const { error } = await supabase.from("quiz_attempts").upsert(
+      { ...attempt, user_id: userRes.data.user.id, taken_at: new Date().toISOString() },
+      { onConflict: "user_id,quiz_type,medical_section" }
+    );
     if (error) throw error;
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json", ...cors } });

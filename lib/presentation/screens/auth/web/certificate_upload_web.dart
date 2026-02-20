@@ -66,7 +66,8 @@ class _CertificateUploadWebScreenState
         args['certificateName'] = _trainingCertificate!.name;
       }
     } else {
-      args['certificatePath'] = _trainingCertificate!.path ?? _trainingCertificate!.name;
+      args['certificatePath'] =
+          _trainingCertificate!.path ?? _trainingCertificate!.name;
     }
 
     if (isPaid) {

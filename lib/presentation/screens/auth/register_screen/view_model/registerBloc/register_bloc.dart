@@ -213,8 +213,9 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         if (event.certificateName != null)
           'certificateName': event.certificateName,
         if (event.medicalCertificateBytes != null)
-          'medicalCertificateBytesBase64':
-              base64Encode(event.medicalCertificateBytes!),
+          'medicalCertificateBytesBase64': base64Encode(
+            event.medicalCertificateBytes!,
+          ),
         if (event.medicalCertificateName != null)
           'medicalCertificateName': event.medicalCertificateName,
         'bio': event.bio,

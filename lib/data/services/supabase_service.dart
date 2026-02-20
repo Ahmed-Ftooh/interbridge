@@ -940,8 +940,9 @@ class SupabaseService {
       medicalCertBytes = data['medicalCertificateBytes'] as Uint8List;
     } else if (data['medicalCertificateBytesBase64'] is String) {
       try {
-        medicalCertBytes =
-            base64Decode(data['medicalCertificateBytesBase64'] as String);
+        medicalCertBytes = base64Decode(
+          data['medicalCertificateBytesBase64'] as String,
+        );
       } catch (e) {
         log('Error decoding medical certificate base64: $e');
       }
@@ -956,7 +957,9 @@ class SupabaseService {
             certificateType: 'medical',
           );
           log('Medical certificate uploaded from bytes: $medicalCertUrl');
-        } else if (!kIsWeb && medicalCertPath != null && medicalCertPath.isNotEmpty) {
+        } else if (!kIsWeb &&
+            medicalCertPath != null &&
+            medicalCertPath.isNotEmpty) {
           // Mobile path: use file
           final file = File(medicalCertPath);
           if (await file.exists()) {
@@ -1323,10 +1326,7 @@ class SupabaseService {
       }
 
       final dateStr = DateTime.now().toIso8601String().split('T')[0];
-      final safeName = fileName.replaceAll(
-        RegExp(r'[^a-zA-Z0-9_\-.]'),
-        '_',
-      );
+      final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9_\-.]'), '_');
 
       final certType = certificateType ?? 'medical_interpreter';
       final objectPath =
@@ -1364,7 +1364,9 @@ class SupabaseService {
 
       return signedUrl;
     } catch (e) {
-      throw Exception('Failed to upload interpreter certificate from bytes: $e');
+      throw Exception(
+        'Failed to upload interpreter certificate from bytes: $e',
+      );
     }
   }
 
@@ -1442,46 +1444,15 @@ class SupabaseService {
   Future<void> submitQuizAttempt(Map<String, dynamic> attempt) async {
     log('submitQuizAttempt called with: $attempt');
     try {
-      // Use upsert to update existing attempt if one exists
-      // This allows retaking quizzes while preventing true duplicates
-      final userId = attempt['user_id'];
-      final quizType = attempt['quiz_type'];
-      final medicalSection = attempt['medical_section'];
+      // Ensure taken_at is set
+      attempt['taken_at'] = DateTime.now().toUtc().toIso8601String();
 
-      // Check if an attempt already exists
-      var query = _client
+      // Use upsert with onConflict to handle retakes atomically
+      // The unique constraint quiz_attempts_user_quiz_section_unique
+      // is on (user_id, quiz_type, medical_section)
+      await _client
           .from('quiz_attempts')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('quiz_type', quizType);
-
-      if (medicalSection != null) {
-        query = query.eq('medical_section', medicalSection);
-      } else {
-        query = query.isFilter('medical_section', null);
-      }
-
-      final existing = await query.maybeSingle();
-
-      if (existing != null) {
-        // Update existing attempt with new results
-        log('Updating existing quiz attempt: ${existing['id']}');
-        await _client
-            .from('quiz_attempts')
-            .update({
-              'total_questions': attempt['total_questions'],
-              'correct_answers': attempt['correct_answers'],
-              'score_percentage': attempt['score_percentage'],
-              'time_taken_seconds': attempt['time_taken_seconds'],
-              'passed': attempt['passed'],
-              'taken_at': attempt['taken_at'],
-            })
-            .eq('id', existing['id']);
-      } else {
-        // Insert new attempt
-        log('Inserting new quiz attempt');
-        await _client.from('quiz_attempts').insert(attempt);
-      }
+          .upsert(attempt, onConflict: 'user_id,quiz_type,medical_section');
 
       log('Quiz attempt submitted successfully');
     } catch (e, stackTrace) {
