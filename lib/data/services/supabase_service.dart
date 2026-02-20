@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'dart:developer';
-import 'dart:typed_data';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_initializer.dart';
 import 'package:interbridge/core/deeplink_config.dart';
@@ -868,14 +869,20 @@ class SupabaseService {
         voicePath != null &&
         voicePath.isNotEmpty) {
       try {
-        final file = File(voicePath);
-        if (await file.exists()) {
-          voiceUrl = await uploadVoiceSampleFromPath(
-            voicePath,
-            prompt: data['voicePrompt'] as String?,
-            sentenceType: 'onboarding',
-          );
-          log('Voice sample uploaded: $voiceUrl');
+        if (kIsWeb) {
+          // On web, voicePath is a blob URL — we cannot use File().
+          // Voice sample upload from blob URL is not supported yet on web.
+          log('Web: Skipping voice sample upload (blob URL not supported)');
+        } else {
+          final file = File(voicePath);
+          if (await file.exists()) {
+            voiceUrl = await uploadVoiceSampleFromPath(
+              voicePath,
+              prompt: data['voicePrompt'] as String?,
+              sentenceType: 'onboarding',
+            );
+            log('Voice sample uploaded: $voiceUrl');
+          }
         }
       } catch (e) {
         log('Error uploading voice sample: $e');
@@ -885,17 +892,38 @@ class SupabaseService {
     // --- Upload training certificate ---
     String? certUrl = data['certificateUrl'] as String?;
     final certPath = data['certificatePath'] as String?;
-    if ((certUrl == null || certUrl.isEmpty) &&
-        certPath != null &&
-        certPath.isNotEmpty) {
+    final String? certName = data['certificateName'] as String?;
+    // Bytes can be Uint8List (in-memory) or base64 string (from JSON)
+    Uint8List? certBytes;
+    if (data['certificateBytes'] is Uint8List) {
+      certBytes = data['certificateBytes'] as Uint8List;
+    } else if (data['certificateBytesBase64'] is String) {
       try {
-        final file = File(certPath);
-        if (await file.exists()) {
-          certUrl = await uploadInterpreterCertificate(
-            file,
+        certBytes = base64Decode(data['certificateBytesBase64'] as String);
+      } catch (e) {
+        log('Error decoding certificate base64: $e');
+      }
+    }
+    if (certUrl == null || certUrl.isEmpty) {
+      try {
+        if (certBytes != null && certBytes.isNotEmpty) {
+          // Web path: use bytes directly
+          certUrl = await uploadInterpreterCertificateFromBytes(
+            certBytes,
+            fileName: certName ?? 'training_certificate',
             certificateType: 'training',
           );
-          log('Training certificate uploaded: $certUrl');
+          log('Training certificate uploaded from bytes: $certUrl');
+        } else if (!kIsWeb && certPath != null && certPath.isNotEmpty) {
+          // Mobile path: use file
+          final file = File(certPath);
+          if (await file.exists()) {
+            certUrl = await uploadInterpreterCertificate(
+              file,
+              certificateType: 'training',
+            );
+            log('Training certificate uploaded: $certUrl');
+          }
         }
       } catch (e) {
         log('Error uploading training certificate: $e');
@@ -905,17 +933,39 @@ class SupabaseService {
     // --- Upload medical certificate (paid interpreters) ---
     String? medicalCertUrl = data['medicalCertificateUrl'] as String?;
     final medicalCertPath = data['medicalCertificatePath'] as String?;
-    if ((medicalCertUrl == null || medicalCertUrl.isEmpty) &&
-        medicalCertPath != null &&
-        medicalCertPath.isNotEmpty) {
+    final String? medicalCertName = data['medicalCertificateName'] as String?;
+    // Bytes can be Uint8List (in-memory) or base64 string (from JSON)
+    Uint8List? medicalCertBytes;
+    if (data['medicalCertificateBytes'] is Uint8List) {
+      medicalCertBytes = data['medicalCertificateBytes'] as Uint8List;
+    } else if (data['medicalCertificateBytesBase64'] is String) {
       try {
-        final file = File(medicalCertPath);
-        if (await file.exists()) {
-          medicalCertUrl = await uploadInterpreterCertificate(
-            file,
+        medicalCertBytes =
+            base64Decode(data['medicalCertificateBytesBase64'] as String);
+      } catch (e) {
+        log('Error decoding medical certificate base64: $e');
+      }
+    }
+    if (medicalCertUrl == null || medicalCertUrl.isEmpty) {
+      try {
+        if (medicalCertBytes != null && medicalCertBytes.isNotEmpty) {
+          // Web path: use bytes directly
+          medicalCertUrl = await uploadInterpreterCertificateFromBytes(
+            medicalCertBytes,
+            fileName: medicalCertName ?? 'medical_certificate',
             certificateType: 'medical',
           );
-          log('Medical certificate uploaded: $medicalCertUrl');
+          log('Medical certificate uploaded from bytes: $medicalCertUrl');
+        } else if (!kIsWeb && medicalCertPath != null && medicalCertPath.isNotEmpty) {
+          // Mobile path: use file
+          final file = File(medicalCertPath);
+          if (await file.exists()) {
+            medicalCertUrl = await uploadInterpreterCertificate(
+              file,
+              certificateType: 'medical',
+            );
+            log('Medical certificate uploaded: $medicalCertUrl');
+          }
         }
       } catch (e) {
         log('Error uploading medical certificate: $e');
@@ -1238,6 +1288,83 @@ class SupabaseService {
       return signedUrl;
     } catch (e) {
       throw Exception('Failed to upload interpreter certificate: $e');
+    }
+  }
+
+  /// Upload an interpreter certificate from bytes (web-compatible) to a PRIVATE bucket
+  Future<String> uploadInterpreterCertificateFromBytes(
+    Uint8List bytes, {
+    required String fileName,
+    String? certificateType,
+    String? issuingOrganization,
+    DateTime? expirationDate,
+  }) async {
+    try {
+      final user = getCurrentUser();
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      if (bytes.isEmpty) {
+        throw Exception('Certificate file is empty');
+      }
+
+      // Validate file size (max 25MB for certificates)
+      if (bytes.length > 25 * 1024 * 1024) {
+        throw Exception('Certificate file is too large (max 25MB)');
+      }
+
+      // Validate file extension
+      final extension = fileName.split('.').last.toLowerCase();
+      if (!['pdf', 'jpg', 'jpeg', 'png'].contains(extension)) {
+        throw Exception(
+          'Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.',
+        );
+      }
+
+      final dateStr = DateTime.now().toIso8601String().split('T')[0];
+      final safeName = fileName.replaceAll(
+        RegExp(r'[^a-zA-Z0-9_\-.]'),
+        '_',
+      );
+
+      final certType = certificateType ?? 'medical_interpreter';
+      final objectPath =
+          'certificates/${user.id}/${dateStr}_${certType}_$safeName';
+
+      const bucket = 'interpreter_certificates';
+      await _client.storage
+          .from(bucket)
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: _getContentType(extension),
+            ),
+          );
+
+      // Generate a signed URL (valid for 7 days)
+      final signedUrl = await _client.storage
+          .from(bucket)
+          .createSignedUrl(objectPath, 60 * 60 * 24 * 7);
+
+      // Store certificate metadata in database
+      await _storeCertificateMetadata(
+        userId: user.id,
+        url: signedUrl,
+        storagePath: objectPath,
+        certificateType: certType,
+        issuingOrganization: issuingOrganization,
+        expirationDate: expirationDate,
+        fileSize: bytes.length,
+        fileName: fileName,
+        timestamp: DateTime.now(),
+      );
+
+      return signedUrl;
+    } catch (e) {
+      throw Exception('Failed to upload interpreter certificate from bytes: $e');
     }
   }
 

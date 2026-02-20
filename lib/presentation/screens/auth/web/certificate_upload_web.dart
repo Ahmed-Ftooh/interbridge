@@ -58,19 +58,27 @@ class _CertificateUploadWebScreenState
     if (isPaid && _medicalCertificate == null) return;
 
     // On web, store the file name/path; bytes are available via PlatformFile.bytes
-    args['certificatePath'] =
-        _trainingCertificate!.path ?? _trainingCertificate!.name;
-    if (kIsWeb && _trainingCertificate!.bytes != null) {
-      args['certificateBytes'] = _trainingCertificate!.bytes;
-      args['certificateName'] = _trainingCertificate!.name;
+    // On web, .path throws an exception, so use .name directly
+    if (kIsWeb) {
+      args['certificatePath'] = _trainingCertificate!.name;
+      if (_trainingCertificate!.bytes != null) {
+        args['certificateBytes'] = _trainingCertificate!.bytes;
+        args['certificateName'] = _trainingCertificate!.name;
+      }
+    } else {
+      args['certificatePath'] = _trainingCertificate!.path ?? _trainingCertificate!.name;
     }
 
     if (isPaid) {
-      args['medicalCertificatePath'] =
-          _medicalCertificate!.path ?? _medicalCertificate!.name;
-      if (kIsWeb && _medicalCertificate!.bytes != null) {
-        args['medicalCertificateBytes'] = _medicalCertificate!.bytes;
-        args['medicalCertificateName'] = _medicalCertificate!.name;
+      if (kIsWeb) {
+        args['medicalCertificatePath'] = _medicalCertificate!.name;
+        if (_medicalCertificate!.bytes != null) {
+          args['medicalCertificateBytes'] = _medicalCertificate!.bytes;
+          args['medicalCertificateName'] = _medicalCertificate!.name;
+        }
+      } else {
+        args['medicalCertificatePath'] =
+            _medicalCertificate!.path ?? _medicalCertificate!.name;
       }
     }
 

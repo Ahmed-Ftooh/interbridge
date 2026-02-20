@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -66,6 +67,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? voiceSamplePath;
   late String? certificatePath;
   late String? medicalCertificatePath;
+  // Web: raw bytes for certificate upload
+  Uint8List? certificateBytes;
+  String? certificateName;
+  Uint8List? medicalCertificateBytes;
+  String? medicalCertificateName;
   late String? bio;
   late int? yearsExperience;
   late String? preferredShift;
@@ -164,6 +170,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
     medicalCertificatePath = widget.data['medicalCertificatePath'];
+    // Web: get certificate bytes if available
+    certificateBytes = widget.data['certificateBytes'] as Uint8List?;
+    certificateName = widget.data['certificateName'] as String?;
+    medicalCertificateBytes = widget.data['medicalCertificateBytes'] as Uint8List?;
+    medicalCertificateName = widget.data['medicalCertificateName'] as String?;
     bio = widget.data['bio'] as String?;
     yearsExperience =
         widget.data['yearsExperience'] is int
@@ -716,6 +727,10 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     certificatePath: certificatePath,
                                     medicalCertificatePath:
                                         medicalCertificatePath,
+                                    certificateBytes: certificateBytes,
+                                    certificateName: certificateName,
+                                    medicalCertificateBytes: medicalCertificateBytes,
+                                    medicalCertificateName: medicalCertificateName,
                                     bio: bio,
                                     yearsExperience: yearsExperience,
                                     preferredShift: preferredShift,

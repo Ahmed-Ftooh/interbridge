@@ -690,23 +690,22 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
   }) {
     return MouseRegion(
       cursor:
-          onTap != null
-              ? SystemMouseCursors.click
-              : SystemMouseCursors.basic,
+          onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           width: double.infinity,
-          padding: EdgeInsets.symmetric(
-            vertical: isCompact ? 16 : 20,
-          ),
+          padding: EdgeInsets.symmetric(vertical: isCompact ? 16 : 20),
           decoration: BoxDecoration(
             color: isSecondary ? color.withValues(alpha: 0.15) : color,
             borderRadius: BorderRadius.circular(20),
             border:
                 isSecondary
-                    ? Border.all(color: color.withValues(alpha: 0.5), width: 1.5)
+                    ? Border.all(
+                      color: color.withValues(alpha: 0.5),
+                      width: 1.5,
+                    )
                     : null,
             boxShadow:
                 isSecondary

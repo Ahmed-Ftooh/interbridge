@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 
 class RegisterEvent extends Equatable {
@@ -24,6 +26,11 @@ class RegisterSubmitted extends RegisterEvent {
   final String? voiceSamplePath;
   final String? certificatePath;
   final String? medicalCertificatePath;
+  // Web: raw bytes for certificate upload (since path is unavailable on web)
+  final Uint8List? certificateBytes;
+  final String? certificateName;
+  final Uint8List? medicalCertificateBytes;
+  final String? medicalCertificateName;
   final String? bio;
   final int? yearsExperience;
   final String? preferredShift;
@@ -49,6 +56,10 @@ class RegisterSubmitted extends RegisterEvent {
     this.voiceSamplePath,
     this.certificatePath,
     this.medicalCertificatePath,
+    this.certificateBytes,
+    this.certificateName,
+    this.medicalCertificateBytes,
+    this.medicalCertificateName,
     this.bio,
     this.yearsExperience,
     this.preferredShift,
@@ -76,6 +87,10 @@ class RegisterSubmitted extends RegisterEvent {
     voiceSamplePath,
     certificatePath,
     medicalCertificatePath,
+    certificateBytes,
+    certificateName,
+    medicalCertificateBytes,
+    medicalCertificateName,
     bio,
     yearsExperience,
     preferredShift,
