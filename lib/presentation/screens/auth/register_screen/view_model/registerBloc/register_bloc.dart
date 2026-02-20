@@ -207,7 +207,11 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'voiceSamplePath': event.voiceSamplePath,
         'certificatePath': event.certificatePath,
         'medicalCertificatePath': event.medicalCertificatePath,
-        // Web: base64-encode certificate bytes for JSON storage
+        // Web: base64-encode bytes for JSON storage (blob URLs/paths don't survive page navigation)
+        if (event.voiceSampleBytes != null)
+          'voiceSampleBytesBase64': base64Encode(event.voiceSampleBytes!),
+        if (event.voiceSampleName != null)
+          'voiceSampleName': event.voiceSampleName,
         if (event.certificateBytes != null)
           'certificateBytesBase64': base64Encode(event.certificateBytes!),
         if (event.certificateName != null)

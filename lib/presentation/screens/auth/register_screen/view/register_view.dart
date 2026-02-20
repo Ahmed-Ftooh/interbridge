@@ -67,7 +67,9 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? voiceSamplePath;
   late String? certificatePath;
   late String? medicalCertificatePath;
-  // Web: raw bytes for certificate upload
+  // Web: raw bytes for uploads (blob URLs/paths don't survive page navigation)
+  Uint8List? voiceSampleBytes;
+  String? voiceSampleName;
   Uint8List? certificateBytes;
   String? certificateName;
   Uint8List? medicalCertificateBytes;
@@ -170,7 +172,9 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
     medicalCertificatePath = widget.data['medicalCertificatePath'];
-    // Web: get certificate bytes if available
+    // Web: get voice sample and certificate bytes if available
+    voiceSampleBytes = widget.data['voiceSampleBytes'] as Uint8List?;
+    voiceSampleName = widget.data['voiceSampleName'] as String?;
     certificateBytes = widget.data['certificateBytes'] as Uint8List?;
     certificateName = widget.data['certificateName'] as String?;
     medicalCertificateBytes =
@@ -728,6 +732,8 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     certificatePath: certificatePath,
                                     medicalCertificatePath:
                                         medicalCertificatePath,
+                                    voiceSampleBytes: voiceSampleBytes,
+                                    voiceSampleName: voiceSampleName,
                                     certificateBytes: certificateBytes,
                                     certificateName: certificateName,
                                     medicalCertificateBytes:

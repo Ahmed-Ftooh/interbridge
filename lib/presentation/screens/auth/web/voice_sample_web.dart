@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:html' as html;
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +25,7 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   bool _hasPermission = false;
   bool _permissionDenied = false;
   String? _audioPath;
+  Uint8List? _audioBytes;
   int _recordDuration = 0;
   Timer? _timer;
 
@@ -99,9 +102,25 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       final path = await _audioRecorder.stop();
       _timer?.cancel();
 
+      // On web, fetch the blob URL as bytes so we can persist them
+      Uint8List? bytes;
+      if (path != null && path.startsWith('blob:')) {
+        try {
+          final request = await html.HttpRequest.request(
+            path,
+            responseType: 'arraybuffer',
+          );
+          final buffer = request.response as ByteBuffer;
+          bytes = buffer.asUint8List();
+        } catch (e) {
+          debugPrint('Error fetching blob bytes: $e');
+        }
+      }
+
       setState(() {
         _isRecording = false;
         _audioPath = path;
+        _audioBytes = bytes;
       });
     } catch (e) {
       debugPrint('Error stopping recording: $e');
@@ -128,6 +147,7 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     _audioPlayer.stop();
     setState(() {
       _audioPath = null;
+      _audioBytes = null;
       _isPlaying = false;
       _recordDuration = 0;
     });
@@ -139,6 +159,12 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
     args['voiceSamplePath'] = _audioPath;
+    args['voicePrompt'] = _promptText;
+    // Store voice bytes for web (blob URL won't survive page navigation)
+    if (_audioBytes != null) {
+      args['voiceSampleBytes'] = _audioBytes;
+      args['voiceSampleName'] = 'voice_sample.webm';
+    }
     Navigator.of(
       context,
     ).pushNamed(Routes.certificateUploadRoute, arguments: args);

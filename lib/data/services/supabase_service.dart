@@ -865,15 +865,31 @@ class SupabaseService {
     // --- Upload voice sample from local path if not already a URL ---
     String? voiceUrl = data['voiceSampleUrl'] as String?;
     final voicePath = data['voiceSamplePath'] as String?;
-    if ((voiceUrl == null || voiceUrl.isEmpty) &&
-        voicePath != null &&
-        voicePath.isNotEmpty) {
+    // Bytes can be Uint8List (in-memory) or base64 string (from JSON)
+    Uint8List? voiceBytes;
+    if (data['voiceSampleBytes'] is Uint8List) {
+      voiceBytes = data['voiceSampleBytes'] as Uint8List;
+    } else if (data['voiceSampleBytesBase64'] is String) {
       try {
-        if (kIsWeb) {
-          // On web, voicePath is a blob URL — we cannot use File().
-          // Voice sample upload from blob URL is not supported yet on web.
-          log('Web: Skipping voice sample upload (blob URL not supported)');
-        } else {
+        voiceBytes = base64Decode(data['voiceSampleBytesBase64'] as String);
+      } catch (e) {
+        log('Error decoding voice sample base64: $e');
+      }
+    }
+    if (voiceUrl == null || voiceUrl.isEmpty) {
+      try {
+        if (voiceBytes != null && voiceBytes.isNotEmpty) {
+          // Web path: use bytes directly
+          final voiceName = data['voiceSampleName'] as String? ?? 'voice_sample.webm';
+          voiceUrl = await uploadVoiceSampleFromBytes(
+            voiceBytes,
+            fileName: voiceName,
+            prompt: data['voicePrompt'] as String?,
+            sentenceType: 'onboarding',
+          );
+          log('Voice sample uploaded from bytes: $voiceUrl');
+        } else if (!kIsWeb && voicePath != null && voicePath.isNotEmpty) {
+          // Mobile path: use file
           final file = File(voicePath);
           if (await file.exists()) {
             voiceUrl = await uploadVoiceSampleFromPath(
@@ -980,7 +996,7 @@ class SupabaseService {
             ? data['yearsExperience'] as int
             : int.tryParse(data['yearsExperience']?.toString() ?? '');
 
-    // Try to update interpreter details with voice sample and bio
+    // Try to update interpreter details with voice sample, certificates and bio
     // This is non-critical - don't fail the whole registration if this fails
     if (voiceUrl != null ||
         certUrl != null ||
@@ -991,6 +1007,7 @@ class SupabaseService {
         await updateInterpreterDetailsWithUrls(
           userId,
           voiceSampleUrl: voiceUrl,
+          certificateUrl: certUrl ?? medicalCertUrl,
           bio: data['bio'] as String?,
           yearsExperience: years,
         );
@@ -1212,6 +1229,73 @@ class SupabaseService {
     } catch (e) {
       // Log error but don't fail the upload
       log('Failed to store voice sample metadata: $e');
+    }
+  }
+
+  /// Upload a voice sample from raw bytes (web-compatible)
+  Future<String> uploadVoiceSampleFromBytes(
+    Uint8List bytes, {
+    String? fileName,
+    String? prompt,
+    String? sentenceType,
+  }) async {
+    try {
+      final user = getCurrentUser();
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      if (bytes.isEmpty) {
+        throw Exception('Voice sample data is empty');
+      }
+
+      // Validate file size (max 10MB)
+      if (bytes.length > 10 * 1024 * 1024) {
+        throw Exception('Voice sample file is too large (max 10MB)');
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final dateStr = DateTime.now().toIso8601String().split('T')[0];
+      final sentenceTypeStr = sentenceType ?? 'onboarding';
+      final sanitized = (prompt ?? 'sample').replaceAll(
+        RegExp(r'[^a-zA-Z0-9_\-]'),
+        '_',
+      );
+      final safePrompt =
+          sanitized.length > 50 ? sanitized.substring(0, 50) : sanitized;
+      final ext = fileName?.split('.').last ?? 'webm';
+
+      final objectPath =
+          'voice_samples/${user.id}/${dateStr}_${sentenceTypeStr}_${safePrompt}_$timestamp.$ext';
+
+      await _client.storage
+          .from('voice_samples')
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: ext == 'webm' ? 'audio/webm' : 'audio/mp4',
+            ),
+          );
+
+      final publicUrl = _client.storage
+          .from('voice_samples')
+          .getPublicUrl(objectPath);
+
+      // Store metadata in database
+      await _storeVoiceSampleMetadata(
+        userId: user.id,
+        url: publicUrl,
+        prompt: prompt,
+        sentenceType: sentenceTypeStr,
+        fileSize: bytes.length,
+        timestamp: DateTime.now(),
+      );
+
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Failed to upload voice sample from bytes: $e');
     }
   }
 

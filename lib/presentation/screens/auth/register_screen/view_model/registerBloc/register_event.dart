@@ -26,7 +26,9 @@ class RegisterSubmitted extends RegisterEvent {
   final String? voiceSamplePath;
   final String? certificatePath;
   final String? medicalCertificatePath;
-  // Web: raw bytes for certificate upload (since path is unavailable on web)
+  // Web: raw bytes for uploads (since path/blob URLs are unavailable after navigation on web)
+  final Uint8List? voiceSampleBytes;
+  final String? voiceSampleName;
   final Uint8List? certificateBytes;
   final String? certificateName;
   final Uint8List? medicalCertificateBytes;
@@ -56,6 +58,8 @@ class RegisterSubmitted extends RegisterEvent {
     this.voiceSamplePath,
     this.certificatePath,
     this.medicalCertificatePath,
+    this.voiceSampleBytes,
+    this.voiceSampleName,
     this.certificateBytes,
     this.certificateName,
     this.medicalCertificateBytes,
@@ -87,6 +91,8 @@ class RegisterSubmitted extends RegisterEvent {
     voiceSamplePath,
     certificatePath,
     medicalCertificatePath,
+    voiceSampleBytes,
+    voiceSampleName,
     certificateBytes,
     certificateName,
     medicalCertificateBytes,
