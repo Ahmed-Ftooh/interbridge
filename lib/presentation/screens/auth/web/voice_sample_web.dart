@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:html' as html;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -7,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
 import 'package:record/record.dart';
+
+import 'package:interbridge/core/web_helpers/fetch_blob_bytes.dart'
+    if (dart.library.html) 'package:interbridge/core/web_helpers/fetch_blob_bytes_web.dart'
+    as blob_helper;
 
 /// Professional web voice sample recording screen for interpreter onboarding
 class VoiceSampleWebScreen extends StatefulWidget {
@@ -105,15 +108,9 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       // On web, fetch the blob URL as bytes so we can persist them
       Uint8List? bytes;
       if (path != null && path.startsWith('blob:')) {
-        try {
-          final request = await html.HttpRequest.request(
-            path,
-            responseType: 'arraybuffer',
-          );
-          final buffer = request.response as ByteBuffer;
-          bytes = buffer.asUint8List();
-        } catch (e) {
-          debugPrint('Error fetching blob bytes: $e');
+        bytes = await blob_helper.fetchBlobBytes(path);
+        if (bytes == null) {
+          debugPrint('Error fetching blob bytes');
         }
       }
 

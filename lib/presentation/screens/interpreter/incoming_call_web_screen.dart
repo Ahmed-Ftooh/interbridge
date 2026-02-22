@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:developer';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,6 +9,10 @@ import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:interbridge/core/web_helpers/web_audio.dart'
+    if (dart.library.html) 'package:interbridge/core/web_helpers/web_audio_web.dart'
+    as web_audio;
 
 /// Professional web incoming call screen with ringing and animations
 class IncomingCallWebScreen extends StatefulWidget {
@@ -31,7 +33,7 @@ class IncomingCallWebScreen extends StatefulWidget {
 
 class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     with TickerProviderStateMixin {
-  html.AudioElement? _audioElement;
+  web_audio.WebAudioHandle? _audioHandle;
   late AnimationController _pulseController;
   late AnimationController _ringController;
   late AnimationController _fadeController;
@@ -117,10 +119,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
 
   void _playRingtone() {
     try {
-      _audioElement = html.AudioElement('assets/audio/Call_Ring.mp3');
-      _audioElement!.loop = true;
-      _audioElement!.play();
-      log('Web: Ringtone started playing via HTML Audio');
+      _audioHandle =
+          web_audio.createLoopingAudio('assets/audio/Call_Ring.mp3');
+      log('Web: Ringtone started playing via web audio helper');
     } catch (e) {
       log('Web: Error playing ringtone: $e');
     }
@@ -129,13 +130,8 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
   Future<void> _stopRingtone() async {
     if (_isRingtoneStopped) return;
     _isRingtoneStopped = true;
-    try {
-      _audioElement?.pause();
-      _audioElement?.remove();
-      _audioElement = null;
-    } catch (e) {
-      log('Web: Error stopping ringtone: $e');
-    }
+    web_audio.stopAudio(_audioHandle);
+    _audioHandle = null;
   }
 
   void _setupStatusListener() {

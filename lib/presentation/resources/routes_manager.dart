@@ -458,17 +458,15 @@ class _UnknownRouteRecoveryScreenState
     if (user != null && user.emailConfirmedAt != null) {
       // User is authenticated — go to main screen
       log('UnknownRouteRecovery: User authenticated, going to main');
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        Routes.mainRoute,
-        (route) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
     } else {
       // Not authenticated — go to splash (clean start)
       log('UnknownRouteRecovery: No auth, going to splash');
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        Routes.splashRoute,
-        (route) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.splashRoute, (route) => false);
     }
   }
 
@@ -476,9 +474,7 @@ class _UnknownRouteRecoveryScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ColorManager.backgroundPrimary,
-      body: const Center(
-        child: CircularProgressIndicator(),
-      ),
+      body: const Center(child: CircularProgressIndicator()),
     );
   }
 }

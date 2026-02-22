@@ -76,10 +76,9 @@ class _ConfirmEmailPendingViewState extends State<ConfirmEmailPendingView> {
       } else if (profile?.role == 'interpreter') {
         final appPrefs = instance<AppPreferences>();
         if (appPrefs.isQuizOnboardingDone()) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.mainRoute,
-            (route) => false,
-          );
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
         } else {
           Navigator.of(context).pushNamedAndRemoveUntil(
             Routes.interpreterQuizHubRoute,
@@ -87,18 +86,16 @@ class _ConfirmEmailPendingViewState extends State<ConfirmEmailPendingView> {
           );
         }
       } else {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.mainRoute,
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       }
     } catch (e) {
       log('ConfirmEmailPendingView: Error navigating based on role: $e');
       if (!mounted) return;
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        Routes.mainRoute,
-        (route) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
     }
   }
 
