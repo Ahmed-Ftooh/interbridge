@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/presentation/resources/strings_manager.dart';
+import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/forgot_password_view.dart';
 import 'package:interbridge/presentation/screens/auth/forgot_password_screen/reset_password_view.dart';
 import 'package:interbridge/presentation/screens/auth/verification/confirm_email_pending_view.dart';
@@ -408,9 +408,12 @@ class RouteGenerator {
         log('RouteGenerator: Unmatched route - ${settings.name}');
         log('RouteGenerator: Stack trace: ${StackTrace.current}');
         // If it looks like a deep link URL, treat it as auth callback
-        if (settings.name?.contains('://') == true) {
+        if (settings.name?.contains('://') == true ||
+            settings.name?.contains('code=') == true ||
+            settings.name?.contains('token=') == true ||
+            settings.name?.contains('access_token=') == true) {
           log(
-            'RouteGenerator: Detected URL-like route, treating as auth callback',
+            'RouteGenerator: Detected URL-like or auth route, treating as auth callback',
           );
           return MaterialPageRoute(
             builder: (_) => const _AuthCallbackLoadingScreen(),
@@ -422,11 +425,60 @@ class RouteGenerator {
 
   static Route<dynamic> unDefinedRoute() {
     return MaterialPageRoute(
-      builder:
-          (_) => Scaffold(
-            appBar: AppBar(title: const Text(AppStrings.noRouteFound)),
-            body: const Center(child: Text(AppStrings.noRouteFound)),
-          ),
+      builder: (_) => const _UnknownRouteRecoveryScreen(),
+    );
+  }
+}
+
+/// Recovery screen that replaces the dead-end "no route found" page.
+/// Checks current auth state and redirects to the appropriate screen.
+class _UnknownRouteRecoveryScreen extends StatefulWidget {
+  const _UnknownRouteRecoveryScreen();
+
+  @override
+  State<_UnknownRouteRecoveryScreen> createState() =>
+      _UnknownRouteRecoveryScreenState();
+}
+
+class _UnknownRouteRecoveryScreenState
+    extends State<_UnknownRouteRecoveryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _recover();
+  }
+
+  Future<void> _recover() async {
+    // Give a brief pause for any pending navigation to settle
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user != null && user.emailConfirmedAt != null) {
+      // User is authenticated — go to main screen
+      log('UnknownRouteRecovery: User authenticated, going to main');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.mainRoute,
+        (route) => false,
+      );
+    } else {
+      // Not authenticated — go to splash (clean start)
+      log('UnknownRouteRecovery: No auth, going to splash');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.splashRoute,
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: ColorManager.backgroundPrimary,
+      body: const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 }

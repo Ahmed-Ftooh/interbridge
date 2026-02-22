@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
+import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -23,8 +25,82 @@ class _ConfirmEmailPendingViewState extends State<ConfirmEmailPendingView> {
   bool _isResending = false;
   int _resendSecondsRemaining = 0;
   Timer? _resendTimer;
+  StreamSubscription<AuthState>? _authSub;
+  bool _isNavigating = false;
 
   final AppPreferences _prefs = instance<AppPreferences>();
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForAuthStateChange();
+  }
+
+  /// Listen for Supabase auth state changes so that when the user taps the
+  /// magic link (which may be handled entirely in the background by the
+  /// Supabase SDK + app_links), this screen navigates automatically.
+  void _listenForAuthStateChange() {
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
+      event,
+    ) async {
+      if (_isNavigating || !mounted) return;
+
+      if (event.event == AuthChangeEvent.signedIn && event.session != null) {
+        log('ConfirmEmailPendingView: signedIn event — navigating');
+        _isNavigating = true;
+
+        try {
+          // Finalize any pending registration data (interpreter profile, etc.)
+          await PendingRegistrationService().finalizePendingRegistration();
+        } catch (e) {
+          log('ConfirmEmailPendingView: Error finalizing registration: $e');
+        }
+
+        if (!mounted) return;
+        await _navigateBasedOnRole(event.session!.user.id);
+      }
+    });
+  }
+
+  Future<void> _navigateBasedOnRole(String userId) async {
+    try {
+      final supabaseService = SupabaseService();
+      final profile = await supabaseService.getUserProfile(userId);
+      if (!mounted) return;
+
+      if (profile?.role == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile?.role == 'interpreter') {
+        final appPrefs = instance<AppPreferences>();
+        if (appPrefs.isQuizOnboardingDone()) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.mainRoute,
+            (route) => false,
+          );
+        } else {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterQuizHubRoute,
+            (route) => false,
+          );
+        }
+      } else {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.mainRoute,
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      log('ConfirmEmailPendingView: Error navigating based on role: $e');
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.mainRoute,
+        (route) => false,
+      );
+    }
+  }
 
   String? _resolveEmail() {
     final userEmail = Supabase.instance.client.auth.currentUser?.email;
@@ -98,6 +174,7 @@ class _ConfirmEmailPendingViewState extends State<ConfirmEmailPendingView> {
   @override
   void dispose() {
     _resendTimer?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 

@@ -280,10 +280,17 @@ class AppInitializer {
   static Future<void> _handleDeepLink(Uri uri) async {
     log('Processing deep link: $uri');
 
-    // Check if this is a Supabase auth callback
-    if (uri.scheme == 'io.supabase.flutter' ||
+    // Check if this is a Supabase auth callback — be generous with matching
+    // to handle custom domains, different URL formats, etc.
+    final isAuthCallback =
+        uri.scheme == 'io.supabase.flutter' ||
         uri.host == 'login-callback' ||
-        uri.toString().contains('login-callback')) {
+        uri.toString().contains('login-callback') ||
+        uri.queryParameters.containsKey('code') ||
+        uri.queryParameters.containsKey('token') ||
+        uri.fragment.contains('access_token');
+
+    if (isAuthCallback) {
       log('Deep link is auth callback — marking as pending');
 
       // Mark deep link as pending so the Splash / Auth Gate waits for

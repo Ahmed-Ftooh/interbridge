@@ -880,7 +880,8 @@ class SupabaseService {
       try {
         if (voiceBytes != null && voiceBytes.isNotEmpty) {
           // Web path: use bytes directly
-          final voiceName = data['voiceSampleName'] as String? ?? 'voice_sample.webm';
+          final voiceName =
+              data['voiceSampleName'] as String? ?? 'voice_sample.webm';
           voiceUrl = await uploadVoiceSampleFromBytes(
             voiceBytes,
             fileName: voiceName,
