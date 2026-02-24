@@ -47,6 +47,25 @@ class CallService {
     }
   }
 
+  /// Look up the other participant from the interpreter_requests table.
+  /// Returns a map with 'requester_id', 'accepted_by', 'interpreter_type',
+  /// 'from_language', 'to_language', etc.
+  Future<Map<String, dynamic>?> lookupCallParticipants(
+      String requestId) async {
+    try {
+      final row = await _supabase
+          .from('interpreter_requests')
+          .select(
+              'requester_id, accepted_by, interpreter_type, from_language, to_language, specialization, call_type')
+          .eq('id', requestId)
+          .maybeSingle();
+      return row;
+    } catch (e) {
+      log('Error looking up call participants: $e');
+      return null;
+    }
+  }
+
   /// Record call duration to database
   Future<void> recordCallDuration({
     required String channelId,
@@ -81,6 +100,41 @@ class CallService {
     } catch (e) {
       log('Error recording call duration: $e');
       // Don't throw here as call duration recording shouldn't break the call flow
+    }
+  }
+
+  /// Record a call log entry (master record for the call)
+  Future<void> recordCallLog({
+    required String requestId,
+    required String interpreterId,
+    required String requesterId,
+    required int durationSeconds,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    String callType = 'humanitarian',
+    String? fromLanguage,
+    String? toLanguage,
+  }) async {
+    try {
+      log('Recording call log for request: $requestId');
+
+      await _supabase.from('call_logs').insert({
+        'request_id': requestId,
+        'interpreter_id': interpreterId,
+        'requester_id': requesterId,
+        'call_type': callType,
+        'started_at': startedAt.toIso8601String(),
+        'ended_at': endedAt.toIso8601String(),
+        'duration_seconds': durationSeconds,
+        'metadata': {
+          'from_language': fromLanguage,
+          'to_language': toLanguage,
+        },
+      });
+
+      log('Call log recorded successfully');
+    } catch (e) {
+      log('Error recording call log: $e');
     }
   }
 

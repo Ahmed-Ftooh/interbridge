@@ -430,19 +430,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       log('Successfully joined Agora channel');
 
       // Fallback: If onJoinChannelSuccess doesn't fire within 5 seconds,
-      // assume the call is ongoing and emit the state manually
+      // assume the call is ongoing and emit the state manually.
+      // NOTE: The timer is NOT started here — it only starts when the
+      // remote user actually joins (_onRemoteUserJoined). This ensures
+      // both participants' timers are synchronized.
       Timer(const Duration(seconds: 5), () {
         if (state is CallConnecting) {
-          log('Fallback: Manually transitioning to CallOngoing state');
-          _startedAt = DateTime.now();
-          _timer?.cancel();
-          _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-            if (_startedAt != null) {
-              final elapsed = DateTime.now().difference(_startedAt!);
-              add(_Tick(elapsed));
-            }
-          });
-
+          log('Fallback: Manually transitioning to CallOngoing state (timer waits for remote user)');
           // Use add() to trigger a new event instead of emit()
           add(_FallbackToOngoing(channelId: e.channelId, localUid: e.localUid));
         }
@@ -467,9 +461,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     // Record call duration before clearing
     Duration? callDuration;
-    if (_startedAt != null) {
+    String? channelId;
+    if (_startedAt != null && state is CallOngoing) {
       callDuration = DateTime.now().difference(_startedAt!);
-      await _recordCallDuration(callDuration);
+      channelId = (state as CallOngoing).channelId;
+      await _recordCallDuration(
+        callDuration,
+        channelId: channelId,
+        isRemoteHangup: e.isRemote,
+      );
     }
 
     _startedAt = null;
@@ -645,22 +645,64 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     );
   }
 
-  Future<void> _recordCallDuration(Duration duration) async {
+  Future<void> _recordCallDuration(
+    Duration duration, {
+    required String channelId,
+    bool isRemoteHangup = false,
+  }) async {
     try {
-      // Log the call duration
       log(
         'Call duration: ${duration.inMinutes} minutes and ${duration.inSeconds.remainder(60)} seconds',
       );
 
-      // Record to database if we have an ongoing call state
-      if (state is CallOngoing) {
-        final ongoingState = state as CallOngoing;
-        final userId = service.requireUserId();
+      final userId = service.requireUserId();
 
-        await service.recordCallDuration(
-          channelId: ongoingState.channelId,
-          duration: duration,
-          userId: userId,
+      // Look up participants from interpreter_requests
+      final participants = await service.lookupCallParticipants(channelId);
+      final requesterId = participants?['requester_id'] as String?;
+      final interpreterId = participants?['accepted_by'] as String?;
+      final interpreterType = participants?['interpreter_type'] as String?;
+      final fromLanguage = participants?['from_language'] as String?;
+      final toLanguage = participants?['to_language'] as String?;
+
+      // Determine remote user UUID
+      String? remoteUserId;
+      if (requesterId != null && interpreterId != null) {
+        remoteUserId = (userId == interpreterId) ? requesterId : interpreterId;
+      }
+
+      // 1) Write call_sessions row (per-user)
+      await service.recordCallDuration(
+        channelId: channelId,
+        duration: duration,
+        userId: userId,
+        remoteUserId: remoteUserId,
+        callType: _isVideoCall ? 'video' : 'voice',
+        endReason: isRemoteHangup ? 'remote_hangup' : 'user_hangup',
+      );
+
+      // 2) Write call_logs row (master record) — only if we are the interpreter
+      //    to avoid double-writing (both sides end the call independently)
+      if (interpreterId != null &&
+          userId == interpreterId &&
+          requesterId != null) {
+        final now = DateTime.now();
+        final startTime = now.subtract(duration);
+
+        // Map interpreter_type to call_type enum: 'medical' → 'medical', else → 'humanitarian'
+        final callLogType =
+            (interpreterType == 'medical') ? 'medical' : 'humanitarian';
+
+        await service.recordCallLog(
+          requestId: channelId,
+          interpreterId: interpreterId,
+          requesterId: requesterId,
+          durationSeconds: duration.inSeconds,
+          startedAt: startTime,
+          endedAt: now,
+          callType: callLogType,
+          fromLanguage: fromLanguage,
+          toLanguage: toLanguage,
         );
       }
 

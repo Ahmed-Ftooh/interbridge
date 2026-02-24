@@ -198,9 +198,9 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   Future<void> _showFeedbackAndNavigateHome() async {
     if (!mounted) return;
 
-    // Clear session immediately so app doesn't restore to chat/call on restart
-    await SessionService.clearSession();
-    log('Session cleared after call ended');
+    // Mark request as completed AND clear local session
+    await SessionService.endSession(requestId: widget.channelId);
+    log('Session marked completed and cleared after call ended');
 
     if (!mounted) return;
     showDialog(

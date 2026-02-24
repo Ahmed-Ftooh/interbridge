@@ -21,8 +21,25 @@ class CallFeedbackDialog extends StatefulWidget {
 
 class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
   double _rating = 0;
+  String _connectionQuality = 'good';
+  String _callExperience = 'satisfied';
   final TextEditingController _commentController = TextEditingController();
   bool _isSubmitting = false;
+
+  static const _qualityOptions = ['excellent', 'good', 'fair', 'poor'];
+  static const _experienceOptions = [
+    'very_satisfied',
+    'satisfied',
+    'neutral',
+    'dissatisfied',
+  ];
+
+  String _labelFor(String value) {
+    return value.replaceAll('_', ' ').replaceFirst(
+      value[0],
+      value[0].toUpperCase(),
+    );
+  }
 
   Future<void> _submitFeedback() async {
     if (_rating == 0) {
@@ -43,14 +60,16 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
       log('Submitting feedback:');
       log('  RequestId: ${widget.requestId}');
       log('  Rating: $ratingInt');
+      log('  Connection: $_connectionQuality');
+      log('  Experience: $_callExperience');
       log('  Comments: ${commentsText.isEmpty ? "none" : commentsText}');
 
       await instance<CallService>().submitCallFeedback(
         channelId: widget.requestId,
         rating: ratingInt,
         comments: commentsText.isEmpty ? null : commentsText,
-        callExperience: 'satisfied', // Default value
-        connectionQuality: 'good', // Default value
+        callExperience: _callExperience,
+        connectionQuality: _connectionQuality,
       );
 
       log('Feedback submitted successfully');
@@ -91,26 +110,87 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Please rate your experience with the interpreter.'),
+            const Text('Please rate your experience.'),
+            const SizedBox(height: 16),
+            Center(
+              child: RatingBar.builder(
+                initialRating: 0,
+                minRating: 1,
+                direction: Axis.horizontal,
+                allowHalfRating: false,
+                itemCount: 5,
+                itemSize: 32.0,
+                itemPadding: const EdgeInsets.symmetric(horizontal: 2.0),
+                itemBuilder:
+                    (context, _) => Icon(Icons.star, color: Colors.amber[600]),
+                onRatingUpdate: (rating) {
+                  setState(() {
+                    _rating = rating;
+                  });
+                },
+              ),
+            ),
             const SizedBox(height: 20),
-            RatingBar.builder(
-              initialRating: 0,
-              minRating: 1,
-              direction: Axis.horizontal,
-              allowHalfRating: false,
-              itemCount: 5,
-              itemSize: 32.0, // Reduced size to fit in one line
-              itemPadding: const EdgeInsets.symmetric(horizontal: 2.0),
-              itemBuilder:
-                  (context, _) => Icon(Icons.star, color: Colors.amber[600]),
-              onRatingUpdate: (rating) {
-                setState(() {
-                  _rating = rating;
-                });
+            // Connection Quality
+            const Text(
+              'Connection Quality',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              value: _connectionQuality,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: _qualityOptions
+                  .map(
+                    (q) => DropdownMenuItem(
+                      value: q,
+                      child: Text(_labelFor(q)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _connectionQuality = v);
               },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            // Call Experience
+            const Text(
+              'Overall Experience',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            DropdownButtonFormField<String>(
+              value: _callExperience,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              items: _experienceOptions
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e,
+                      child: Text(_labelFor(e)),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _callExperience = v);
+              },
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _commentController,
               decoration: const InputDecoration(

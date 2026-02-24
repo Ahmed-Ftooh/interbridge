@@ -236,8 +236,9 @@ class _EnhancedCallScreenWebBodyState
   Future<void> _showFeedbackAndNavigateHome() async {
     if (!mounted) return;
 
-    await SessionService.clearSession();
-    log('Web: Session cleared after call ended');
+    // Mark request as completed AND clear local session
+    await SessionService.endSession(requestId: widget.channelId);
+    log('Web: Session marked completed and cleared after call ended');
 
     if (!mounted) return;
     showDialog(
