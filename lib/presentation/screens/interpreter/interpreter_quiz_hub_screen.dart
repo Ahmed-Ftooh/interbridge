@@ -294,7 +294,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
                 const SizedBox(height: 12),
                 _buildQuizCard(
                   title: 'General Interpreter Quiz',
-                  subtitle: '25 seconds per question • 85% to pass',
+                  subtitle: '25 seconds per question',
                   icon: Icons.school,
                   isPassed: false,
                   onTap: () => _takeQuiz('general'),
@@ -320,7 +320,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _buildQuizCard(
                           title: section['title'] as String,
-                          subtitle: '30 seconds per question • 85% to pass',
+                          subtitle: '30 seconds per question',
                           icon: section['icon'] as IconData,
                           isPassed: false,
                           onTap:
@@ -605,7 +605,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
             child: Text(
               isExperienced
                   ? 'After completing all required quizzes, your account will be reviewed by an administrator before you can start accepting jobs.'
-                  : 'After passing the general quiz, your account will be reviewed by an administrator before you can start accepting jobs.',
+                  : 'After completing the general quiz, your account will be reviewed by an administrator before you can start accepting jobs.',
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.blue.shade800,

@@ -201,6 +201,11 @@ class _QuizScreenState extends State<QuizScreen> {
         );
       }
     }
+
+    // Auto-navigate back without showing a result screen
+    if (mounted) {
+      _continueToNext();
+    }
   }
 
   void _submitAnswer(int optionIndex) {
@@ -317,16 +322,30 @@ class _QuizScreenState extends State<QuizScreen> {
     if (!_quizStarted) {
       return _buildIntro(theme);
     } else if (_quizCompleted) {
-      return _buildResult(theme);
+      // Quiz finished — _finishQuiz already auto-navigates.
+      // Show a brief loading indicator while navigation completes.
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: ColorManager.primary2),
+            const SizedBox(height: 16),
+            Text(
+              'Saving results...',
+              style: TextStyle(
+                color: ColorManager.textSecondary,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      );
     } else {
       return _buildQuestion(theme);
     }
   }
 
   Widget _buildIntro(ThemeData theme) {
-    final isMedical = widget.quizType == 'medical';
-    final threshold = isMedical ? _medicalBadgeScore : _passScore;
-
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -367,15 +386,6 @@ class _QuizScreenState extends State<QuizScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          isMedical
-              ? 'Score $threshold%+ to earn badge'
-              : 'Score $threshold%+ to pass',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: ColorManager.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
         const SizedBox(height: 48),
         SizedBox(
           width: double.infinity,
@@ -524,84 +534,4 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  Widget _buildResult(ThemeData theme) {
-    final isMedical = widget.quizType == 'medical';
-    final threshold = isMedical ? _medicalBadgeScore : _passScore;
-    final passed = _finalScore! >= threshold;
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            color: (passed ? ColorManager.success : ColorManager.warning)
-                .withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            passed ? Icons.check_circle_outline : Icons.info_outline,
-            size: 80,
-            color: passed ? ColorManager.success : ColorManager.warning,
-          ),
-        ),
-        const SizedBox(height: 32),
-        Text(
-          passed
-              ? isMedical
-                  ? 'Badge Earned!'
-                  : 'Congratulations!'
-              : 'Section Complete',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: ColorManager.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'You scored $_finalScore%',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            color: passed ? ColorManager.success : ColorManager.warning,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          passed
-              ? isMedical
-                  ? 'You earned the ${widget.medicalSection?.replaceAll('_', ' ')} badge!'
-                  : 'You passed the quiz!'
-              : isMedical
-              ? 'You needed $threshold% to earn this badge. Moving to next section.'
-              : 'You needed $threshold% to pass.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: ColorManager.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 48),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _continueToNext,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ColorManager.primary2,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Continue',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

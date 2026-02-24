@@ -62,7 +62,6 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
   Timer? _timer;
   int _timeLeft = _timePerQuestion;
   bool _quizStarted = false;
-  bool _quizCompleted = false;
   int? _finalScore;
 
   @override
@@ -119,11 +118,18 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
     });
 
     final score = ((correctCount / _questions.length) * 100).round();
+    final passed = score >= _passScore;
 
     setState(() {
-      _quizCompleted = true;
       _finalScore = score;
     });
+
+    // Auto-continue without showing result screen
+    if (passed) {
+      _continue();
+    } else {
+      _retry();
+    }
   }
 
   void _submitAnswer(int optionIndex) {
@@ -148,7 +154,6 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
 
   void _retry() {
     setState(() {
-      _quizCompleted = false;
       _selectedAnswers.clear();
       _currentQuestionIndex = 0;
       _finalScore = null;
@@ -184,8 +189,6 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
   Widget _buildBody(ThemeData theme) {
     if (!_quizStarted) {
       return _buildIntro(theme);
-    } else if (_quizCompleted) {
-      return _buildResult(theme);
     } else {
       return _buildQuestion(theme);
     }
@@ -217,7 +220,7 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'You have $_timePerQuestion seconds per question. You need 70% to pass.',
+          'You have $_timePerQuestion seconds per question.',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyLarge?.copyWith(
             color: ColorManager.textSecondary,
@@ -358,69 +361,7 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
     );
   }
 
-  Widget _buildResult(ThemeData theme) {
-    final passed = _finalScore! >= _passScore;
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            color: (passed ? ColorManager.success : ColorManager.error)
-                .withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            passed ? Icons.check_circle_outline : Icons.cancel_outlined,
-            size: 80,
-            color: passed ? ColorManager.success : ColorManager.error,
-          ),
-        ),
-        const SizedBox(height: 32),
-        Text(
-          passed ? 'Congratulations!' : 'Test Failed',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: ColorManager.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          passed
-              ? 'You scored $_finalScore%. You are ready to proceed.'
-              : 'You scored $_finalScore%. You need 70% to pass.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: ColorManager.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 48),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: passed ? _continue : _retry,
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  passed ? ColorManager.primary2 : ColorManager.greyDark,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: Text(
-              passed ? 'Continue Registration' : 'Try Again',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _MedicalQuizQuestion {

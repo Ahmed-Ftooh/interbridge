@@ -131,7 +131,7 @@ class _MedicalSectionSelectorWebScreenState
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Score 85%+ on each section quiz to earn a badge',
+                  'Complete each section quiz to earn a badge',
                   style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                 ),
                 const SizedBox(height: 28),

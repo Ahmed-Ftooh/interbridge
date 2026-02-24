@@ -183,6 +183,11 @@ class _QuizWebScreenState extends State<QuizWebScreen> {
         );
       }
     }
+
+    // Auto-navigate back without showing a result screen
+    if (mounted) {
+      _continueToNext();
+    }
   }
 
   void _submitAnswer(int optionIndex) {
@@ -340,16 +345,27 @@ class _QuizWebScreenState extends State<QuizWebScreen> {
     if (!_quizStarted) {
       return _buildIntro();
     } else if (_quizCompleted) {
-      return _buildResult();
+      // Quiz finished — _finishQuiz already auto-navigates.
+      // Show a brief loading indicator while navigation completes.
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF3B82F6)),
+            SizedBox(height: 16),
+            Text(
+              'Saving results...',
+              style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
+            ),
+          ],
+        ),
+      );
     } else {
       return _buildQuestion();
     }
   }
 
   Widget _buildIntro() {
-    final isMedical = widget.quizType == 'medical';
-    final threshold = isMedical ? _medicalBadgeScore : _passScore;
-
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -390,16 +406,6 @@ class _QuizWebScreenState extends State<QuizWebScreen> {
           style: const TextStyle(fontSize: 15, color: Color(0xFF64748B)),
         ),
         const SizedBox(height: 8),
-        Text(
-          isMedical
-              ? 'Score $threshold%+ to earn badge'
-              : 'Score $threshold%+ to pass',
-          style: const TextStyle(
-            fontSize: 15,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
         const SizedBox(height: 48),
         SizedBox(
           width: 280,
@@ -592,88 +598,4 @@ class _QuizWebScreenState extends State<QuizWebScreen> {
     );
   }
 
-  Widget _buildResult() {
-    final isMedical = widget.quizType == 'medical';
-    final threshold = isMedical ? _medicalBadgeScore : _passScore;
-    final passed = _finalScore! >= threshold;
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color:
-                passed
-                    ? const Color(0xFF10B981).withValues(alpha: 0.08)
-                    : const Color(0xFFF59E0B).withValues(alpha: 0.08),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            passed ? Icons.check_circle_outline : Icons.info_outline,
-            size: 72,
-            color: passed ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-          ),
-        ),
-        const SizedBox(height: 28),
-        Text(
-          passed
-              ? isMedical
-                  ? 'Badge Earned!'
-                  : 'Congratulations!'
-              : 'Section Complete',
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'You scored $_finalScore%',
-          style: TextStyle(
-            fontSize: 24,
-            color: passed ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          passed
-              ? isMedical
-                  ? 'You earned the ${widget.medicalSection?.replaceAll('_', ' ')} badge!'
-                  : 'You passed the quiz!'
-              : isMedical
-              ? 'You needed $threshold% to earn this badge. Moving to next section.'
-              : 'You needed $threshold% to pass.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 15,
-            color: Color(0xFF64748B),
-            height: 1.5,
-          ),
-        ),
-        const SizedBox(height: 44),
-        SizedBox(
-          width: 280,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: _continueToNext,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Continue',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
