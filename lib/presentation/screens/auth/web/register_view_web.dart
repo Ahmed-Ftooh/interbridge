@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -52,6 +54,13 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   late String? voiceSamplePath;
   late String? certificatePath;
   late String? medicalCertificatePath;
+  // Web: raw bytes for uploads (blob URLs don't survive page navigation)
+  Uint8List? voiceSampleBytes;
+  String? voiceSampleName;
+  Uint8List? certificateBytes;
+  String? certificateName;
+  Uint8List? medicalCertificateBytes;
+  String? medicalCertificateName;
   late String? bio;
   late int? yearsExperience;
   late String? employmentType;
@@ -123,6 +132,14 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
     medicalCertificatePath = widget.data['medicalCertificatePath'];
+    // Web: get voice sample and certificate bytes if available
+    voiceSampleBytes = widget.data['voiceSampleBytes'] as Uint8List?;
+    voiceSampleName = widget.data['voiceSampleName'] as String?;
+    certificateBytes = widget.data['certificateBytes'] as Uint8List?;
+    certificateName = widget.data['certificateName'] as String?;
+    medicalCertificateBytes =
+        widget.data['medicalCertificateBytes'] as Uint8List?;
+    medicalCertificateName = widget.data['medicalCertificateName'] as String?;
     bio = widget.data['bio'] as String?;
     yearsExperience =
         widget.data['yearsExperience'] is int
@@ -189,6 +206,12 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
         voiceSamplePath: voiceSamplePath,
         certificatePath: certificatePath,
         medicalCertificatePath: medicalCertificatePath,
+        voiceSampleBytes: voiceSampleBytes,
+        voiceSampleName: voiceSampleName,
+        certificateBytes: certificateBytes,
+        certificateName: certificateName,
+        medicalCertificateBytes: medicalCertificateBytes,
+        medicalCertificateName: medicalCertificateName,
         bio: bio,
         yearsExperience: yearsExperience,
         employmentType: employmentType,

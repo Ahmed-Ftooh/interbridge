@@ -64,6 +64,9 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null && user.emailConfirmedAt != null) {
       AppInitializer.markInitialAuthHandled();
+      // Finalize pending registration BEFORE navigating so the profile,
+      // certificates, and voice samples are persisted first.
+      await PendingRegistrationService().finalizePendingRegistration();
       await _navigateBasedOnRole(user.id);
       return;
     }
@@ -72,10 +75,11 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     if (AppInitializer.deepLinkPending) {
       _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
         event,
-      ) {
+      ) async {
         if (event.event == AuthChangeEvent.signedIn && event.session != null) {
           _authSub?.cancel();
           AppInitializer.markInitialAuthHandled();
+          await PendingRegistrationService().finalizePendingRegistration();
           _navigateBasedOnRole(event.session!.user.id);
         }
       });
@@ -85,6 +89,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       if (recheck != null && recheck.emailConfirmedAt != null) {
         _authSub?.cancel();
         AppInitializer.markInitialAuthHandled();
+        await PendingRegistrationService().finalizePendingRegistration();
         await _navigateBasedOnRole(recheck.id);
       }
     }

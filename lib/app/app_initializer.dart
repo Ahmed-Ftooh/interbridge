@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -172,12 +173,22 @@ class AppInitializer {
             // Warm start: The user tapped a magic link while the app was
             // already running. Navigate from here.
             _hasHandledInitialAuth = true;
-            final navigator = MyApp.navigatorKey.currentState;
-            if (user != null && navigator != null) {
+            // On web, the LoginViewWeb (or BlocListener) handles navigation
+            // itself — including finalization. Skip here to avoid a race
+            // condition where two navigations fire concurrently and the
+            // first one queries the DB before finalization is done.
+            if (!kIsWeb) {
+              final navigator = MyApp.navigatorKey.currentState;
+              if (user != null && navigator != null) {
+                log(
+                  'Auth event: signedIn (warm start) — navigating based on role',
+                );
+                await _navigateBasedOnRole(navigator, user.id);
+              }
+            } else {
               log(
-                'Auth event: signedIn (warm start) — navigating based on role',
+                'Auth event: signedIn (warm start, web) — LoginViewWeb handles navigation',
               );
-              await _navigateBasedOnRole(navigator, user.id);
             }
           }
         }
