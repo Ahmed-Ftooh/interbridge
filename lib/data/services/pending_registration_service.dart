@@ -18,7 +18,11 @@ class PendingRegistrationService {
   final SupabaseService _supabaseService = GetIt.I<SupabaseService>();
   final OneSignalService _oneSignalService = GetIt.I<OneSignalService>();
 
-  bool _isProcessing = false;
+  /// The in-flight finalization future, if one is running.
+  /// Subsequent callers will await the same future instead of being
+  /// rejected, preventing race conditions between AppInitializer and
+  /// LoginViewWeb on web.
+  Future<bool>? _activeFuture;
 
   bool get hasPendingRegistration =>
       _preferences.getPendingRegistration()?.isNotEmpty ?? false;
@@ -26,14 +30,27 @@ class PendingRegistrationService {
   Future<bool> finalizePendingRegistration({
     bool refreshSession = false,
   }) async {
-    if (_isProcessing) return false;
+    // If already processing, await the in-flight operation so the caller
+    // waits for finalization to actually complete before navigating.
+    if (_activeFuture != null) {
+      log('finalizePendingRegistration: already in progress — awaiting');
+      return _activeFuture!;
+    }
 
     final pendingJson = _preferences.getPendingRegistration();
     if (pendingJson == null || pendingJson.isEmpty) {
       return false;
     }
 
-    _isProcessing = true;
+    _activeFuture = _doFinalize(pendingJson, refreshSession);
+    try {
+      return await _activeFuture!;
+    } finally {
+      _activeFuture = null;
+    }
+  }
+
+  Future<bool> _doFinalize(String pendingJson, bool refreshSession) async {
     try {
       if (refreshSession) {
         await Supabase.instance.client.auth.refreshSession();
@@ -67,8 +84,6 @@ class PendingRegistrationService {
         stackTrace: stackTrace,
       );
       return false;
-    } finally {
-      _isProcessing = false;
     }
   }
 }
