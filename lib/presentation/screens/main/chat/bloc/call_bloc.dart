@@ -414,26 +414,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             log('Warning: startPreview failed: $previewErr');
           }
         } else {
-          // On web, enableLocalVideo(true) is REQUIRED for the Iris SDK
-          // to actually create and publish the camera track. Without it,
-          // only the mic track gets published (you can see in the Iris log
-          // that only "track-mic" appears). joinChannel with
-          // publishCameraTrack: true alone is NOT sufficient.
-          await _engine!.enableLocalVideo(true).catchError((err) {
-            log(
-              'Web: enableLocalVideo returned error (expected, ignored): $err',
-            );
-          });
+          // On web, DO NOT call enableLocalVideo(true) or startPreview()
+          // before joinChannel. These APIs call createCameraVideoTrack
+          // which triggers getUserMedia. Before joinChannel, the browser
+          // hasn't prompted for camera permission yet, causing
+          // NOT_READABLE: Could not start video source.
+          //
+          // joinChannel with publishCameraTrack: true will trigger the
+          // browser permission prompt. After the channel is joined
+          // (onJoinChannelSuccess), we call enableLocalVideo + startPreview
+          // to ensure the camera track is created and published.
           log(
-            'Web: enableLocalVideo(true) completed — camera track should now publish',
+            'Web: deferring enableLocalVideo/startPreview until after joinChannel (browser permission needed first)',
           );
-
-          // startPreview on web — some Iris versions need this to bind the
-          // local camera to the video view element.
-          await _engine!.startPreview().catchError((err) {
-            log('Web: startPreview returned error (expected, ignored): $err');
-          });
-          log('Web: startPreview completed');
         }
 
         _speakerOn = true; // Video calls default to speaker
@@ -825,11 +818,31 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // through the Iris SDK. On web, joinChannel with publishCameraTrack
     // already acquired the camera track.
 
-    // On web, re-affirm video subscription now that we're in the channel.
-    // The Iris Web SDK may have ignored autoSubscribeVideo during
-    // joinChannel; repeating it via updateChannelMediaOptions ensures
-    // remote tracks get subscribed once the PeerConnection is live.
+    // On web, now that joinChannel has triggered getUserMedia and
+    // the browser has granted camera/mic permission, we can safely
+    // create the camera track. Before joinChannel these calls fail
+    // with NOT_READABLE because the browser hasn't prompted yet.
     if (kIsWeb && _isVideoCall && _engine != null) {
+      // enableLocalVideo creates the camera track on the Iris Web SDK
+      _engine!
+          .enableLocalVideo(true)
+          .catchError((err) {
+            log('Web: enableLocalVideo error after join (ignored): $err');
+          })
+          .then((_) {
+            log('Web: enableLocalVideo(true) succeeded after channel join');
+            // startPreview binds the camera track to the local video view
+            _engine
+                ?.startPreview()
+                .catchError((err) {
+                  log('Web: startPreview error after join (ignored): $err');
+                })
+                .then((_) {
+                  log('Web: startPreview succeeded after channel join');
+                });
+          });
+
+      // Re-affirm subscriptions and ensure camera is published
       _engine!
           .updateChannelMediaOptions(
             const ChannelMediaOptions(
