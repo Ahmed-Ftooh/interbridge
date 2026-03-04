@@ -319,68 +319,71 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       );
 
       // 4) Audio profile, scenario & route
-      //    Several Agora APIs return -4 (unsupported) on web, so wrap
-      //    non-critical calls in try-catch to keep the flow alive.
-      try {
-        await _engine!.setAudioProfile(
-          profile: AudioProfileType.audioProfileSpeechStandard,
-        );
-      } catch (audioProfileErr) {
-        log('Warning: setAudioProfile failed (web?): $audioProfileErr');
-      }
-
-      // setAudioScenario & setDefaultAudioRouteToSpeakerphone are NOT
-      // supported on web (Iris returns -4). Skip them on web.
+      //    Skip all audio config on web — these APIs throw -4 (unsupported)
+      //    and cause the debugger to break. joinChannel handles audio on web.
       if (!kIsWeb) {
+        try {
+          await _engine!.setAudioProfile(
+            profile: AudioProfileType.audioProfileSpeechStandard,
+          );
+        } catch (audioProfileErr) {
+          log('Warning: setAudioProfile failed: $audioProfileErr');
+        }
         await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
         await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
       }
 
-      try {
-        await _engine!.enableAudio();
-        if (!kIsWeb) {
+      // On web, skip most SDK setup calls — they either throw (-4
+      // unsupported) or conflict with joinChannel's getUserMedia.
+      // joinChannel with publishMicrophoneTrack/publishCameraTrack
+      // handles everything on web.
+      if (!kIsWeb) {
+        try {
+          await _engine!.enableAudio();
           await _engine!.enableLocalAudio(true);
+        } catch (audioErr) {
+          log('Warning: enableAudio failed: $audioErr');
         }
-      } catch (audioErr) {
-        log('Warning: enableAudio failed (web?): $audioErr');
       }
 
-      // 4b) Enable video for video calls with optimized quality settings
+      // 4b) Enable video for video calls
       if (e.isVideoCall) {
         log('Enabling video for video call...');
-        try {
-          await _engine!.enableVideo();
-        } catch (enableVideoErr) {
-          log('Warning: enableVideo failed (web?): $enableVideoErr');
-        }
 
-        // Video encoder config — use reasonable settings for web
-        try {
-          final videoDims =
-              kIsWeb
-                  ? const VideoDimensions(width: 1280, height: 720)
-                  : const VideoDimensions(width: 1920, height: 1080);
-          await _engine!.setVideoEncoderConfiguration(
-            VideoEncoderConfiguration(
-              dimensions: videoDims,
-              frameRate: kIsWeb ? 24 : 30,
-              bitrate: kIsWeb ? 1800 : 4000,
-              minBitrate: kIsWeb ? 600 : 1000,
-              orientationMode: OrientationMode.orientationModeAdaptive,
-              degradationPreference: DegradationPreference.maintainQuality,
-              mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
-            ),
-          );
-        } catch (videoConfigErr) {
-          log('Warning: Could not set video encoder config: $videoConfigErr');
-        }
-
-        // On web, skip enableLocalVideo and startPreview before joinChannel.
-        // The browser acquires the camera during joinChannel via the
-        // publishCameraTrack option. Calling these before joinChannel
-        // creates a conflicting getUserMedia request that causes the
-        // camera to briefly open then close.
-        if (!kIsWeb) {
+        if (kIsWeb) {
+          // On web, only call enableVideo(). Skip encoder config,
+          // enableLocalVideo, and startPreview — they either throw
+          // or conflict with joinChannel's camera acquisition.
+          // startPreview will be called in _onJoinChannelSuccess
+          // after the camera track is ready.
+          try {
+            await _engine!.enableVideo();
+          } catch (enableVideoErr) {
+            log('Warning: enableVideo failed on web: $enableVideoErr');
+          }
+          log('Web: will call startPreview after joinChannel succeeds');
+        } else {
+          // Mobile: full setup
+          try {
+            await _engine!.enableVideo();
+          } catch (enableVideoErr) {
+            log('Warning: enableVideo failed: $enableVideoErr');
+          }
+          try {
+            await _engine!.setVideoEncoderConfiguration(
+              const VideoEncoderConfiguration(
+                dimensions: VideoDimensions(width: 1920, height: 1080),
+                frameRate: 30,
+                bitrate: 4000,
+                minBitrate: 1000,
+                orientationMode: OrientationMode.orientationModeAdaptive,
+                degradationPreference: DegradationPreference.maintainQuality,
+                mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
+              ),
+            );
+          } catch (videoConfigErr) {
+            log('Warning: Could not set video encoder config: $videoConfigErr');
+          }
           try {
             await _engine!.enableLocalVideo(true);
           } catch (localVideoErr) {
@@ -389,12 +392,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           try {
             await _engine!.startPreview();
           } catch (previewErr) {
-            log(
-              'Warning: startPreview failed (may still render via AgoraVideoView): $previewErr',
-            );
+            log('Warning: startPreview failed: $previewErr');
           }
-        } else {
-          log('Web: skipping enableLocalVideo/startPreview before joinChannel');
         }
         _speakerOn = true; // Video calls default to speaker
       } else {
@@ -448,18 +447,22 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       log('Joining Agora channel: ${e.channelId}');
       if (kIsWeb) {
         // Fire-and-forget on web — callbacks drive the state machine.
-        _engine!.joinChannel(
-          token: token,
-          channelId: e.channelId,
-          uid: e.localUid,
-          options: ChannelMediaOptions(
-            clientRoleType: ClientRoleType.clientRoleBroadcaster,
-            publishCameraTrack: e.isVideoCall,
-            publishMicrophoneTrack: true,
-            autoSubscribeVideo: e.isVideoCall,
-            autoSubscribeAudio: true,
-          ),
-        );
+        _engine!
+            .joinChannel(
+              token: token,
+              channelId: e.channelId,
+              uid: e.localUid,
+              options: ChannelMediaOptions(
+                clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                publishCameraTrack: e.isVideoCall,
+                publishMicrophoneTrack: true,
+                autoSubscribeVideo: e.isVideoCall,
+                autoSubscribeAudio: true,
+              ),
+            )
+            .catchError((err) {
+              log('Web: joinChannel error (handled via callbacks): $err');
+            });
         log('joinChannel called on web (fire-and-forget, callbacks pending)');
       } else {
         await _engine!
@@ -707,8 +710,23 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
-  void _onFallbackToOngoing(_FallbackToOngoing e, Emitter<CallState> emit) {
+  void _onFallbackToOngoing(
+    _FallbackToOngoing e,
+    Emitter<CallState> emit,
+  ) async {
     log('Fallback handler: Transitioning to CallOngoing state');
+
+    // On web, ensure startPreview is called so AgoraVideoView can render
+    if (kIsWeb && _isVideoCall) {
+      log('Web fallback: calling startPreview');
+      try {
+        await _engine?.enableLocalVideo(true);
+      } catch (_) {}
+      try {
+        await _engine?.startPreview();
+      } catch (_) {}
+    }
+
     emit(
       CallOngoing(
         channelId: e.channelId,
@@ -727,9 +745,29 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     );
   }
 
-  void _onJoinChannelSuccess(_JoinChannelSuccess e, Emitter<CallState> emit) {
+  void _onJoinChannelSuccess(
+    _JoinChannelSuccess e,
+    Emitter<CallState> emit,
+  ) async {
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
     _timer?.cancel();
+
+    // On web, start preview AFTER join so the camera track (acquired by
+    // joinChannel) is available for AgoraVideoView to render.
+    if (kIsWeb && _isVideoCall) {
+      log('Web: calling startPreview after successful join');
+      try {
+        await _engine?.enableLocalVideo(true);
+      } catch (err) {
+        log('Web: enableLocalVideo after join error (ignored): $err');
+      }
+      try {
+        await _engine?.startPreview();
+      } catch (err) {
+        log('Web: startPreview after join error (ignored): $err');
+      }
+    }
+
     emit(
       CallOngoing(
         channelId: e.channelId,
