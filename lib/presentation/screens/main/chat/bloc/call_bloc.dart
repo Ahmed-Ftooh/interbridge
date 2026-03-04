@@ -351,17 +351,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         log('Enabling video for video call...');
 
         if (kIsWeb) {
-          // On web, only call enableVideo(). Skip encoder config,
-          // enableLocalVideo, and startPreview — they either throw
-          // or conflict with joinChannel's camera acquisition.
-          // startPreview will be called in _onJoinChannelSuccess
-          // after the camera track is ready.
-          try {
-            await _engine!.enableVideo();
-          } catch (enableVideoErr) {
-            log('Warning: enableVideo failed on web: $enableVideoErr');
-          }
-          log('Web: will call startPreview after joinChannel succeeds');
+          // On web, skip ALL SDK setup calls before joinChannel.
+          // joinChannel with publishCameraTrack/publishMicrophoneTrack
+          // handles camera and mic acquisition via getUserMedia.
+          // Calling enableVideo/enableLocalVideo/startPreview before
+          // joinChannel throws exceptions that break the debugger.
+          // startPreview will be called in _onJoinChannelSuccess.
+          log('Web: skipping all video setup — joinChannel handles it');
         } else {
           // Mobile: full setup
           try {
@@ -400,26 +396,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _speakerOn = false; // Voice calls start on earpiece
       }
 
-      try {
-        await _engine!.setClientRole(
-          role: ClientRoleType.clientRoleBroadcaster,
-        );
-      } catch (roleErr) {
-        log('Warning: setClientRole failed (web?): $roleErr');
-      }
-      try {
-        await _engine!.muteLocalAudioStream(_muted);
-      } catch (muteErr) {
-        log('Warning: muteLocalAudioStream failed: $muteErr');
-      }
-      try {
-        if (!kIsWeb) {
-          await _engine!.setEnableSpeakerphone(_speakerOn);
+      // setClientRole and muteLocalAudioStream — skip on web
+      if (!kIsWeb) {
+        try {
+          await _engine!.setClientRole(
+            role: ClientRoleType.clientRoleBroadcaster,
+          );
+        } catch (roleErr) {
+          log('Warning: setClientRole failed: $roleErr');
         }
-      } catch (e) {
-        log(
-          'Warning: Could not set speakerphone, continuing with default audio route: $e',
-        );
+        try {
+          await _engine!.muteLocalAudioStream(_muted);
+        } catch (muteErr) {
+          log('Warning: muteLocalAudioStream failed: $muteErr');
+        }
+        try {
+          await _engine!.setEnableSpeakerphone(_speakerOn);
+        } catch (e) {
+          log('Warning: Could not set speakerphone: $e');
+        }
       }
 
       // 5) Token from Supabase with timeout
