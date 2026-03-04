@@ -318,10 +318,24 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         ),
       );
 
-      // 4) Audio profile, scenario & route
-      //    Skip all audio config on web — these APIs throw -4 (unsupported)
-      //    and cause the debugger to break. joinChannel handles audio on web.
+      // 4) Audio setup
+      //    enableAudio() must be called on both web and mobile to
+      //    initialize the audio module in the Iris SDK.
+      try {
+        await _engine!.enableAudio();
+        log('enableAudio() succeeded');
+      } catch (audioErr) {
+        log('Warning: enableAudio failed: $audioErr');
+      }
+
+      //    Audio profile, scenario, route & enableLocalAudio are
+      //    mobile-only — these APIs throw -4 (unsupported) on web.
       if (!kIsWeb) {
+        try {
+          await _engine!.enableLocalAudio(true);
+        } catch (audioErr) {
+          log('Warning: enableLocalAudio failed: $audioErr');
+        }
         try {
           await _engine!.setAudioProfile(
             profile: AudioProfileType.audioProfileSpeechStandard,
@@ -333,38 +347,23 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
       }
 
-      // On web, skip most SDK setup calls — they either throw (-4
-      // unsupported) or conflict with joinChannel's getUserMedia.
-      // joinChannel with publishMicrophoneTrack/publishCameraTrack
-      // handles everything on web.
-      if (!kIsWeb) {
-        try {
-          await _engine!.enableAudio();
-          await _engine!.enableLocalAudio(true);
-        } catch (audioErr) {
-          log('Warning: enableAudio failed: $audioErr');
-        }
-      }
-
       // 4b) Enable video for video calls
       if (e.isVideoCall) {
         log('Enabling video for video call...');
 
-        if (kIsWeb) {
-          // On web, skip ALL SDK setup calls before joinChannel.
-          // joinChannel with publishCameraTrack/publishMicrophoneTrack
-          // handles camera and mic acquisition via getUserMedia.
-          // Calling enableVideo/enableLocalVideo/startPreview before
-          // joinChannel throws exceptions that break the debugger.
-          // startPreview will be called in _onJoinChannelSuccess.
-          log('Web: skipping all video setup — joinChannel handles it');
-        } else {
-          // Mobile: full setup
-          try {
-            await _engine!.enableVideo();
-          } catch (enableVideoErr) {
-            log('Warning: enableVideo failed: $enableVideoErr');
-          }
+        // enableVideo() MUST be called on BOTH web and mobile.
+        // The Agora Iris SDK uses it internally as a flag — without it,
+        // setupLocalVideo (called by AgoraVideoView) silently no-ops
+        // and the video view stays black.
+        try {
+          await _engine!.enableVideo();
+          log('enableVideo() succeeded');
+        } catch (enableVideoErr) {
+          log('Warning: enableVideo failed: $enableVideoErr');
+        }
+
+        if (!kIsWeb) {
+          // Mobile-only: encoder config, local video enable, preview
           try {
             await _engine!.setVideoEncoderConfiguration(
               const VideoEncoderConfiguration(
@@ -390,7 +389,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           } catch (previewErr) {
             log('Warning: startPreview failed: $previewErr');
           }
+        } else {
+          log(
+            'Web: skipping enableLocalVideo/startPreview — joinChannel with publishCameraTrack handles camera acquisition',
+          );
         }
+
         _speakerOn = true; // Video calls default to speaker
       } else {
         _speakerOn = false; // Voice calls start on earpiece
@@ -705,22 +709,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
-  void _onFallbackToOngoing(
-    _FallbackToOngoing e,
-    Emitter<CallState> emit,
-  ) async {
+  void _onFallbackToOngoing(_FallbackToOngoing e, Emitter<CallState> emit) {
     log('Fallback handler: Transitioning to CallOngoing state');
 
-    // On web, ensure startPreview is called so AgoraVideoView can render
-    if (kIsWeb && _isVideoCall) {
-      log('Web fallback: calling startPreview');
-      try {
-        await _engine?.enableLocalVideo(true);
-      } catch (_) {}
-      try {
-        await _engine?.startPreview();
-      } catch (_) {}
-    }
+    // No extra SDK calls needed here — enableVideo() was already called
+    // in _onStartCall, and AgoraVideoView handles rendering via
+    // setupLocalVideo through the Iris SDK.
 
     emit(
       CallOngoing(
@@ -740,28 +734,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     );
   }
 
-  void _onJoinChannelSuccess(
-    _JoinChannelSuccess e,
-    Emitter<CallState> emit,
-  ) async {
+  void _onJoinChannelSuccess(_JoinChannelSuccess e, Emitter<CallState> emit) {
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
     _timer?.cancel();
 
-    // On web, start preview AFTER join so the camera track (acquired by
-    // joinChannel) is available for AgoraVideoView to render.
-    if (kIsWeb && _isVideoCall) {
-      log('Web: calling startPreview after successful join');
-      try {
-        await _engine?.enableLocalVideo(true);
-      } catch (err) {
-        log('Web: enableLocalVideo after join error (ignored): $err');
-      }
-      try {
-        await _engine?.startPreview();
-      } catch (err) {
-        log('Web: startPreview after join error (ignored): $err');
-      }
-    }
+    // No extra SDK calls needed — enableVideo() was already called in
+    // _onStartCall, and AgoraVideoView renders via setupLocalVideo
+    // through the Iris SDK. On web, joinChannel with publishCameraTrack
+    // already acquired the camera track.
 
     emit(
       CallOngoing(
