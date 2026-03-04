@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +11,7 @@ import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/payment_success_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web/web.dart' as html;
 
 /// Web-specific organization dashboard with modern design
 class OrganizationDashboardWebView extends StatefulWidget {
@@ -25,6 +28,7 @@ class _OrganizationDashboardWebViewState
   int _selectedTab = 0;
   final List<String> _tabNames = ['Overview', 'Doctors', 'Calls', 'Billing'];
   bool _checkoutInProgress = false;
+  Timer? _popupPollTimer;
 
   @override
   void initState() {
@@ -35,6 +39,7 @@ class _OrganizationDashboardWebViewState
 
   @override
   void dispose() {
+    _popupPollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -937,8 +942,12 @@ class _OrganizationDashboardWebViewState
           ...calls.map((call) {
             final requester =
                 call['requester_profile'] as Map<String, dynamic>? ?? {};
-            final duration = call['duration_minutes'] ?? 0;
-            final cost = call['total_cost'] ?? 0.0;
+            final durationSeconds = (call['duration_seconds'] ?? 0) as int;
+            final cost = call['cost'] ?? 0;
+            final doctorName =
+                requester['username'] ??
+                '${requester['first_name'] ?? ''} ${requester['last_name'] ?? ''}'
+                    .trim();
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(
@@ -948,9 +957,13 @@ class _OrganizationDashboardWebViewState
                 children: [
                   Expanded(
                     flex: 2,
-                    child: Text(requester['username'] ?? 'Unknown'),
+                    child: Text(doctorName.isNotEmpty ? doctorName : 'Unknown'),
                   ),
-                  Expanded(child: Text('$duration min')),
+                  Expanded(
+                    child: Text(
+                      '${(durationSeconds / 60).floor()}:${(durationSeconds % 60).toString().padLeft(2, '0')}',
+                    ),
+                  ),
                   Expanded(
                     child: Text(
                       '\$${(cost as num).toStringAsFixed(2)}',
@@ -1468,31 +1481,46 @@ class _OrganizationDashboardWebViewState
     }
   }
 
-  void _openStripeCheckout(String url) async {
+  void _openStripeCheckout(String url) {
     _checkoutInProgress = true;
-    final uri = Uri.parse(url);
-    try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!launched && mounted) {
+
+    // Open in a centered popup window (not a new tab).
+    // Popup windows opened by script CAN be closed by window.close().
+    final screenW = html.window.screen.width;
+    final screenH = html.window.screen.height;
+    final w = 550;
+    final h = 700;
+    final left = ((screenW - w) / 2).round();
+    final top = ((screenH - h) / 2).round();
+
+    final popup = html.window.open(
+      url,
+      'stripe_checkout',
+      'width=$w,height=$h,left=$left,top=$top,toolbar=no,menubar=no,scrollbars=yes,resizable=yes',
+    );
+
+    // Poll every 500ms to detect when the popup closes.
+    _popupPollTimer?.cancel();
+    _popupPollTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      timer,
+    ) {
+      final isClosed = popup?.closed ?? true;
+      if (isClosed) {
+        timer.cancel();
+        _popupPollTimer = null;
         _checkoutInProgress = false;
-        CustomSnackBar.show(
-          context,
-          message: 'Could not open payment page. Please try again.',
-          type: SnackBarType.error,
-        );
+        if (mounted) {
+          // Give the webhook 2 seconds to process, then refresh
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              context.read<OrganizationDashboardBloc>().add(
+                const RefreshOrganizationData(),
+              );
+            }
+          });
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        CustomSnackBar.show(
-          context,
-          message: 'Failed to open payment page: $e',
-          type: SnackBarType.error,
-        );
-      }
-    }
+    });
   }
 
   void _showGenerateInvoiceDialog(OrganizationDashboardLoaded state) {

@@ -189,6 +189,7 @@ Deno.serve(async (req) => {
 
     return json({
       payment_intent: paymentIntent.client_secret,
+      payment_intent_id: paymentIntent.id,
       ephemeral_key: ephemeralKey.secret,
       customer: stripeCustomerId,
       publishable_key: Deno.env.get("STRIPE_PUBLISHABLE_KEY") ?? "",

@@ -66,8 +66,12 @@ Deno.serve(async (_req: Request) => {
     <button class="btn" onclick="window.close()">Close This Tab</button>
   </div>
   <script>
-    // Try to auto-close after 5 seconds
-    setTimeout(() => { try { window.close(); } catch(e) {} }, 5000);
+    // Close the popup immediately — the parent page is polling for closure.
+    // window.close() works reliably when the window was opened by window.open().
+    try { window.close(); } catch(e) {}
+    // Fallback: retry after a brief delay (some browsers need a moment)
+    setTimeout(() => { try { window.close(); } catch(e) {} }, 500);
+    setTimeout(() => { try { window.close(); } catch(e) {} }, 2000);
   </script>
 </body>
 </html>`;

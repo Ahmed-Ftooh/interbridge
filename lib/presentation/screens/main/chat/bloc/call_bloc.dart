@@ -912,11 +912,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         endReason: isRemoteHangup ? 'remote_hangup' : 'user_hangup',
       );
 
-      // 2) Write call_logs row (master record) — only if we are the interpreter
-      //    to avoid double-writing (both sides end the call independently)
-      if (interpreterId != null &&
-          userId == interpreterId &&
-          requesterId != null) {
+      // 2) Write call_logs row (master record)
+      //    BOTH sides attempt the insert. The DB has a unique constraint
+      //    on request_id, so only the first succeeds; the second is a
+      //    no-op (upsert).  This prevents lost logs when one side
+      //    disconnects before the other.
+      if (interpreterId != null && requesterId != null) {
         final now = DateTime.now();
         final startTime = now.subtract(duration);
 
@@ -935,6 +936,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           fromLanguage: fromLanguage,
           toLanguage: toLanguage,
           organizationId: organizationId,
+        );
+      } else {
+        log(
+          'Warning: Could not write call_log — interpreterId=$interpreterId, requesterId=$requesterId',
         );
       }
 

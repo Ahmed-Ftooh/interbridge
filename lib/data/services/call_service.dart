@@ -137,11 +137,15 @@ class CallService {
       if (organizationId != null) {
         insertData['organization_id'] = organizationId;
       }
-      await _supabase.from('call_logs').insert(insertData);
+      // Use upsert with request_id unique constraint — both call
+      // participants attempt to write the log; the second one is a no-op.
+      await _supabase
+          .from('call_logs')
+          .upsert(insertData, onConflict: 'request_id');
 
       log('Call log recorded successfully');
     } catch (e) {
-      log('Error recording call log: $e');
+      log('Error recording call log: $e (request_id=$requestId)');
     }
   }
 

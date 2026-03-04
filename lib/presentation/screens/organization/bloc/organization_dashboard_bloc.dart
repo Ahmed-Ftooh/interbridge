@@ -397,6 +397,7 @@ class OrganizationDashboardBloc
           isProcessingTopUp: false,
           paymentSheetData: {
             'paymentIntentClientSecret': data['payment_intent'] as String,
+            'paymentIntentId': data['payment_intent_id'] as String? ?? '',
             'ephemeralKeySecret': data['ephemeral_key'] as String,
             'customerId': data['customer'] as String,
             'amount': event.amount.toString(),
@@ -435,8 +436,6 @@ class OrganizationDashboardBloc
     final currentState = state;
     if (currentState is! OrganizationDashboardLoaded) return;
 
-    final previousBalance = currentState.walletBalance;
-
     emit(
       currentState.copyWith(
         paymentSuccessAmount: event.amount,
@@ -445,38 +444,28 @@ class OrganizationDashboardBloc
       ),
     );
 
-    // Wait for Stripe webhook to process and update the wallet balance.
-    // The webhook typically takes 1-3 seconds.
-    // Retry up to 3 times with increasing delay.
-    for (int attempt = 0; attempt < 3; attempt++) {
-      await Future.delayed(Duration(seconds: 2 + attempt));
-      // Fetch the latest org data silently
-      try {
-        final userId = _supabaseService.getCurrentUser()?.id;
-        if (userId == null) break;
-        final memberData =
-            await _supabaseService.client
-                .from('organization_members')
-                .select('organization_id')
-                .eq('user_id', userId)
-                .maybeSingle();
-        if (memberData == null) break;
-        final orgData = await _loadOrganization(memberData['organization_id']);
-        if (orgData != null) {
-          final newBalance =
-              (orgData['wallet_balance'] as num?)?.toDouble() ?? 0.0;
-          if (newBalance > previousBalance) {
-            // Balance updated — emit refreshed state
-            add(const RefreshOrganizationData());
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('_onPaymentSheetCompleted retry $attempt error: $e');
+    // Confirm the payment server-side and credit the wallet immediately.
+    // This replaces the old webhook-polling approach.
+    try {
+      final response = await _supabaseService.client.functions.invoke(
+        'confirm-mobile-payment',
+        body: {'payment_intent_id': event.paymentIntentId},
+      );
+
+      if (response.status != 200) {
+        final errorMsg =
+            response.data?['error'] ?? 'Payment confirmation failed';
+        debugPrint('confirm-mobile-payment error: $errorMsg');
+      } else {
+        debugPrint(
+          'confirm-mobile-payment success: new_balance=${response.data?['new_balance']}',
+        );
       }
+    } catch (e) {
+      debugPrint('confirm-mobile-payment call failed: $e');
     }
 
-    // Final fallback refresh even if balance didn't change
+    // Refresh dashboard to reflect the updated balance
     add(const RefreshOrganizationData());
   }
 
@@ -684,9 +673,40 @@ class OrganizationDashboardBloc
           .order('started_at', ascending: false)
           .limit(50);
 
-      return (calls as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      final callList =
+          (calls as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+
+      // Enrich with requester profile names
+      final requesterIds =
+          callList
+              .map((c) => c['requester_id'] as String?)
+              .where((id) => id != null)
+              .toSet()
+              .toList();
+
+      if (requesterIds.isNotEmpty) {
+        final profiles = await _supabaseService.client
+            .from('users_profile')
+            .select('user_id, username, first_name, last_name')
+            .inFilter('user_id', requesterIds);
+
+        final profileMap = {
+          for (var p in (profiles as List)) (p as Map)['user_id']: p,
+        };
+
+        for (final call in callList) {
+          final rid = call['requester_id'];
+          if (rid != null && profileMap.containsKey(rid)) {
+            call['requester_profile'] = Map<String, dynamic>.from(
+              profileMap[rid] as Map,
+            );
+          }
+        }
+      }
+
+      return callList;
     } catch (e) {
       debugPrint('Error loading call history: $e');
       return [];

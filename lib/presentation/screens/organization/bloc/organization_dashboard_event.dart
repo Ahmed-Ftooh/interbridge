@@ -106,10 +106,11 @@ class ClearPaymentSheetData extends OrganizationDashboardEvent {
 /// Payment completed successfully (mobile Payment Sheet)
 class PaymentSheetCompleted extends OrganizationDashboardEvent {
   final double amount;
-  const PaymentSheetCompleted(this.amount);
+  final String paymentIntentId;
+  const PaymentSheetCompleted(this.amount, {required this.paymentIntentId});
 
   @override
-  List<Object?> get props => [amount];
+  List<Object?> get props => [amount, paymentIntentId];
 }
 
 /// Clear payment success amount after showing the success dialog

@@ -664,10 +664,12 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
           itemCount: state.callHistory.length,
           itemBuilder: (context, index) {
             final call = state.callHistory[index];
-            final request = call['call_requests'] as Map<String, dynamic>?;
+            final meta = call['metadata'] as Map<String, dynamic>? ?? {};
             final duration = call['duration_seconds'] ?? 0;
             final cost = call['cost'] ?? 0;
             final startedAt = DateTime.tryParse(call['started_at'] ?? '');
+            final fromLang = meta['from_language'] ?? 'Unknown';
+            final toLang = meta['to_language'] ?? 'Unknown';
 
             return Card(
               margin: const EdgeInsets.only(bottom: AppSize.s12),
@@ -699,7 +701,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${request?['from_language'] ?? 'Unknown'} → ${request?['to_language'] ?? 'Unknown'}',
+                                '$fromLang → $toLang',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1176,8 +1178,9 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
       // Payment succeeded
       if (mounted) {
         final amount = double.tryParse(paymentData['amount'] ?? '0') ?? 0;
+        final paymentIntentId = paymentData['paymentIntentId'] ?? '';
         context.read<OrganizationDashboardBloc>().add(
-          PaymentSheetCompleted(amount),
+          PaymentSheetCompleted(amount, paymentIntentId: paymentIntentId),
         );
       }
     } on StripeException catch (e) {

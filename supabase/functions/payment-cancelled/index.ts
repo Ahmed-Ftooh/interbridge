@@ -66,7 +66,10 @@ Deno.serve(async (_req: Request) => {
     <button class="btn" onclick="window.close()">Close This Tab</button>
   </div>
   <script>
-    setTimeout(() => { try { window.close(); } catch(e) {} }, 8000);
+    // Close the popup immediately
+    try { window.close(); } catch(e) {}
+    setTimeout(() => { try { window.close(); } catch(e) {} }, 500);
+    setTimeout(() => { try { window.close(); } catch(e) {} }, 2000);
   </script>
 </body>
 </html>`;
