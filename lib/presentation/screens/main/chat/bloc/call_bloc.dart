@@ -59,6 +59,19 @@ class _FallbackToOngoing extends CallEvent {
   _FallbackToOngoing({required this.channelId, required this.localUid});
 }
 
+class _JoinChannelSuccess extends CallEvent {
+  final String channelId;
+  final int localUid;
+  _JoinChannelSuccess({required this.channelId, required this.localUid});
+}
+
+class _AgoraError extends CallEvent {
+  final String message;
+  _AgoraError(this.message);
+}
+
+class _ConnectionFailed extends CallEvent {}
+
 /// ===== States =====
 abstract class CallState {}
 
@@ -151,6 +164,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     on<_RemoteUserLeft>(_onRemoteUserLeft);
     on<_Tick>(_onTick);
     on<_FallbackToOngoing>(_onFallbackToOngoing);
+    on<_JoinChannelSuccess>(_onJoinChannelSuccess);
+    on<_AgoraError>(_onAgoraError);
+    on<_ConnectionFailed>(_onConnectionFailed);
   }
 
   Future<void> _onStartCall(StartCall e, Emitter<CallState> emit) async {
@@ -270,58 +286,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       log('Agora RTC Engine initialized successfully');
 
       // 3) Handlers
+      // 3) Handlers — ALL callbacks use add() so they work even after
+      //    _onStartCall returns (critical on web where joinChannel is
+      //    fire-and-forget).
       _engine!.registerEventHandler(
         RtcEngineEventHandler(
           onJoinChannelSuccess: (connection, elapsed) {
             log('Successfully joined channel: ${e.channelId}');
-            // Don't start timer here - wait for remote user
-            _timer?.cancel();
-
-            log('Emitting CallOngoing state for channel: ${e.channelId}');
-            emit(
-              CallOngoing(
-                channelId: e.channelId,
-                localUid: e.localUid,
-                remoteUids: {..._remoteUids},
-                muted: _muted,
-                speakerOn: _speakerOn,
-                elapsed: Duration.zero,
-                startTime: null, // Wait for remote user to start timer
-                isVideoCall: _isVideoCall,
-                videoEnabled: _videoEnabled,
-              ),
+            add(
+              _JoinChannelSuccess(channelId: e.channelId, localUid: e.localUid),
             );
-            log('CallOngoing state emitted successfully');
           },
           onError: (errorCode, errorMsg) {
             log('Agora RTC Engine error: $errorCode - $errorMsg');
-            // Handle any error that might prevent the call from working
-            emit(
-              CallError(
-                AppError(
-                  message: 'Voice call error: $errorMsg',
-                  type: ErrorType.network,
-                  userAction:
-                      'Please check your internet connection and try again.',
-                  isRetryable: true,
-                ),
-              ),
-            );
+            add(_AgoraError('Voice call error: $errorMsg'));
           },
           onConnectionStateChanged: (connection, state, reason) {
             log('Connection state changed: $state, reason: $reason');
             if (state == ConnectionStateType.connectionStateFailed) {
-              emit(
-                CallError(
-                  AppError(
-                    message: 'Voice call connection failed',
-                    type: ErrorType.network,
-                    userAction:
-                        'Please check your internet connection and try again.',
-                    isRetryable: true,
-                  ),
-                ),
-              );
+              add(_ConnectionFailed());
             }
           },
           onUserJoined: (connection, remoteUid, elapsed) {
@@ -722,6 +705,53 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         startTime: _startedAt,
         isVideoCall: _isVideoCall,
         videoEnabled: _videoEnabled,
+      ),
+    );
+  }
+
+  void _onJoinChannelSuccess(_JoinChannelSuccess e, Emitter<CallState> emit) {
+    log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
+    _timer?.cancel();
+    emit(
+      CallOngoing(
+        channelId: e.channelId,
+        localUid: e.localUid,
+        remoteUids: {..._remoteUids},
+        muted: _muted,
+        speakerOn: _speakerOn,
+        elapsed: Duration.zero,
+        startTime: null, // Wait for remote user to start timer
+        isVideoCall: _isVideoCall,
+        videoEnabled: _videoEnabled,
+      ),
+    );
+    log('CallOngoing state emitted successfully');
+  }
+
+  void _onAgoraError(_AgoraError e, Emitter<CallState> emit) {
+    log('Handler: Agora error — ${e.message}');
+    emit(
+      CallError(
+        AppError(
+          message: e.message,
+          type: ErrorType.network,
+          userAction: 'Please check your internet connection and try again.',
+          isRetryable: true,
+        ),
+      ),
+    );
+  }
+
+  void _onConnectionFailed(_ConnectionFailed e, Emitter<CallState> emit) {
+    log('Handler: Connection failed');
+    emit(
+      CallError(
+        AppError(
+          message: 'Voice call connection failed',
+          type: ErrorType.network,
+          userAction: 'Please check your internet connection and try again.',
+          isRetryable: true,
+        ),
       ),
     );
   }
