@@ -227,7 +227,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       if (_engine != null) {
         log('Releasing existing engine instance...');
         try {
-          await _engine!.release();
+          if (kIsWeb) {
+            await _engine!.release().timeout(
+              const Duration(seconds: 2),
+              onTimeout: () {
+                log(
+                  'Web: engine.release timed out — continuing with new engine',
+                );
+              },
+            );
+          } else {
+            await _engine!.release();
+          }
         } catch (e) {
           log('Error releasing engine: $e');
         }
@@ -342,15 +353,23 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
       }
 
-      await _engine!.enableAudio();
-      if (!kIsWeb) {
-        await _engine!.enableLocalAudio(true);
+      try {
+        await _engine!.enableAudio();
+        if (!kIsWeb) {
+          await _engine!.enableLocalAudio(true);
+        }
+      } catch (audioErr) {
+        log('Warning: enableAudio failed (web?): $audioErr');
       }
 
       // 4b) Enable video for video calls with optimized quality settings
       if (e.isVideoCall) {
         log('Enabling video for video call...');
-        await _engine!.enableVideo();
+        try {
+          await _engine!.enableVideo();
+        } catch (enableVideoErr) {
+          log('Warning: enableVideo failed (web?): $enableVideoErr');
+        }
 
         // Video encoder config — some settings may not be supported on web
         try {
@@ -493,13 +512,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
-  // ############ THIS IS THE FIX ############
-  // The logic inside _onEndCall has been reordered.
-  // The __CALL_ENDED__ message is now sent *before*
-  // leaving the channel and emitting the CallEnded state.
-  // In: lib/presentation/screens/main/chat/bloc/call_bloc.dart
-  // REPLACE the _onEndCall method with this new version:
-
   Future<void> _onEndCall(EndCall e, Emitter<CallState> emit) async {
     log('Ending call... (isRemote: ${e.isRemote})');
     _timer?.cancel();
@@ -524,8 +536,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // Stop video preview if it was a video call
     if (_isVideoCall) {
       try {
-        await _engine?.stopPreview();
-        await _engine?.disableVideo();
+        if (!kIsWeb) {
+          await _engine?.stopPreview();
+          await _engine?.disableVideo();
+        } else {
+          // On web these APIs can hang; fire-and-forget
+          _engine?.stopPreview().catchError((err) {
+            log('Web: stopPreview error (ignored): $err');
+          });
+          _engine?.disableVideo().catchError((err) {
+            log('Web: disableVideo error (ignored): $err');
+          });
+        }
       } catch (err) {
         log('Error stopping video: $err');
       }
@@ -535,31 +557,40 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _isVideoCall = false;
     _videoEnabled = false;
 
-    // --- THIS IS THE CHANGE ---
-    // We NO LONGER try to send a ChatBloc message from here.
-    // The UI (enhanced_call_view) will handle that.
-    // We just leave the channel and emit the final state.
-    // This logic now runs for BOTH local and remote hangups.
-
+    // Leave the channel and emit the final state.
     try {
       log('Leaving Agora channel...');
-      await _engine?.leaveChannel();
+      if (kIsWeb) {
+        // On web, leaveChannel can hang indefinitely.
+        // Use a timeout so the UI is never stuck.
+        await _engine?.leaveChannel().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            log('Web: leaveChannel timed out after 3s — continuing');
+          },
+        );
+      } else {
+        await _engine?.leaveChannel();
+      }
       log('Successfully left Agora channel');
     } catch (e) {
       log('Error leaving channel: $e');
     } finally {
       // Ensure global call banner clears for everyone
       CallStateManager().endCall();
-      // We pass the `isRemote` flag to the UI.
       log('Emitting CallEnded state');
-      emit(CallEnded(isRemote: e.isRemote)); // <-- MODIFIED
+      emit(CallEnded(isRemote: e.isRemote));
     }
   }
-  // ############ END OF FIX ############
 
   Future<void> _onToggleMute(ToggleMute e, Emitter<CallState> emit) async {
     _muted = !_muted;
-    await _engine?.muteLocalAudioStream(_muted);
+    try {
+      await _engine?.muteLocalAudioStream(_muted);
+    } catch (err) {
+      log('Warning: muteLocalAudioStream failed: $err');
+      _muted = !_muted; // revert
+    }
     if (state is CallOngoing) {
       emit((state as CallOngoing).copyWith(muted: _muted));
     }
@@ -569,6 +600,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     ToggleSpeaker e,
     Emitter<CallState> emit,
   ) async {
+    if (kIsWeb) {
+      // setEnableSpeakerphone is not supported on web
+      return;
+    }
     _speakerOn = !_speakerOn;
     try {
       await _engine?.setEnableSpeakerphone(_speakerOn);
@@ -777,9 +812,30 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _timer?.cancel();
     _timer = null;
     try {
-      await _engine?.leaveChannel();
+      if (kIsWeb) {
+        // On web, leaveChannel / release can hang — use timeout.
+        await _engine?.leaveChannel().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {
+            log('Web: leaveChannel timed out in close()');
+          },
+        );
+      } else {
+        await _engine?.leaveChannel();
+      }
     } catch (_) {}
-    await _engine?.release();
+    try {
+      if (kIsWeb) {
+        await _engine?.release().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {
+            log('Web: engine.release timed out in close()');
+          },
+        );
+      } else {
+        await _engine?.release();
+      }
+    } catch (_) {}
     _engine = null;
     return super.close();
   }
