@@ -329,17 +329,20 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         ),
       );
 
-      // 4) Audio setup
-      //    enableAudio() must be called on both web and mobile to
-      //    initialize the audio module in the Iris SDK.
+      // 4) Audio/Video setup
+      //    On WEB: skip ALL SDK calls that touch camera/mic before
+      //    joinChannel.  The Iris Web SDK can trigger getUserMedia
+      //    (browser permission dialog) from enableAudio(), enableVideo(),
+      //    enableLocalVideo(), or startPreview().  Before joinChannel
+      //    completes, the browser hasn't granted media permissions yet,
+      //    which causes NOT_READABLE / createCameraVideoTrack failures.
+      //
+      //    Everything is deferred to _onJoinChannelSuccess on web.
       if (kIsWeb) {
-        // On web, use .catchError() so the error stays in the Future
-        // chain and never "throws" — this prevents the VS Code debugger
-        // from pausing on caught exceptions.
-        await _engine!.enableAudio().catchError((err) {
-          log('Web: enableAudio returned error (expected, ignored): $err');
-        });
-        log('enableAudio() completed on web');
+        log(
+          'Web: deferring ALL audio/video SDK calls until after joinChannel '
+          '(browser permission prompt happens during joinChannel)',
+        );
       } else {
         try {
           await _engine!.enableAudio();
@@ -363,30 +366,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
       }
 
-      // 4b) Enable video for video calls
+      // 4b) Enable video for video calls (mobile only before join)
       if (e.isVideoCall) {
         log('Enabling video for video call...');
 
-        // enableVideo() MUST be called on BOTH web and mobile.
-        // The Agora Iris SDK uses it internally as a flag — without it,
-        // setupLocalVideo (called by AgoraVideoView) silently no-ops
-        // and the video view stays black.
-        if (kIsWeb) {
-          // Use .catchError() to avoid debugger break on caught exceptions
-          await _engine!.enableVideo().catchError((err) {
-            log('Web: enableVideo returned error (expected, ignored): $err');
-          });
-          log('enableVideo() completed on web');
-        } else {
+        if (!kIsWeb) {
           try {
             await _engine!.enableVideo();
             log('enableVideo() succeeded');
           } catch (enableVideoErr) {
             log('Warning: enableVideo failed: $enableVideoErr');
           }
-        }
 
-        if (!kIsWeb) {
           // Mobile-only: encoder config, local video enable, preview
           try {
             await _engine!.setVideoEncoderConfiguration(
@@ -413,20 +404,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           } catch (previewErr) {
             log('Warning: startPreview failed: $previewErr');
           }
-        } else {
-          // On web, DO NOT call enableLocalVideo(true) or startPreview()
-          // before joinChannel. These APIs call createCameraVideoTrack
-          // which triggers getUserMedia. Before joinChannel, the browser
-          // hasn't prompted for camera permission yet, causing
-          // NOT_READABLE: Could not start video source.
-          //
-          // joinChannel with publishCameraTrack: true will trigger the
-          // browser permission prompt. After the channel is joined
-          // (onJoinChannelSuccess), we call enableLocalVideo + startPreview
-          // to ensure the camera track is created and published.
-          log(
-            'Web: deferring enableLocalVideo/startPreview until after joinChannel (browser permission needed first)',
-          );
         }
 
         _speakerOn = true; // Video calls default to speaker
@@ -480,6 +457,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       log('Joining Agora channel: ${e.channelId}');
       if (kIsWeb) {
         // Fire-and-forget on web — callbacks drive the state machine.
+        // joinChannel triggers the browser permission prompt (getUserMedia)
+        // which can take an unpredictable amount of time.
         _engine!
             .joinChannel(
               token: token,
@@ -497,29 +476,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               log('Web: joinChannel error (handled via callbacks): $err');
             });
         log('joinChannel called on web (fire-and-forget, callbacks pending)');
-
-        // After a short delay, re-affirm video subscription.
-        // The web Iris SDK sometimes needs an updateChannelMediaOptions
-        // "kick" to properly bind remote video tracks to views.
-        if (e.isVideoCall) {
-          Future.delayed(const Duration(seconds: 2), () {
-            if (_engine != null) {
-              log(
-                'Web: updating channel media options to re-affirm video subscription',
-              );
-              _engine!
-                  .updateChannelMediaOptions(
-                    const ChannelMediaOptions(
-                      autoSubscribeVideo: true,
-                      autoSubscribeAudio: true,
-                    ),
-                  )
-                  .catchError((err) {
-                    log('Web: updateChannelMediaOptions error (ignored): $err');
-                  });
-            }
-          });
-        }
       } else {
         await _engine!
             .joinChannel(
@@ -787,9 +743,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   void _onFallbackToOngoing(_FallbackToOngoing e, Emitter<CallState> emit) {
     log('Fallback handler: Transitioning to CallOngoing state');
 
-    // No extra SDK calls needed here — enableVideo() was already called
-    // in _onStartCall, and AgoraVideoView handles rendering via
-    // setupLocalVideo through the Iris SDK.
+    // On web, if the join-success callback didn't fire but we're still
+    // in the channel, run the post-join setup so video/audio work.
+    if (kIsWeb && _engine != null) {
+      _webPostJoinSetup();
+    }
 
     emit(
       CallOngoing(
@@ -813,48 +771,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
     _timer?.cancel();
 
-    // No extra SDK calls needed — enableVideo() was already called in
-    // _onStartCall, and AgoraVideoView renders via setupLocalVideo
-    // through the Iris SDK. On web, joinChannel with publishCameraTrack
-    // already acquired the camera track.
-
-    // On web, now that joinChannel has triggered getUserMedia and
-    // the browser has granted camera/mic permission, we can safely
-    // create the camera track. Before joinChannel these calls fail
-    // with NOT_READABLE because the browser hasn't prompted yet.
-    if (kIsWeb && _isVideoCall && _engine != null) {
-      // enableLocalVideo creates the camera track on the Iris Web SDK
-      _engine!
-          .enableLocalVideo(true)
-          .catchError((err) {
-            log('Web: enableLocalVideo error after join (ignored): $err');
-          })
-          .then((_) {
-            log('Web: enableLocalVideo(true) succeeded after channel join');
-            // startPreview binds the camera track to the local video view
-            _engine
-                ?.startPreview()
-                .catchError((err) {
-                  log('Web: startPreview error after join (ignored): $err');
-                })
-                .then((_) {
-                  log('Web: startPreview succeeded after channel join');
-                });
-          });
-
-      // Re-affirm subscriptions and ensure camera is published
-      _engine!
-          .updateChannelMediaOptions(
-            const ChannelMediaOptions(
-              autoSubscribeVideo: true,
-              autoSubscribeAudio: true,
-              publishCameraTrack: true,
-              publishMicrophoneTrack: true,
-            ),
-          )
-          .catchError((err) {
-            log('Web: updateChannelMediaOptions error (ignored): $err');
-          });
+    // ===== WEB: Initialise audio/video NOW (after browser permission) =====
+    // On web, ALL SDK calls that touch camera/mic are deferred to here.
+    // joinChannel with publishCameraTrack/Mic triggered getUserMedia
+    // and the browser has now granted permission, so these will succeed.
+    if (kIsWeb && _engine != null) {
+      _webPostJoinSetup();
     }
 
     emit(
@@ -871,6 +793,58 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       ),
     );
     log('CallOngoing state emitted successfully');
+  }
+
+  /// Web-only: called from _onJoinChannelSuccess after browser granted
+  /// camera/mic permission.  Every SDK call is fire-and-forget with
+  /// .catchError() so errors stay in the Future chain and NEVER throw
+  /// — neither in user code nor in the VS Code debugger.
+  void _webPostJoinSetup() {
+    final engine = _engine;
+    if (engine == null) return;
+
+    // 1. enableVideo — sets the internal Iris SDK flag so
+    //    setupLocalVideo (from AgoraVideoView) actually renders.
+    engine.enableVideo().catchError((err) {
+      log('Web post-join: enableVideo error (ignored): $err');
+    });
+
+    // 2. enableAudio — initialises the audio module.
+    engine.enableAudio().catchError((err) {
+      log('Web post-join: enableAudio error (ignored): $err');
+    });
+
+    if (_isVideoCall) {
+      // 3. enableLocalVideo — creates the camera track on the Iris
+      //    Web SDK.  Without this, only track-mic is published.
+      engine.enableLocalVideo(true).catchError((err) {
+        log('Web post-join: enableLocalVideo error (ignored): $err');
+      });
+
+      // 4. startPreview — binds the camera track to the local
+      //    <video> element inside AgoraVideoView.
+      engine.startPreview().catchError((err) {
+        log('Web post-join: startPreview error (ignored): $err');
+      });
+    }
+
+    // 5. updateChannelMediaOptions — re-affirm video/audio
+    //    subscription and camera publishing after the above calls.
+    engine
+        .updateChannelMediaOptions(
+          ChannelMediaOptions(
+            autoSubscribeVideo: _isVideoCall,
+            autoSubscribeAudio: true,
+            publishCameraTrack: _isVideoCall,
+            publishMicrophoneTrack: true,
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          ),
+        )
+        .catchError((err) {
+          log('Web post-join: updateChannelMediaOptions error (ignored): $err');
+        });
+
+    log('Web post-join: all SDK calls dispatched');
   }
 
   void _onAgoraError(_AgoraError e, Emitter<CallState> emit) {
