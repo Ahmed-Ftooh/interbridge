@@ -5,11 +5,7 @@
       "name": "interbridge (debug)",
       "request": "launch",
       "type": "dart",
-      "program": "lib/main.dart",
-      "args": [
-        "--web-renderer",
-        "html"
-      ]
+      "program": "lib/main.dart"
     },
     {
       "name": "interbridge (debug, Chrome)",
@@ -18,9 +14,7 @@
       "program": "lib/main.dart",
       "args": [
         "-d",
-        "chrome",
-        "--web-renderer",
-        "html"
+        "chrome"
       ]
     },
     {

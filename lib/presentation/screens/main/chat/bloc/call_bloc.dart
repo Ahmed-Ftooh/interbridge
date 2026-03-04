@@ -147,6 +147,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   bool _speakerOn = true;
   bool _videoEnabled = true;
   bool _isVideoCall = false;
+  bool _webPostJoinDone = false;
   final Set<int> _remoteUids = {};
 
   /// Expose engine for video rendering in UI
@@ -236,6 +237,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         );
       }
 
+      _webPostJoinDone = false;
       emit(CallConnecting(e.channelId));
 
       // 2) Init engine (ensure fresh instance)
@@ -243,7 +245,21 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       if (_engine != null) {
         log('Releasing existing engine instance...');
         try {
+          _engine!.unregisterEventHandler(const RtcEngineEventHandler());
+        } catch (_) {}
+        try {
           if (kIsWeb) {
+            await _engine!
+                .leaveChannel()
+                .timeout(
+                  const Duration(seconds: 2),
+                  onTimeout: () {
+                    log('Web: stale leaveChannel timed out');
+                  },
+                )
+                .catchError((err) {
+                  log('Web: stale leaveChannel error (ignored): $err');
+                });
             await _engine!.release().timeout(
               const Duration(seconds: 2),
               onTimeout: () {
@@ -253,6 +269,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               },
             );
           } else {
+            await _engine!.leaveChannel();
             await _engine!.release();
           }
         } catch (e) {
@@ -303,6 +320,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           },
           onConnectionStateChanged: (connection, state, reason) {
             log('Connection state changed: $state, reason: $reason');
+            if (state == ConnectionStateType.connectionStateConnected) {
+              // Web sometimes misses onJoinChannelSuccess; treat CONNECTED
+              // as a successful join to unblock the UI.
+              add(
+                _JoinChannelSuccess(
+                  channelId: e.channelId,
+                  localUid: e.localUid,
+                ),
+              );
+              return;
+            }
             if (state == ConnectionStateType.connectionStateFailed) {
               add(_ConnectionFailed());
             }
@@ -591,12 +619,35 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       log('Successfully left Agora channel');
     } catch (e) {
       log('Error leaving channel: $e');
-    } finally {
-      // Ensure global call banner clears for everyone
-      CallStateManager().endCall();
-      log('Emitting CallEnded state');
-      emit(CallEnded(isRemote: e.isRemote));
     }
+
+    // Release the engine so the next call starts fresh (critical on web
+    // where a stale engine causes connectionChangedInterrupted).
+    try {
+      if (kIsWeb) {
+        await _engine
+            ?.release()
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () {
+                log('Web: engine.release timed out in _onEndCall');
+              },
+            )
+            .catchError((err) {
+              log('Web: engine.release error in _onEndCall (ignored): $err');
+            });
+      } else {
+        await _engine?.release();
+      }
+    } catch (releaseErr) {
+      log('Error releasing engine: $releaseErr');
+    }
+    _engine = null;
+
+    // Ensure global call banner clears for everyone
+    CallStateManager().endCall();
+    log('Emitting CallEnded state');
+    emit(CallEnded(isRemote: e.isRemote));
   }
 
   Future<void> _onToggleMute(ToggleMute e, Emitter<CallState> emit) async {
@@ -745,7 +796,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     // On web, if the join-success callback didn't fire but we're still
     // in the channel, run the post-join setup so video/audio work.
-    if (kIsWeb && _engine != null) {
+    if (kIsWeb && _engine != null && !_webPostJoinDone) {
+      _webPostJoinDone = true;
       _webPostJoinSetup();
     }
 
@@ -769,13 +821,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   void _onJoinChannelSuccess(_JoinChannelSuccess e, Emitter<CallState> emit) {
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
+
+    // If fallback already transitioned us to CallOngoing & ran setup, skip.
+    if (state is CallOngoing && _webPostJoinDone) {
+      log('Handler: already in CallOngoing (fallback ran first) — skipping');
+      return;
+    }
     _timer?.cancel();
 
     // ===== WEB: Initialise audio/video NOW (after browser permission) =====
-    // On web, ALL SDK calls that touch camera/mic are deferred to here.
-    // joinChannel with publishCameraTrack/Mic triggered getUserMedia
-    // and the browser has now granted permission, so these will succeed.
-    if (kIsWeb && _engine != null) {
+    if (kIsWeb && _engine != null && !_webPostJoinDone) {
+      _webPostJoinDone = true;
       _webPostJoinSetup();
     }
 
