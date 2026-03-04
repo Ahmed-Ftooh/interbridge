@@ -39,10 +39,9 @@ class _CertificateUploadScreenState extends State<CertificateUploadScreen> {
 
     final isPaid = _isPaidTrack(args);
     if (_trainingCertificatePath == null) return;
-    if (isPaid && _medicalCertificatePath == null) return;
 
     args['certificatePath'] = _trainingCertificatePath;
-    if (isPaid) {
+    if (isPaid && _medicalCertificatePath != null) {
       args['medicalCertificatePath'] = _medicalCertificatePath;
     }
     final bio = _bioController.text.trim();
@@ -176,9 +175,9 @@ class _CertificateUploadScreenState extends State<CertificateUploadScreen> {
               if (isPaid) ...[
                 const SizedBox(height: 24),
                 _UploadCard(
-                  title: 'Step 2 • Medical credential (required)',
+                  title: 'Step 2 • Medical credential (Optional)',
                   description:
-                      'Upload your CMI/CHI license, hospital credentialing letter, or equivalent medical interpreter proof.',
+                      'National medical interpreter certificate\n CHI/CMI.',
                   file: _medicalCertificateFile,
                   onPick: () => _pickCertificate(isMedical: true),
                 ),
@@ -254,8 +253,7 @@ class _CertificateUploadScreenState extends State<CertificateUploadScreen> {
 
   bool _canContinue({required bool isPaid}) {
     final hasTraining = _trainingCertificateFile != null;
-    if (!isPaid) return hasTraining;
-    return hasTraining && _medicalCertificateFile != null;
+    return hasTraining;
   }
 }
 

@@ -120,21 +120,21 @@ class VolunteerSuccessScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _RewardItem(
+                    const _RewardItem(
                       icon: Icons.timer_outlined,
                       title: '12,000 Minutes Goal',
                       description:
                           'Complete 12,000 minutes of interpretation service',
                     ),
                     const SizedBox(height: 16),
-                    _RewardItem(
+                    const _RewardItem(
                       icon: Icons.card_membership_rounded,
                       title: 'Recommendation Letter',
                       description:
                           'Receive an official recommendation letter from Interbridge',
                     ),
                     const SizedBox(height: 16),
-                    _RewardItem(
+                    const _RewardItem(
                       icon: Icons.workspace_premium_rounded,
                       title: 'Experience Certificate',
                       description:

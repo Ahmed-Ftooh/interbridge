@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
+import 'package:interbridge/data/services/call_service.dart';
 import 'package:interbridge/data/services/incoming_call_service.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -27,10 +28,15 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
   bool _isVerified = false;
   bool _isSuspended = false;
   int _totalSessions = 0;
+  int _thisWeekSessions = 0;
+  double _avgRating = 0.0;
+  int _totalFeedback = 0;
+  List<Map<String, dynamic>> _recentCalls = [];
   bool _isLoadingProfile = true;
   String? _employmentType;
   bool _isOnline = false;
 
+  final CallService _callService = CallService();
   final IncomingCallService _incomingCallService = IncomingCallService();
 
   static int _uidFromUuid(String uuid) {
@@ -157,12 +163,38 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           .eq('accepted_by', userId)
           .eq('status', 'completed');
 
+      // Fetch this week's sessions
+      final weekStart = DateTime.now().subtract(
+        Duration(days: DateTime.now().weekday - 1),
+      );
+      final weekSessions = await Supabase.instance.client
+          .from('call_sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .gte('created_at', weekStart.toIso8601String());
+
+      // Fetch average rating from feedback received (where interpreter is the remote user)
+      final feedbackStats = await _callService.getFeedbackStatistics(
+        userId: userId,
+      );
+
+      // Fetch recent call sessions
+      final recentCalls = await _callService.getRecentCallSessions(
+        userId: userId,
+        limit: 5,
+      );
+
       if (mounted) {
         setState(() {
           _isVerified = interpreterData?['is_verified'] ?? false;
           _isSuspended = interpreterData?['is_suspended'] ?? false;
           _isOnline = interpreterData?['is_online'] ?? false;
           _totalSessions = sessionsCount;
+          _thisWeekSessions = (weekSessions as List).length;
+          _avgRating =
+              (feedbackStats['average_rating'] as num?)?.toDouble() ?? 0.0;
+          _totalFeedback = feedbackStats['total_feedback'] as int? ?? 0;
+          _recentCalls = recentCalls;
           _employmentType = profileData?['employment_type'] ?? 'volunteer';
           _isLoadingProfile = false;
         });
@@ -217,7 +249,16 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 2, child: _buildJobsSection()),
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      _buildJobsSection(),
+                      const SizedBox(height: 24),
+                      _buildRecentCallsSection(),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 24),
                 Expanded(
                   flex: 1,
@@ -241,6 +282,8 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                 _buildStatsCard(),
                 const SizedBox(height: 24),
                 _buildJobsSection(),
+                const SizedBox(height: 24),
+                _buildRecentCallsSection(),
                 const SizedBox(height: 24),
                 _buildQuickActionsCard(),
               ],
@@ -582,14 +625,14 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           const Divider(height: 24),
           _buildStatTile(
             'This Week',
-            '3',
+            _thisWeekSessions.toString(),
             Icons.calendar_today,
             const Color(0xFF22C55E),
           ),
           const Divider(height: 24),
           _buildStatTile(
             'Avg. Rating',
-            '4.9',
+            _totalFeedback > 0 ? _avgRating.toStringAsFixed(1) : '—',
             Icons.star,
             const Color(0xFFF59E0B),
           ),
@@ -1014,6 +1057,256 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
         });
       }
     }
+  }
+
+  Widget _buildRecentCallsSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Recent Sessions',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _recentCalls.isEmpty
+                          ? 'No sessions yet'
+                          : 'Your last ${_recentCalls.length} interpretation sessions',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_totalFeedback > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.star,
+                          size: 16,
+                          color: Color(0xFFF59E0B),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_avgRating.toStringAsFixed(1)} avg',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (_recentCalls.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(48),
+              child: Center(
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.history,
+                        size: 48,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'No sessions yet',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Your completed sessions will appear here.',
+                      style: TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _recentCalls.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final call = _recentCalls[index];
+                return _buildRecentCallTile(call);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentCallTile(Map<String, dynamic> call) {
+    final durationSec = call['duration_seconds'] as int? ?? 0;
+    final callType = call['call_type'] as String? ?? 'voice';
+    final quality = call['connection_quality'] as String? ?? '';
+    final startedAt = DateTime.tryParse(call['started_at'] ?? '');
+
+    final minutes = durationSec ~/ 60;
+    final seconds = durationSec % 60;
+    final durationStr = '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          // Call type icon
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color:
+                  callType == 'video'
+                      ? const Color(0xFF6366F1).withValues(alpha: 0.1)
+                      : const Color(0xFF0955FA).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              callType == 'video' ? Icons.videocam : Icons.phone,
+              color:
+                  callType == 'video'
+                      ? const Color(0xFF6366F1)
+                      : const Color(0xFF0955FA),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${callType == 'video' ? 'Video' : 'Voice'} Session',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.access_time,
+                      size: 14,
+                      color: Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      durationStr,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    if (quality.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      Icon(
+                        quality == 'excellent' || quality == 'good'
+                            ? Icons.signal_cellular_alt
+                            : Icons.signal_cellular_alt_2_bar,
+                        size: 14,
+                        color:
+                            quality == 'excellent' || quality == 'good'
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFFF59E0B),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        quality,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color:
+                              quality == 'excellent' || quality == 'good'
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFF59E0B),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Date
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (startedAt != null)
+                Text(
+                  DateFormat('MMM d').format(startedAt),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              if (startedAt != null)
+                Text(
+                  DateFormat('h:mm a').format(startedAt),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQuickActionsCard() {

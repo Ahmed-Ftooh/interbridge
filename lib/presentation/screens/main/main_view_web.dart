@@ -26,7 +26,7 @@ import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/presentation/widgets/web/web_layout_shell.dart';
 import 'package:interbridge/presentation/screens/main/home/web/requester_home_web.dart';
 import 'package:interbridge/presentation/screens/main/home/web/interpreter_home_web.dart';
-import 'package:interbridge/admin/screens/admin_list_screen.dart';
+import 'package:interbridge/admin/screens/admin_dashboard_web.dart';
 import 'package:lottie/lottie.dart';
 
 /// Web-specific main view with modern sidebar navigation
@@ -410,7 +410,7 @@ class _MainViewWebState extends State<MainViewWeb> {
           ),
         );
       }
-      return const AdminListScreen();
+      return const AdminDashboardWeb();
     }
 
     final pages = _pages ?? _buildPages();

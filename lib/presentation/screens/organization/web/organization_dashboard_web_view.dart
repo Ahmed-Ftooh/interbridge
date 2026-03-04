@@ -6,7 +6,9 @@ import 'package:interbridge/presentation/screens/organization/bloc/organization_
 import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_event.dart';
 import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_state.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
+import 'package:interbridge/presentation/widgets/payment_success_dialog.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Web-specific organization dashboard with modern design
 class OrganizationDashboardWebView extends StatefulWidget {
@@ -19,14 +21,38 @@ class OrganizationDashboardWebView extends StatefulWidget {
 
 class _OrganizationDashboardWebViewState
     extends State<OrganizationDashboardWebView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedTab = 0;
   final List<String> _tabNames = ['Overview', 'Doctors', 'Calls', 'Billing'];
+  bool _checkoutInProgress = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     context.read<OrganizationDashboardBloc>().add(const LoadOrganizationData());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the tab regains focus after Stripe checkout, refresh data
+    if (state == AppLifecycleState.resumed && _checkoutInProgress) {
+      _checkoutInProgress = false;
+      // Delay to give webhook time to process
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          context.read<OrganizationDashboardBloc>().add(
+            const RefreshOrganizationData(),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -41,6 +67,24 @@ class _OrganizationDashboardWebViewState
               message: state.message!,
               type: state.isError ? SnackBarType.error : SnackBarType.success,
             );
+          }
+          // Open Stripe Checkout in browser when URL is available
+          if (state is OrganizationDashboardLoaded &&
+              state.checkoutUrl != null) {
+            _openStripeCheckout(state.checkoutUrl!);
+            // Clear the URL so it doesn't re-trigger on rebuild
+            context.read<OrganizationDashboardBloc>().add(
+              const ClearCheckoutUrl(),
+            );
+          }
+          // Handle payment success — show animated dialog
+          if (state is OrganizationDashboardLoaded &&
+              state.paymentSuccessAmount != null) {
+            final amount = state.paymentSuccessAmount!;
+            context.read<OrganizationDashboardBloc>().add(
+              const ClearPaymentSuccess(),
+            );
+            PaymentSuccessDialog.show(context, amount: amount);
           }
         },
         builder: (context, state) {
@@ -932,11 +976,64 @@ class _OrganizationDashboardWebViewState
   }
 
   Widget _buildBillingTab(OrganizationDashboardLoaded state) {
+    final lowBalance = state.walletBalance < (state.ratePerMinute * 30);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Low balance warning
+          if (lowBalance)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Low Balance Warning',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                        Text(
+                          'Your balance (\$${state.walletBalance.toStringAsFixed(2)}) covers less than 30 minutes. Top up to avoid service interruption.',
+                          style: const TextStyle(
+                            color: Color(0xFF991B1B),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _showTopUpDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Top Up Now'),
+                  ),
+                ],
+              ),
+            ),
+
           // Balance Card
           Container(
             padding: const EdgeInsets.all(24),
@@ -967,28 +1064,97 @@ class _OrganizationDashboardWebViewState
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Rate: \$${state.ratePerMinute.toStringAsFixed(2)}/min',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: _showTopUpDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Top Up'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0955FA),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
+                Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _showTopUpDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Top Up'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF0955FA),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (state.isProcessingTopUp)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
           ),
           const SizedBox(height: 32),
 
-          _buildSectionHeader('Transaction History', Icons.receipt_long),
+          // Per-Doctor Spending
+          if (state.members.isNotEmpty) ...[
+            _buildSectionHeader('Doctor Spending', Icons.person_outline),
+            const SizedBox(height: 16),
+            _buildDoctorSpendingTable(state.members),
+            const SizedBox(height: 32),
+          ],
+
+          // Invoices
+          _buildSectionHeader('Invoices', Icons.receipt_long),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed:
+                    state.isGeneratingInvoice
+                        ? null
+                        : () => _showGenerateInvoiceDialog(state),
+                icon:
+                    state.isGeneratingInvoice
+                        ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.add_chart, size: 18),
+                label: Text(
+                  state.isGeneratingInvoice
+                      ? 'Generating...'
+                      : 'Generate Invoice',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (state.invoices.isEmpty)
+            _buildEmptyState(
+              'No invoices yet. Generate one from your call history.',
+            )
+          else
+            _buildInvoicesTable(state.invoices),
+          const SizedBox(height: 32),
+
+          // Transaction History
+          _buildSectionHeader('Transaction History', Icons.swap_horiz),
           const SizedBox(height: 16),
           if (state.transactions.isEmpty)
             _buildEmptyState('No transactions yet.')
@@ -996,6 +1162,454 @@ class _OrganizationDashboardWebViewState
             _buildTransactionsTable(state.transactions),
         ],
       ),
+    );
+  }
+
+  Widget _buildDoctorSpendingTable(List<Map<String, dynamic>> members) {
+    final doctors = members.where((m) => m['role'] == 'doctor').toList();
+
+    if (doctors.isEmpty) {
+      return _buildEmptyState('No doctors have made calls yet.');
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Doctor',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Spent',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Limit',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Status',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ...doctors.map((doc) {
+            final profile = doc['users_profile'] as Map<String, dynamic>? ?? {};
+            final name =
+                profile['full_name'] ?? profile['username'] ?? 'Doctor';
+            final spent = (doc['total_spent'] as num?)?.toDouble() ?? 0.0;
+            final limit = (doc['spending_limit'] as num?)?.toDouble() ?? 0.0;
+            final hasLimit = limit > 0;
+            final overLimit = hasLimit && spent >= limit;
+            final nearLimit = hasLimit && spent >= limit * 0.8;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      name.toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '\$${spent.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color:
+                            overLimit
+                                ? const Color(0xFFDC2626)
+                                : nearLimit
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      hasLimit ? '\$${limit.toStringAsFixed(2)}' : 'No limit',
+                      style: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            overLimit
+                                ? const Color(0xFFFEE2E2)
+                                : nearLimit
+                                ? const Color(0xFFFEF3C7)
+                                : const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        overLimit
+                            ? 'Over limit'
+                            : nearLimit
+                            ? 'Near limit'
+                            : 'OK',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              overLimit
+                                  ? const Color(0xFFDC2626)
+                                  : nearLimit
+                                  ? const Color(0xFFF59E0B)
+                                  : const Color(0xFF22C55E),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoicesTable(List<Map<String, dynamic>> invoices) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Invoice #',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Period',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Calls',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Amount',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Status',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                SizedBox(width: 80),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ...invoices.map((inv) {
+            final number = inv['invoice_number'] ?? '-';
+            final start = inv['billing_period_start'] ?? '';
+            final end = inv['billing_period_end'] ?? '';
+            final period = '${_formatDate(start)} — ${_formatDate(end)}';
+            final calls = inv['total_calls'] ?? 0;
+            final amount = (inv['total_amount'] as num?)?.toDouble() ?? 0.0;
+            final status = inv['status'] ?? 'draft';
+            final pdfUrl = inv['pdf_url'] as String?;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '#$number',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      period,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Text('$calls')),
+                  Expanded(
+                    child: Text(
+                      '\$${amount.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Expanded(child: _buildInvoiceStatusBadge(status)),
+                  SizedBox(
+                    width: 80,
+                    child:
+                        pdfUrl != null
+                            ? IconButton(
+                              onPressed: () => _openInvoice(pdfUrl),
+                              icon: const Icon(
+                                Icons.download,
+                                size: 20,
+                                color: Color(0xFF0955FA),
+                              ),
+                              tooltip: 'Download Invoice',
+                            )
+                            : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceStatusBadge(String status) {
+    Color bg, fg;
+    switch (status) {
+      case 'paid':
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF22C55E);
+        break;
+      case 'sent':
+        bg = const Color(0xFFDBEAFE);
+        fg = const Color(0xFF3B82F6);
+        break;
+      case 'overdue':
+        bg = const Color(0xFFFEE2E2);
+        fg = const Color(0xFFDC2626);
+        break;
+      default:
+        bg = const Color(0xFFF1F5F9);
+        fg = const Color(0xFF64748B);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        status[0].toUpperCase() + status.substring(1),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
+      ),
+    );
+  }
+
+  void _openInvoice(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _openStripeCheckout(String url) async {
+    _checkoutInProgress = true;
+    final uri = Uri.parse(url);
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        _checkoutInProgress = false;
+        CustomSnackBar.show(
+          context,
+          message: 'Could not open payment page. Please try again.',
+          type: SnackBarType.error,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to open payment page: $e',
+          type: SnackBarType.error,
+        );
+      }
+    }
+  }
+
+  void _showGenerateInvoiceDialog(OrganizationDashboardLoaded state) {
+    final now = DateTime.now();
+    int selectedYear = now.year;
+    int selectedMonth = now.month == 1 ? 12 : now.month - 1;
+    if (now.month == 1) selectedYear = now.year - 1;
+    bool sendEmail = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Generate Monthly Invoice'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Generate an invoice for a billing period.',
+                      style: TextStyle(color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            value: selectedMonth,
+                            decoration: const InputDecoration(
+                              labelText: 'Month',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: List.generate(
+                              12,
+                              (i) => DropdownMenuItem(
+                                value: i + 1,
+                                child: Text(
+                                  DateFormat.MMMM().format(
+                                    DateTime(2024, i + 1),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            onChanged:
+                                (v) => setDialogState(() => selectedMonth = v!),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            value: selectedYear,
+                            decoration: const InputDecoration(
+                              labelText: 'Year',
+                              border: OutlineInputBorder(),
+                            ),
+                            items:
+                                [now.year - 1, now.year]
+                                    .map(
+                                      (y) => DropdownMenuItem(
+                                        value: y,
+                                        child: Text('$y'),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (v) => setDialogState(() => selectedYear = v!),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    CheckboxListTile(
+                      value: sendEmail,
+                      onChanged:
+                          (v) => setDialogState(() => sendEmail = v ?? false),
+                      title: const Text('Send invoice via email'),
+                      subtitle: const Text(
+                        'Email will be sent to the billing contact',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    context.read<OrganizationDashboardBloc>().add(
+                      GenerateInvoice(
+                        year: selectedYear,
+                        month: selectedMonth,
+                        sendEmail: sendEmail,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.receipt_long, size: 18),
+                  label: const Text('Generate'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

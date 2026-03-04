@@ -63,19 +63,21 @@ class _InterpreterAcceptedDocumentsViewState
               schema: 'public',
               table: 'document_translation_requests',
               callback: (payload) {
-                _loadAcceptedRequests();
+                if (mounted) _loadAcceptedRequests();
               },
             )
             .subscribe();
   }
 
   Future<void> _loadAcceptedRequests() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final requests =
           await instance<DocumentTranslationService>().getAcceptedRequests();
       final hidden =
           await HiddenItemsService().getInterpreterHiddenAcceptedIds();
+      if (!mounted) return;
       setState(() {
         _acceptedRequests =
             requests.where((r) => !hidden.contains(r.id)).toList();
@@ -83,6 +85,7 @@ class _InterpreterAcceptedDocumentsViewState
         _errorMessage = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Error loading requests: $e';

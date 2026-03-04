@@ -1,8 +1,10 @@
 import 'dart:developer';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
@@ -67,6 +69,10 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? voiceSamplePath;
   late String? certificatePath;
   late String? medicalCertificatePath;
+  // Native-language voice sample
+  late String? voiceSampleNativePath;
+  Uint8List? voiceSampleNativeBytes;
+  String? voiceSampleNativeName;
   // Web: raw bytes for uploads (blob URLs/paths don't survive page navigation)
   Uint8List? voiceSampleBytes;
   String? voiceSampleName;
@@ -80,6 +86,10 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late List<String> shiftAvailability;
   late bool? isOnlineNow;
   late String? employmentType; // 'volunteer' or 'paid'
+
+  // Profile picture
+  Uint8List? _profileImageBytes;
+  String? _profileImageName;
 
   // Organization data
   late String? organizationName;
@@ -172,6 +182,11 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     voiceSamplePath = widget.data['voiceSamplePath'];
     certificatePath = widget.data['certificatePath'];
     medicalCertificatePath = widget.data['medicalCertificatePath'];
+    // Native-language voice sample
+    voiceSampleNativePath = widget.data['voiceSampleNativePath'];
+    voiceSampleNativeBytes =
+        widget.data['voiceSampleNativeBytes'] as Uint8List?;
+    voiceSampleNativeName = widget.data['voiceSampleNativeName'] as String?;
     // Web: get voice sample and certificate bytes if available
     voiceSampleBytes = widget.data['voiceSampleBytes'] as Uint8List?;
     voiceSampleName = widget.data['voiceSampleName'] as String?;
@@ -301,7 +316,12 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                       padding: const EdgeInsets.all(AppSize.s24),
                       child: Column(
                         children: [
-                          const SizedBox(height: AppSize.s40),
+                          const SizedBox(height: AppSize.s20),
+                          // Profile picture picker
+                          if (role == 'interpreter') ...[
+                            _buildProfilePicturePicker(),
+                            const SizedBox(height: AppSize.s24),
+                          ],
                           CustomTextFieldContainer(
                             controller: _usernameController,
                             style: Theme.of(context).textTheme.bodyLarge
@@ -732,8 +752,16 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     certificatePath: certificatePath,
                                     medicalCertificatePath:
                                         medicalCertificatePath,
+                                    voiceSampleNativePath:
+                                        voiceSampleNativePath,
+                                    voiceSampleNativeBytes:
+                                        voiceSampleNativeBytes,
+                                    voiceSampleNativeName:
+                                        voiceSampleNativeName,
                                     voiceSampleBytes: voiceSampleBytes,
                                     voiceSampleName: voiceSampleName,
+                                    profileImageBytes: _profileImageBytes,
+                                    profileImageName: _profileImageName,
                                     certificateBytes: certificateBytes,
                                     certificateName: certificateName,
                                     medicalCertificateBytes:
@@ -826,5 +854,79 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
         ),
       ),
     );
+  }
+
+  // ─── Profile picture picker ───────────────────────────────────
+  Widget _buildProfilePicturePicker() {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: _pickProfileImage,
+          child: Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CircleAvatar(
+                radius: 50,
+                backgroundColor: ColorManager.primary2.withValues(alpha: 0.1),
+                backgroundImage:
+                    _profileImageBytes != null
+                        ? MemoryImage(_profileImageBytes!)
+                        : null,
+                child:
+                    _profileImageBytes == null
+                        ? Icon(
+                          Icons.person,
+                          size: 48,
+                          color: ColorManager.primary2.withValues(alpha: 0.5),
+                        )
+                        : null,
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: ColorManager.primary2,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _profileImageBytes != null
+              ? 'Tap to change photo'
+              : 'Add profile photo',
+          style: TextStyle(fontSize: 13, color: ColorManager.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickProfileImage() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        setState(() {
+          _profileImageBytes = bytes;
+          _profileImageName =
+              'profile_${DateTime.now().millisecondsSinceEpoch}.${picked.name.split('.').last}';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking profile image: $e');
+    }
   }
 }

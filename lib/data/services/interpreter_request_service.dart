@@ -32,6 +32,66 @@ class InterpreterRequestService {
         throw Exception('User must be authenticated to create a request');
       }
 
+      // Look up the caller's organization (if any) to attach to the request
+      String? organizationId;
+      try {
+        final memberRow =
+            await _client
+                .from('organization_members')
+                .select('organization_id')
+                .eq('user_id', user.id)
+                .eq('is_active', true)
+                .maybeSingle();
+        organizationId = memberRow?['organization_id'] as String?;
+      } catch (e) {
+        log('Org lookup for request (non-fatal): $e');
+      }
+
+      // Check wallet balance & spending limits for org members
+      if (organizationId != null) {
+        final org =
+            await _client
+                .from('organizations')
+                .select('wallet_balance, rate_per_minute')
+                .eq('id', organizationId)
+                .maybeSingle();
+
+        if (org != null) {
+          final walletBalance =
+              (org['wallet_balance'] as num?)?.toDouble() ?? 0.0;
+          final ratePerMinute =
+              (org['rate_per_minute'] as num?)?.toDouble() ?? 1.0;
+
+          if (walletBalance < ratePerMinute) {
+            throw Exception(
+              'Insufficient organization balance. '
+              'Please ask your admin to top up the wallet.',
+            );
+          }
+        }
+
+        // Check individual spending limit
+        final member =
+            await _client
+                .from('organization_members')
+                .select('total_spent, spending_limit')
+                .eq('user_id', user.id)
+                .eq('organization_id', organizationId)
+                .eq('is_active', true)
+                .maybeSingle();
+
+        if (member != null) {
+          final spent = (member['total_spent'] as num?)?.toDouble() ?? 0.0;
+          final limit = (member['spending_limit'] as num?)?.toDouble() ?? 0.0;
+          if (limit > 0 && spent >= limit) {
+            throw Exception(
+              'You have reached your spending limit (\$${limit.toStringAsFixed(0)}). '
+              'Contact your organization admin.',
+            );
+          }
+        }
+      }
+
       // Create the request data with new fields
       final requestData = {
         'requester_id': user.id,
@@ -47,6 +107,7 @@ class InterpreterRequestService {
         'notification_tier': 1, // Start with tier 1
         'tier_started_at': DateTime.now().toIso8601String(),
         'created_at': DateTime.now().toIso8601String(),
+        if (organizationId != null) 'organization_id': organizationId,
       };
 
       // Insert the request into database and return inserted row
@@ -588,6 +649,34 @@ class InterpreterRequestService {
     } catch (e) {
       log('Error checking tier escalation: $e');
       return false;
+    }
+  }
+
+  /// Ring interpreters for an already-existing request (used as fallback
+  /// when auto-routing fails).
+  Future<void> ringForExistingRequest(
+    String requestId, {
+    String interpreterType = 'general',
+    String? medicalSection,
+  }) async {
+    try {
+      final row =
+          await _client
+              .from('interpreter_requests')
+              .select('*')
+              .eq('id', requestId)
+              .single();
+
+      final request = InterpreterRequest.fromJson(row);
+
+      await _ringMatchingInterpreters(
+        request,
+        interpreterType: interpreterType,
+        medicalSection: medicalSection,
+      );
+    } catch (e) {
+      log('Error ringing for existing request: $e');
+      rethrow;
     }
   }
 }

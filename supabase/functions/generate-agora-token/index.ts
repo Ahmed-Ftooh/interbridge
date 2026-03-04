@@ -41,11 +41,12 @@ serve(async (req) => {
     const body = await req.json().catch(() => null)
     const channelName = body?.channelName
     const uidRaw = body?.uid
+    const roleRaw = body?.role // optional: 'publisher' (default) or 'subscriber'
 
     if (!channelName || (!uidRaw && uidRaw !== 0)) {
       return jsonResponse({
         error: 'Invalid request body',
-        details: 'Expected JSON with { channelName: string, uid: number|string }',
+        details: 'Expected JSON with { channelName: string, uid: number|string, role?: "publisher"|"subscriber" }',
       }, 400)
     }
 
@@ -59,13 +60,16 @@ serve(async (req) => {
     const currentTimestamp = Math.floor(Date.now() / 1000)
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds
 
+    // Determine role: publisher (default) or subscriber (audience/listen-only)
+    const agoraRole = roleRaw === 'subscriber' ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER
+
     // Build token
     const token = RtcTokenBuilder.buildTokenWithUid(
       APP_ID,
       APP_CERTIFICATE,
       String(channelName),
       uid,
-      RtcRole.PUBLISHER,
+      agoraRole,
       privilegeExpiredTs,
     )
 

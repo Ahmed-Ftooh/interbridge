@@ -194,7 +194,7 @@ class _DoctorRegisterWithInviteScreenState
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.business, color: Colors.orange),
+                        const Icon(Icons.business, color: Colors.orange),
                         const SizedBox(width: AppSize.s12),
                         Expanded(
                           child: Column(

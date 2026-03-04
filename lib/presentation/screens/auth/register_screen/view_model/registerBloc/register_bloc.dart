@@ -212,6 +212,14 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
           'voiceSampleBytesBase64': base64Encode(event.voiceSampleBytes!),
         if (event.voiceSampleName != null)
           'voiceSampleName': event.voiceSampleName,
+        // Native-language voice sample
+        'voiceSampleNativePath': event.voiceSampleNativePath,
+        if (event.voiceSampleNativeBytes != null)
+          'voiceSampleNativeBytesBase64': base64Encode(
+            event.voiceSampleNativeBytes!,
+          ),
+        if (event.voiceSampleNativeName != null)
+          'voiceSampleNativeName': event.voiceSampleNativeName,
         if (event.certificateBytes != null)
           'certificateBytesBase64': base64Encode(event.certificateBytes!),
         if (event.certificateName != null)
@@ -228,6 +236,10 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'shiftAvailability': event.shiftAvailability,
         'isOnlineNow': event.isOnlineNow,
         'employmentType': event.employmentType,
+        if (event.profileImageBytes != null)
+          'profileImageBytesBase64': base64Encode(event.profileImageBytes!),
+        if (event.profileImageName != null)
+          'profileImageName': event.profileImageName,
       };
       await GetIt.I<AppPreferences>().savePendingRegistration(
         jsonEncode(pending),

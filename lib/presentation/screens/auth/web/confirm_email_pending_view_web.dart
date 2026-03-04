@@ -169,11 +169,11 @@ class _ConfirmEmailPendingViewWebState
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text(
+                      const Text(
                         'We\'ve sent a confirmation link to',
                         style: TextStyle(
                           fontSize: 16,
-                          color: const Color(0xFF64748B),
+                          color: Color(0xFF64748B),
                         ),
                       ),
                       const SizedBox(height: 8),

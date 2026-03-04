@@ -325,9 +325,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       );
 
       // 4) Audio profile, scenario & route
-      await _engine!.setAudioProfile(
-        profile: AudioProfileType.audioProfileSpeechStandard,
-      );
+      //    Several Agora APIs return -4 (unsupported) on web, so wrap
+      //    non-critical calls in try-catch to keep the flow alive.
+      try {
+        await _engine!.setAudioProfile(
+          profile: AudioProfileType.audioProfileSpeechStandard,
+        );
+      } catch (audioProfileErr) {
+        log('Warning: setAudioProfile failed (web?): $audioProfileErr');
+      }
 
       // setAudioScenario & setDefaultAudioRouteToSpeakerphone are NOT
       // supported on web (Iris returns -4). Skip them on web.
@@ -363,7 +369,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           log('Warning: Could not set video encoder config: $videoConfigErr');
         }
 
-        await _engine!.enableLocalVideo(true);
+        try {
+          await _engine!.enableLocalVideo(true);
+        } catch (localVideoErr) {
+          log('Warning: enableLocalVideo failed: $localVideoErr');
+        }
         try {
           await _engine!.startPreview();
         } catch (previewErr) {
@@ -376,8 +386,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         _speakerOn = false; // Voice calls start on earpiece
       }
 
-      await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-      await _engine!.muteLocalAudioStream(_muted);
+      try {
+        await _engine!.setClientRole(
+          role: ClientRoleType.clientRoleBroadcaster,
+        );
+      } catch (roleErr) {
+        log('Warning: setClientRole failed (web?): $roleErr');
+      }
+      try {
+        await _engine!.muteLocalAudioStream(_muted);
+      } catch (muteErr) {
+        log('Warning: muteLocalAudioStream failed: $muteErr');
+      }
       try {
         if (!kIsWeb) {
           await _engine!.setEnableSpeakerphone(_speakerOn);
@@ -393,9 +413,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final token = await service
           .fetchAgoraToken(channelName: e.channelId, uid: e.localUid)
           .timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 15),
             onTimeout: () {
-              log('Token fetch timeout after 10 seconds');
+              log('Token fetch timeout after 15 seconds');
               throw Exception(
                 'Failed to get voice call token. Please try again.',
               );
@@ -403,40 +423,66 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           );
       log('Successfully obtained Agora token');
 
-      // 6) Join channel with timeout
+      // 6) Join channel
+      //    On web the Agora Iris bridge triggers getUserMedia (browser
+      //    permission prompt) during joinChannel, which can take an
+      //    unpredictable amount of time.  Applying a short timeout
+      //    causes false failures.  We rely on the registered
+      //    onJoinChannelSuccess / onError callbacks and the fallback
+      //    timer below to drive state transitions instead.
       log('Joining Agora channel: ${e.channelId}');
-      await _engine!
-          .joinChannel(
-            token: token,
-            channelId: e.channelId,
-            uid: e.localUid,
-            options: ChannelMediaOptions(
-              clientRoleType: ClientRoleType.clientRoleBroadcaster,
-              publishCameraTrack: e.isVideoCall,
-              publishMicrophoneTrack: true,
-              autoSubscribeVideo: e.isVideoCall,
-              autoSubscribeAudio: true,
-            ),
-          )
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              log('Join channel timeout after 10 seconds');
-              throw Exception(
-                'Voice call connection timeout. Please try again.',
-              );
-            },
-          );
-      log('Successfully joined Agora channel');
+      if (kIsWeb) {
+        // Fire-and-forget on web — callbacks drive the state machine.
+        _engine!.joinChannel(
+          token: token,
+          channelId: e.channelId,
+          uid: e.localUid,
+          options: ChannelMediaOptions(
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+            publishCameraTrack: e.isVideoCall,
+            publishMicrophoneTrack: true,
+            autoSubscribeVideo: e.isVideoCall,
+            autoSubscribeAudio: true,
+          ),
+        );
+        log('joinChannel called on web (fire-and-forget, callbacks pending)');
+      } else {
+        await _engine!
+            .joinChannel(
+              token: token,
+              channelId: e.channelId,
+              uid: e.localUid,
+              options: ChannelMediaOptions(
+                clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                publishCameraTrack: e.isVideoCall,
+                publishMicrophoneTrack: true,
+                autoSubscribeVideo: e.isVideoCall,
+                autoSubscribeAudio: true,
+              ),
+            )
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () {
+                log('Join channel timeout after 15 seconds');
+                throw Exception(
+                  'Voice call connection timeout. Please try again.',
+                );
+              },
+            );
+        log('Successfully joined Agora channel');
+      }
 
-      // Fallback: If onJoinChannelSuccess doesn't fire within 5 seconds,
-      // assume the call is ongoing and emit the state manually.
-      // NOTE: The timer is NOT started here — it only starts when the
-      // remote user actually joins (_onRemoteUserJoined). This ensures
-      // both participants' timers are synchronized.
-      Timer(const Duration(seconds: 5), () {
+      // Fallback: If onJoinChannelSuccess doesn't fire within a
+      // reasonable window, transition to CallOngoing so the user sees
+      // the call screen instead of being stuck on "Connecting...".
+      // On web we give extra time because the browser permission
+      // dialog and WebRTC ICE negotiation can be slow.
+      final fallbackSeconds = kIsWeb ? 12 : 5;
+      Timer(Duration(seconds: fallbackSeconds), () {
         if (state is CallConnecting) {
-          log('Fallback: Manually transitioning to CallOngoing state (timer waits for remote user)');
+          log(
+            'Fallback: Manually transitioning to CallOngoing state (timer waits for remote user)',
+          );
           // Use add() to trigger a new event instead of emit()
           add(_FallbackToOngoing(channelId: e.channelId, localUid: e.localUid));
         }
@@ -664,6 +710,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final interpreterType = participants?['interpreter_type'] as String?;
       final fromLanguage = participants?['from_language'] as String?;
       final toLanguage = participants?['to_language'] as String?;
+      final organizationId = participants?['organization_id'] as String?;
 
       // Determine remote user UUID
       String? remoteUserId;
@@ -703,6 +750,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           callType: callLogType,
           fromLanguage: fromLanguage,
           toLanguage: toLanguage,
+          organizationId: organizationId,
         );
       }
 

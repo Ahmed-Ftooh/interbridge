@@ -11,7 +11,8 @@ import 'package:interbridge/core/web_helpers/fetch_blob_bytes.dart'
     if (dart.library.html) 'package:interbridge/core/web_helpers/fetch_blob_bytes_web.dart'
     as blob_helper;
 
-/// Professional web voice sample recording screen for interpreter onboarding
+/// Professional web voice sample recording screen for interpreter onboarding.
+/// Records two samples: English introduction and native-language introduction.
 class VoiceSampleWebScreen extends StatefulWidget {
   const VoiceSampleWebScreen({super.key});
 
@@ -21,28 +22,43 @@ class VoiceSampleWebScreen extends StatefulWidget {
 
 class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   late final AudioRecorder _audioRecorder;
-  late final AudioPlayer _audioPlayer;
+  late final AudioPlayer _playerEnglish;
+  late final AudioPlayer _playerNative;
 
-  bool _isRecording = false;
-  bool _isPlaying = false;
   bool _hasPermission = false;
   bool _permissionDenied = false;
-  String? _audioPath;
-  Uint8List? _audioBytes;
-  int _recordDuration = 0;
-  Timer? _timer;
 
-  final String _promptText =
-      'Introduce yourself briefly and tell us why you want to become an interpreter with InterBridge.';
+  // --- English sample state ---
+  bool _isRecordingEn = false;
+  bool _isPlayingEn = false;
+  String? _audioPathEn;
+  Uint8List? _audioBytesEn;
+  int _recordDurationEn = 0;
+  Timer? _timerEn;
+
+  // --- Native-language sample state ---
+  bool _isRecordingNat = false;
+  bool _isPlayingNat = false;
+  String? _audioPathNat;
+  Uint8List? _audioBytesNat;
+  int _recordDurationNat = 0;
+  Timer? _timerNat;
+
+  bool get _isAnyRecording => _isRecordingEn || _isRecordingNat;
+  bool get _canContinue => _audioPathEn != null && _audioPathNat != null;
 
   @override
   void initState() {
     super.initState();
     _audioRecorder = AudioRecorder();
-    _audioPlayer = AudioPlayer();
+    _playerEnglish = AudioPlayer();
+    _playerNative = AudioPlayer();
 
-    _audioPlayer.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _isPlaying = false);
+    _playerEnglish.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _isPlayingEn = false);
+    });
+    _playerNative.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _isPlayingNat = false);
     });
 
     _checkPermission();
@@ -50,9 +66,11 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _timerEn?.cancel();
+    _timerNat?.cancel();
     _audioRecorder.dispose();
-    _audioPlayer.dispose();
+    _playerEnglish.dispose();
+    _playerNative.dispose();
     super.dispose();
   }
 
@@ -66,32 +84,52 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _permissionDenied = true);
-      }
+      if (mounted) setState(() => _permissionDenied = true);
     }
   }
 
-  Future<void> _startRecording() async {
+  // ─── Recording helpers ────────────────────────────────────────
+  Future<void> _startRecording({required bool isNative}) async {
+    if (_isAnyRecording) return;
     try {
       if (await _audioRecorder.hasPermission()) {
-        // On web, record to a blob URL (path is ignored)
         await _audioRecorder.start(
           const RecordConfig(encoder: AudioEncoder.opus),
           path: '',
         );
 
         setState(() {
-          _isRecording = true;
-          _audioPath = null;
-          _recordDuration = 0;
           _hasPermission = true;
           _permissionDenied = false;
+          if (isNative) {
+            _isRecordingNat = true;
+            _audioPathNat = null;
+            _audioBytesNat = null;
+            _recordDurationNat = 0;
+          } else {
+            _isRecordingEn = true;
+            _audioPathEn = null;
+            _audioBytesEn = null;
+            _recordDurationEn = 0;
+          }
         });
 
-        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          if (mounted) setState(() => _recordDuration++);
+        final timer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) {
+            setState(() {
+              if (isNative) {
+                _recordDurationNat++;
+              } else {
+                _recordDurationEn++;
+              }
+            });
+          }
         });
+        if (isNative) {
+          _timerNat = timer;
+        } else {
+          _timerEn = timer;
+        }
       } else {
         setState(() => _permissionDenied = true);
       }
@@ -100,71 +138,108 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     }
   }
 
-  Future<void> _stopRecording() async {
+  Future<void> _stopRecording({required bool isNative}) async {
     try {
       final path = await _audioRecorder.stop();
-      _timer?.cancel();
+      if (isNative) {
+        _timerNat?.cancel();
+      } else {
+        _timerEn?.cancel();
+      }
 
-      // On web, fetch the blob URL as bytes so we can persist them
       Uint8List? bytes;
       if (path != null && path.startsWith('blob:')) {
         bytes = await blob_helper.fetchBlobBytes(path);
-        if (bytes == null) {
-          debugPrint('Error fetching blob bytes');
-        }
       }
 
       setState(() {
-        _isRecording = false;
-        _audioPath = path;
-        _audioBytes = bytes;
+        if (isNative) {
+          _isRecordingNat = false;
+          _audioPathNat = path;
+          _audioBytesNat = bytes;
+        } else {
+          _isRecordingEn = false;
+          _audioPathEn = path;
+          _audioBytesEn = bytes;
+        }
       });
     } catch (e) {
       debugPrint('Error stopping recording: $e');
     }
   }
 
-  Future<void> _togglePlayback() async {
-    if (_audioPath == null) return;
+  Future<void> _togglePlayback({required bool isNative}) async {
+    final path = isNative ? _audioPathNat : _audioPathEn;
+    if (path == null) return;
+
+    final player = isNative ? _playerNative : _playerEnglish;
+    final isPlaying = isNative ? _isPlayingNat : _isPlayingEn;
 
     try {
-      if (_isPlaying) {
-        await _audioPlayer.pause();
-        setState(() => _isPlaying = false);
+      if (isPlaying) {
+        await player.pause();
+        setState(() {
+          if (isNative) {
+            _isPlayingNat = false;
+          } else {
+            _isPlayingEn = false;
+          }
+        });
       } else {
-        await _audioPlayer.play(UrlSource(_audioPath!));
-        setState(() => _isPlaying = true);
+        await player.play(UrlSource(path));
+        setState(() {
+          if (isNative) {
+            _isPlayingNat = true;
+          } else {
+            _isPlayingEn = true;
+          }
+        });
       }
     } catch (e) {
       debugPrint('Error playing audio: $e');
     }
   }
 
-  void _deleteRecording() {
-    _audioPlayer.stop();
+  void _deleteRecording({required bool isNative}) {
+    final player = isNative ? _playerNative : _playerEnglish;
+    player.stop();
     setState(() {
-      _audioPath = null;
-      _audioBytes = null;
-      _isPlaying = false;
-      _recordDuration = 0;
+      if (isNative) {
+        _audioPathNat = null;
+        _audioBytesNat = null;
+        _isPlayingNat = false;
+        _recordDurationNat = 0;
+      } else {
+        _audioPathEn = null;
+        _audioBytesEn = null;
+        _isPlayingEn = false;
+        _recordDurationEn = 0;
+      }
     });
   }
 
+  // ─── Navigation ───────────────────────────────────────────────
   void _continue() {
-    if (_audioPath == null) return;
+    if (!_canContinue) return;
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
-    args['voiceSamplePath'] = _audioPath;
-    args['voicePrompt'] = _promptText;
-    // Store voice bytes for web (blob URL won't survive page navigation)
-    if (_audioBytes != null) {
-      args['voiceSampleBytes'] = _audioBytes;
-      args['voiceSampleName'] = 'voice_sample.webm';
+
+    // English sample
+    args['voiceSamplePath'] = _audioPathEn;
+    if (_audioBytesEn != null) {
+      args['voiceSampleBytes'] = _audioBytesEn;
+      args['voiceSampleName'] = 'voice_english.webm';
     }
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+
+    // Native-language sample
+    args['voiceSampleNativePath'] = _audioPathNat;
+    if (_audioBytesNat != null) {
+      args['voiceSampleNativeBytes'] = _audioBytesNat;
+      args['voiceSampleNativeName'] = 'voice_native.webm';
+    }
+
+    Navigator.of(context).pushNamed(Routes.voicePromptRoute, arguments: args);
   }
 
   String _formatDuration(int seconds) {
@@ -173,66 +248,18 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     return '$m:$s';
   }
 
+  // ─── UI ───────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return AuthWebWrapper(
       title: 'Voice check',
-      subtitle: 'Record a short voice sample to verify your speaking ability',
+      subtitle:
+          'Record two short voice samples — one in English and one in your native language',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(5, 6),
+          _buildStepIndicator(7, 9),
           const SizedBox(height: 28),
-
-          // Prompt card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.record_voice_over_rounded,
-                        size: 18,
-                        color: Color(0xFF3B82F6),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Prompt',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF374151),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _promptText,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF475569),
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
 
           if (_permissionDenied) ...[
             Container(
@@ -262,19 +289,39 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
             const SizedBox(height: 16),
           ],
 
-          // Recording area
-          if (_audioPath == null)
-            _buildRecordingArea()
-          else
-            _buildPlaybackArea(),
+          // ── English section ──
+          _buildSampleSection(
+            isNative: false,
+            title: 'English introduction',
+            icon: Icons.record_voice_over_rounded,
+            prompt:
+                'Introduce yourself in English. Tell us about your education and medical interpreting experience.',
+            audioPath: _audioPathEn,
+            isRecording: _isRecordingEn,
+            isPlaying: _isPlayingEn,
+            duration: _recordDurationEn,
+          ),
+          const SizedBox(height: 20),
 
+          // ── Native language section ──
+          _buildSampleSection(
+            isNative: true,
+            title: 'Native language introduction',
+            icon: Icons.translate_rounded,
+            prompt:
+                'Introduce yourself in your native language. Tell us about your education and medical interpreting experience.',
+            audioPath: _audioPathNat,
+            isRecording: _isRecordingNat,
+            isPlaying: _isPlayingNat,
+            duration: _recordDurationNat,
+          ),
           const SizedBox(height: 32),
 
-          // Continue button
+          // Continue
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: _audioPath != null ? _continue : null,
+              onPressed: _canContinue ? _continue : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0F172A),
                 foregroundColor: Colors.white,
@@ -306,60 +353,162 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     );
   }
 
-  Widget _buildRecordingArea() {
+  // ─── Reusable section widget ──────────────────────────────────
+  Widget _buildSampleSection({
+    required bool isNative,
+    required String title,
+    required IconData icon,
+    required String prompt,
+    required String? audioPath,
+    required bool isRecording,
+    required bool isPlaying,
+    required int duration,
+  }) {
+    final otherRecording = isNative ? _isRecordingEn : _isRecordingNat;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color:
+              audioPath != null
+                  ? const Color(0xFF22C55E).withValues(alpha: 0.5)
+                  : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 18, color: const Color(0xFF3B82F6)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+              ),
+              if (audioPath != null)
+                const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF22C55E),
+                  size: 20,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Prompt (show when not yet recorded)
+          if (audioPath == null && !isRecording)
+            Text(
+              prompt,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF475569),
+                height: 1.6,
+              ),
+            ),
+
+          if (audioPath == null && !isRecording) const SizedBox(height: 16),
+
+          // Recording area or playback card
+          if (audioPath != null)
+            _buildPlaybackCard(isNative: isNative, isPlaying: isPlaying)
+          else
+            _buildRecordingArea(
+              isNative: isNative,
+              isRecording: isRecording,
+              duration: duration,
+              disabled: otherRecording,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingArea({
+    required bool isNative,
+    required bool isRecording,
+    required int duration,
+    required bool disabled,
+  }) {
     return Column(
       children: [
-        // Mic button
         Center(
           child: GestureDetector(
-            onTap: _isRecording ? _stopRecording : _startRecording,
+            onTap:
+                disabled
+                    ? null
+                    : (isRecording
+                        ? () => _stopRecording(isNative: isNative)
+                        : () => _startRecording(isNative: isNative)),
             child: MouseRegion(
-              cursor: SystemMouseCursors.click,
+              cursor:
+                  disabled
+                      ? SystemMouseCursors.forbidden
+                      : SystemMouseCursors.click,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 80,
-                height: 80,
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color:
-                      _isRecording
-                          ? const Color(0xFFDC2626)
-                          : const Color(0xFF0F172A),
+                      disabled
+                          ? const Color(0xFF94A3B8)
+                          : (isRecording
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFF0F172A)),
                   boxShadow: [
                     BoxShadow(
-                      color: (_isRecording
+                      color: (isRecording
                               ? const Color(0xFFDC2626)
                               : const Color(0xFF0F172A))
-                          .withValues(alpha: 0.3),
-                      blurRadius: 20,
+                          .withValues(alpha: 0.25),
+                      blurRadius: 16,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: Icon(
-                  _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+                  isRecording ? Icons.stop_rounded : Icons.mic_rounded,
                   color: Colors.white,
-                  size: 36,
+                  size: 28,
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
         Text(
-          _isRecording
-              ? _formatDuration(_recordDuration)
-              : 'Tap to start recording',
+          isRecording
+              ? _formatDuration(duration)
+              : (disabled
+                  ? 'Finish the other recording first'
+                  : 'Tap to start recording'),
           style: TextStyle(
-            fontSize: 14,
-            fontWeight: _isRecording ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 13,
+            fontWeight: isRecording ? FontWeight.w600 : FontWeight.w400,
             color:
-                _isRecording
-                    ? const Color(0xFFDC2626)
-                    : const Color(0xFF64748B),
+                isRecording ? const Color(0xFFDC2626) : const Color(0xFF64748B),
           ),
         ),
-        if (_isRecording)
+        if (isRecording)
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
@@ -371,9 +520,9 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     );
   }
 
-  Widget _buildPlaybackArea() {
+  Widget _buildPlaybackCard({required bool isNative, required bool isPlaying}) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -381,32 +530,35 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       ),
       child: Row(
         children: [
-          // Play/pause
           IconButton(
-            onPressed: _togglePlayback,
+            onPressed: () => _togglePlayback(isNative: isNative),
             icon: Icon(
-              _isPlaying
+              isPlaying
                   ? Icons.pause_circle_filled_rounded
                   : Icons.play_circle_fill_rounded,
               color: const Color(0xFF0F172A),
-              size: 40,
+              size: 36,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Voice sample recorded',
-                  style: TextStyle(
+                Text(
+                  isNative
+                      ? 'Native sample recorded'
+                      : 'English sample recorded',
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                 ),
                 Text(
-                  _formatDuration(_recordDuration),
+                  _formatDuration(
+                    isNative ? _recordDurationNat : _recordDurationEn,
+                  ),
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF64748B),
@@ -416,7 +568,7 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
             ),
           ),
           IconButton(
-            onPressed: _deleteRecording,
+            onPressed: () => _deleteRecording(isNative: isNative),
             icon: const Icon(
               Icons.delete_outline_rounded,
               color: Color(0xFFDC2626),

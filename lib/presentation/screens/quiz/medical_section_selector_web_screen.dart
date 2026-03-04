@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
+import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
+    if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 
 /// Web version of the medical section selector grid.
 /// Shows 10 medical specializations with earned badge indicators.
@@ -49,14 +50,17 @@ class _MedicalSectionSelectorWebScreenState
       final user = _supabase.getCurrentUser();
       if (user != null) {
         final badges = await _supabase.getUserBadges(user.id);
+        if (!mounted) return;
         setState(() {
           _earnedBadges = {for (var b in badges) b['badge'] as String: true};
           _loading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() => _loading = false);
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _loading = false);
       debugPrint('Failed to load badges: $e');
     }

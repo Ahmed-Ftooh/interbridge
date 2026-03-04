@@ -52,6 +52,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
   StreamSubscription<AuthState>? _authSub;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -63,10 +64,13 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     // Immediate check — session may already be available
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null && user.emailConfirmedAt != null) {
+      if (_isNavigating) return;
+      _isNavigating = true;
       AppInitializer.markInitialAuthHandled();
       // Finalize pending registration BEFORE navigating so the profile,
       // certificates, and voice samples are persisted first.
       await PendingRegistrationService().finalizePendingRegistration();
+      if (!mounted) return;
       await _navigateBasedOnRole(user.id);
       return;
     }
@@ -78,8 +82,11 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       ) async {
         if (event.event == AuthChangeEvent.signedIn && event.session != null) {
           _authSub?.cancel();
+          if (_isNavigating) return;
+          _isNavigating = true;
           AppInitializer.markInitialAuthHandled();
           await PendingRegistrationService().finalizePendingRegistration();
+          if (!mounted) return;
           _navigateBasedOnRole(event.session!.user.id);
         }
       });
@@ -88,8 +95,11 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       final recheck = Supabase.instance.client.auth.currentUser;
       if (recheck != null && recheck.emailConfirmedAt != null) {
         _authSub?.cancel();
+        if (_isNavigating) return;
+        _isNavigating = true;
         AppInitializer.markInitialAuthHandled();
         await PendingRegistrationService().finalizePendingRegistration();
+        if (!mounted) return;
         await _navigateBasedOnRole(recheck.id);
       }
     }
@@ -227,12 +237,16 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   Widget build(BuildContext context) {
     return AuthWebWrapper(
       title: 'Welcome back',
-      subtitle: 'Sign in to your interpreter portal',
+      subtitle: 'Sign in to your interpreter account to get started',
       child: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (!mounted) return;
 
           if (state.isSuccess) {
+            // Prevent multiple navigation attempts
+            if (_isNavigating) return;
+            _isNavigating = true;
+
             CustomSnackBar.show(
               context,
               message: 'Login successful! Welcome back.',
@@ -240,8 +254,13 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
               duration: const Duration(seconds: 2),
             );
 
-            Future.delayed(const Duration(milliseconds: 200), () async {
-              if (mounted) {
+            // Navigate immediately — no unnecessary delay
+            () async {
+              if (!mounted) {
+                _isNavigating = false;
+                return;
+              }
+              try {
                 await PendingRegistrationService()
                     .finalizePendingRegistration();
                 await _appPreferences.setLoginViewed();
@@ -257,12 +276,25 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                   await oneSignalService.refreshPlayerId();
                 }
 
-                await _requestPermissionsAndNavigate();
+                if (mounted) {
+                  await _requestPermissionsAndNavigate();
+                }
+              } catch (e) {
+                log('Error during post-login navigation: $e');
+                _isNavigating = false;
+                if (mounted) {
+                  // Fallback: try to navigate to main route
+                  final userId = _supabaseService.getCurrentUser()?.id;
+                  if (userId != null) {
+                    await _navigateBasedOnRole(userId);
+                  }
+                }
               }
-            });
+            }();
           }
 
           if (state.isFailure && state.errorMessage != null) {
+            _isNavigating = false;
             CustomSnackBar.show(
               context,
               message: state.errorMessage!,
@@ -447,10 +479,9 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                     height: 48,
                     child: OutlinedButton(
                       onPressed:
-                          () => Navigator.of(context).pushNamed(
-                            Routes.interpreterTrackSelection,
-                            arguments: {'role': 'interpreter'},
-                          ),
+                          () => Navigator.of(
+                            context,
+                          ).pushNamed(Routes.phoneOtpRoute),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF0F172A),
                         side: const BorderSide(color: Color(0xFFE2E8F0)),

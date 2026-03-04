@@ -27,3 +27,20 @@ String get agoraAppCertificate {
   }
   return certificate;
 }
+
+/// Stripe publishable key (test mode)
+String get stripePublishableKey {
+  return dotenv.env['STRIPEPUBLISHABLEKEY'] ?? '';
+}
+
+/// Stripe secret key — only used server-side (edge functions).
+/// Exposed here for reference; do NOT use in client-side code.
+String get stripeSecretKey {
+  return dotenv.env['STRIPESECRETKEY'] ?? '';
+}
+
+/// Check if Stripe is properly configured
+bool get isStripeConfigured {
+  final key = dotenv.env['STRIPEPUBLISHABLEKEY'];
+  return key != null && key.isNotEmpty && key.startsWith('pk_');
+}

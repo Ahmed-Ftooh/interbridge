@@ -25,8 +25,8 @@ class _QuizScreenState extends State<QuizScreen> {
   final _supabase = SupabaseService();
   static const _passScore = 85;
   static const _medicalBadgeScore = 85;
-  static const _generalTimePerQuestion = 25;
-  static const _medicalTimePerQuestion = 30;
+  static const _generalTimePerQuestion = 15;
+  static const _medicalTimePerQuestion = 25;
 
   List<QuizQuestion> _questions = [];
   bool _loading = true;
@@ -332,10 +332,7 @@ class _QuizScreenState extends State<QuizScreen> {
             const SizedBox(height: 16),
             Text(
               'Saving results...',
-              style: TextStyle(
-                color: ColorManager.textSecondary,
-                fontSize: 15,
-              ),
+              style: TextStyle(color: ColorManager.textSecondary, fontSize: 15),
             ),
           ],
         ),
@@ -533,5 +530,4 @@ class _QuizScreenState extends State<QuizScreen> {
       ],
     );
   }
-
 }

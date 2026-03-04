@@ -27,7 +27,7 @@ class _InterpreterTrackSelectionWebScreenState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Step indicator
-          _buildStepIndicator(1, 6),
+          _buildStepIndicator(3, 9),
           const SizedBox(height: 32),
 
           _buildTrackCard(

@@ -45,19 +45,21 @@ class _InterpreterCompletedDocumentsViewState
               schema: 'public',
               table: 'document_translation_requests',
               callback: (payload) {
-                _loadCompletedRequests();
+                if (mounted) _loadCompletedRequests();
               },
             )
             .subscribe();
   }
 
   Future<void> _loadCompletedRequests() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final requests =
           await instance<DocumentTranslationService>().getCompletedRequests();
       final hidden =
           await HiddenItemsService().getInterpreterHiddenCompletedIds();
+      if (!mounted) return;
       setState(() {
         _completedRequests =
             requests.where((r) => !hidden.contains(r.id)).toList();
@@ -65,6 +67,7 @@ class _InterpreterCompletedDocumentsViewState
         _errorMessage = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Error loading requests: $e';

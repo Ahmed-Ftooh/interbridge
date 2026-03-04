@@ -186,26 +186,17 @@ class _OrganizationSettingsViewState extends State<OrganizationSettingsView> {
 
   Future<void> _signOut() async {
     try {
+      // Navigate FIRST to prevent disposed BLoCs from reacting to auth change
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      navigator.pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+
+      // THEN sign out (auth state fires on login page)
       await _appPreferences.logout();
       await _supabase.signOut();
-      if (!mounted) return;
-      CustomSnackBar.show(
-        context,
-        message: 'Signed out successfully',
-        type: SnackBarType.success,
-      );
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        Routes.loginRoute,
-        (route) => false,
-      );
     } catch (e) {
-      if (!mounted) return;
-      CustomSnackBar.show(
-        context,
-        message: 'Error signing out: $e',
-        type: SnackBarType.error,
-      );
+      // Already navigated — log but don't show snackbar
+      debugPrint('Error during sign out: $e');
     }
   }
 

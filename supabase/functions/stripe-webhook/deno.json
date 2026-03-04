@@ -1,0 +1,4 @@
+{
+  "name": "stripe-webhook",
+  "entrypoint": "index.ts"
+}

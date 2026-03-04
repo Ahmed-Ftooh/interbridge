@@ -55,7 +55,6 @@ class _CertificateUploadWebScreenState
     final isPaid = _isPaidTrack(args);
 
     if (_trainingCertificate == null) return;
-    if (isPaid && _medicalCertificate == null) return;
 
     // On web, store the file name/path; bytes are available via PlatformFile.bytes
     // On web, .path throws an exception, so use .name directly
@@ -70,7 +69,7 @@ class _CertificateUploadWebScreenState
           _trainingCertificate!.path ?? _trainingCertificate!.name;
     }
 
-    if (isPaid) {
+    if (isPaid && _medicalCertificate != null) {
       if (kIsWeb) {
         args['medicalCertificatePath'] = _medicalCertificate!.name;
         if (_medicalCertificate!.bytes != null) {
@@ -113,7 +112,7 @@ class _CertificateUploadWebScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(6, 6),
+          _buildStepIndicator(9, 9),
           const SizedBox(height: 24),
 
           // Training certificate
@@ -128,9 +127,8 @@ class _CertificateUploadWebScreenState
           if (isPaid) ...[
             const SizedBox(height: 16),
             _buildUploadCard(
-              title: 'Medical credential (required)',
-              description:
-                  'CMI/CHI license, hospital credentialing letter, or equivalent medical interpreter proof.',
+              title: 'Medical credential (Optional)',
+              description: 'National medical interpreter certificate\nCHI/CMI.',
               file: _medicalCertificate,
               onPick: () => _pickFile(isMedical: true),
             ),
@@ -306,9 +304,7 @@ class _CertificateUploadWebScreenState
   }
 
   bool _canContinue(bool isPaid) {
-    if (_trainingCertificate == null) return false;
-    if (isPaid && _medicalCertificate == null) return false;
-    return true;
+    return _trainingCertificate != null;
   }
 
   Widget _buildStepIndicator(int current, int total) {

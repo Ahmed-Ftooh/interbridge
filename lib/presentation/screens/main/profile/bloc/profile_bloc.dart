@@ -14,12 +14,10 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   final SupabaseService _supabaseService;
   final ImagePicker _imagePicker;
 
-  ProfileBloc({
-    SupabaseService? supabaseService,
-    ImagePicker? imagePicker,
-  })  : _supabaseService = supabaseService ?? SupabaseService(),
-        _imagePicker = imagePicker ?? ImagePicker(),
-        super(ProfileInitial()) {
+  ProfileBloc({SupabaseService? supabaseService, ImagePicker? imagePicker})
+    : _supabaseService = supabaseService ?? SupabaseService(),
+      _imagePicker = imagePicker ?? ImagePicker(),
+      super(ProfileInitial()) {
     on<LoadProfile>(_onLoadProfile);
     on<UpdateBasicProfile>(_onUpdateBasicProfile);
     on<PickProfileImage>(_onPickProfileImage);
@@ -76,19 +74,21 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         languageSkillMap.putIfAbsent(langId, () => <int>{}).add(skillId);
       }
 
-      emit(ProfileLoaded(
-        profile: profile,
-        userEmail: user.email,
-        interpreterDetails: results[1] as dynamic,
-        interpreterLanguages: List.from(results[2] as List),
-        interpreterSpecializations: List.from(results[3] as List),
-        interpreterSkills: List.from(results[4] as List),
-        languageSkillMap: languageSkillMap,
-        availableLanguages: List.from(results[6] as List),
-        availableSpecializations: List.from(results[7] as List),
-        availableSkills: List.from(results[8] as List),
-        fluencyLevels: List.from(results[9] as List),
-      ));
+      emit(
+        ProfileLoaded(
+          profile: profile,
+          userEmail: user.email,
+          interpreterDetails: results[1] as dynamic,
+          interpreterLanguages: List.from(results[2] as List),
+          interpreterSpecializations: List.from(results[3] as List),
+          interpreterSkills: List.from(results[4] as List),
+          languageSkillMap: languageSkillMap,
+          availableLanguages: List.from(results[6] as List),
+          availableSpecializations: List.from(results[7] as List),
+          availableSkills: List.from(results[8] as List),
+          fluencyLevels: List.from(results[9] as List),
+        ),
+      );
     } catch (e) {
       log('ProfileBloc._onLoadProfile error: $e');
       emit(ProfileError('Failed to load profile: $e'));
@@ -130,19 +130,23 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
       await _supabaseService.updateUserProfile(updatedProfile);
 
-      emit(currentState.copyWith(
-        profile: updatedProfile,
-        isSaving: false,
-        message: 'Profile updated',
-        isError: false,
-      ));
+      emit(
+        currentState.copyWith(
+          profile: updatedProfile,
+          isSaving: false,
+          message: 'Profile updated',
+          isError: false,
+        ),
+      );
     } catch (e) {
       log('ProfileBloc._onUpdateBasicProfile error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Error saving profile: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Error saving profile: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -173,10 +177,12 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       }
     } catch (e) {
       log('ProfileBloc._onPickProfileImage error: $e');
-      emit(currentState.copyWith(
-        message: 'Failed to pick image: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          message: 'Failed to pick image: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -186,13 +192,13 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     Emitter<ProfileState> emit,
   ) async {
     ProfileLoaded? previousState;
-    
+
     if (state is ProfileLoaded) {
       previousState = state as ProfileLoaded;
     } else if (state is ImagePicking) {
       previousState = (state as ImagePicking).previousState;
     }
-    
+
     if (previousState == null) return;
 
     try {
@@ -209,7 +215,10 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       final filename = 'profile_${user.id}_$timestamp.$extension';
 
       final bytes = await event.imageFile.readAsBytes();
-      final imageUrl = await _supabaseService.uploadProfileImage(filename, bytes);
+      final imageUrl = await _supabaseService.uploadProfileImage(
+        filename,
+        bytes,
+      );
 
       // Update profile with new image URL
       final updatedProfile = UserProfile(
@@ -223,17 +232,21 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
       await _supabaseService.updateUserProfile(updatedProfile);
 
-      emit(previousState.copyWith(
-        profile: updatedProfile,
-        message: 'Profile photo updated',
-        isError: false,
-      ));
+      emit(
+        previousState.copyWith(
+          profile: updatedProfile,
+          message: 'Profile photo updated',
+          isError: false,
+        ),
+      );
     } catch (e) {
       log('ProfileBloc._onUploadProfileImage error: $e');
-      emit(previousState.copyWith(
-        message: 'Failed to upload image: $e',
-        isError: true,
-      ));
+      emit(
+        previousState.copyWith(
+          message: 'Failed to upload image: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -277,19 +290,23 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
       await _supabaseService.updateUserProfile(updatedProfile);
 
-      emit(currentState.copyWith(
-        profile: updatedProfile,
-        isSaving: false,
-        message: 'Profile photo removed',
-        isError: false,
-      ));
+      emit(
+        currentState.copyWith(
+          profile: updatedProfile,
+          isSaving: false,
+          message: 'Profile photo removed',
+          isError: false,
+        ),
+      );
     } catch (e) {
       log('ProfileBloc._onRemoveProfileImage error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Failed to remove image: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Failed to remove image: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -345,14 +362,16 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       }
 
       // Refresh interpreter data
-      add(RefreshInterpreterData(successMessage: 'Languages updated'));
+      add(const RefreshInterpreterData(successMessage: 'Languages updated'));
     } catch (e) {
       log('ProfileBloc._onUpdateInterpreterLanguages error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Failed to update languages: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Failed to update languages: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -372,9 +391,10 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         throw Exception('User not authenticated');
       }
 
-      final currentIds = currentState.interpreterSpecializations
-          .map((e) => e.specializationId)
-          .toSet();
+      final currentIds =
+          currentState.interpreterSpecializations
+              .map((e) => e.specializationId)
+              .toSet();
 
       final toAdd = event.specializationIds.difference(currentIds);
       final toRemove = currentIds.difference(event.specializationIds);
@@ -389,14 +409,18 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       }
 
       // Refresh interpreter data
-      add(RefreshInterpreterData(successMessage: 'Specializations updated'));
+      add(
+        const RefreshInterpreterData(successMessage: 'Specializations updated'),
+      );
     } catch (e) {
       log('ProfileBloc._onUpdateInterpreterSpecializations error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Failed to update specializations: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Failed to update specializations: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -423,14 +447,18 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       );
 
       // Refresh interpreter data
-      add(RefreshInterpreterData(successMessage: 'Language skills updated'));
+      add(
+        const RefreshInterpreterData(successMessage: 'Language skills updated'),
+      );
     } catch (e) {
       log('ProfileBloc._onUpdateLanguageSkills error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Failed to update language skills: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Failed to update language skills: $e',
+          isError: true,
+        ),
+      );
     }
   }
 
@@ -462,22 +490,26 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         languageSkillMap.putIfAbsent(langId, () => <int>{}).add(skillId);
       }
 
-      emit(currentState.copyWith(
-        interpreterLanguages: List.from(results[0] as List),
-        interpreterSpecializations: List.from(results[1] as List),
-        interpreterSkills: List.from(results[2] as List),
-        languageSkillMap: languageSkillMap,
-        isSaving: false,
-        message: event.successMessage,
-        isError: false,
-      ));
+      emit(
+        currentState.copyWith(
+          interpreterLanguages: List.from(results[0] as List),
+          interpreterSpecializations: List.from(results[1] as List),
+          interpreterSkills: List.from(results[2] as List),
+          languageSkillMap: languageSkillMap,
+          isSaving: false,
+          message: event.successMessage,
+          isError: false,
+        ),
+      );
     } catch (e) {
       log('ProfileBloc._onRefreshInterpreterData error: $e');
-      emit(currentState.copyWith(
-        isSaving: false,
-        message: 'Failed to refresh data: $e',
-        isError: true,
-      ));
+      emit(
+        currentState.copyWith(
+          isSaving: false,
+          message: 'Failed to refresh data: $e',
+          isError: true,
+        ),
+      );
     }
   }
 }

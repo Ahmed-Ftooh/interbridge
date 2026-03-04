@@ -83,9 +83,21 @@ class IncomingCallService {
 
   /// Stop listening for incoming calls
   void stopListening() {
-    _subscription?.unsubscribe();
-    _subscription = null;
+    if (_subscription != null) {
+      // removeChannel() fully tears down the channel so a fresh one
+      // is created next time startListening() is called.  Plain
+      // unsubscribe() leaves a stale object in the Supabase client
+      // cache, which prevents reconnection.
+      try {
+        Supabase.instance.client.removeChannel(_subscription!);
+      } catch (_) {
+        // Fallback: at least unsubscribe
+        _subscription?.unsubscribe();
+      }
+      _subscription = null;
+    }
     _isListening = false;
+    _isShowingIncomingCall = false;
     _shownRequestIds.clear();
     _declinedRequestIds.clear();
     log('IncomingCallService: Stopped listening');

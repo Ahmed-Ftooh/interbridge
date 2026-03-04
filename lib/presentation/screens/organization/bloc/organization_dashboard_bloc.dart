@@ -19,6 +19,14 @@ class OrganizationDashboardBloc
     on<CancelInvitation>(_onCancelInvitation);
     on<ProcessTopUp>(_onProcessTopUp);
     on<UpdateMemberStatus>(_onUpdateMemberStatus);
+    on<LoadInvoices>(_onLoadInvoices);
+    on<GenerateInvoice>(_onGenerateInvoice);
+    on<OpenStripeCheckout>(_onOpenStripeCheckout);
+    on<ClearCheckoutUrl>(_onClearCheckoutUrl);
+    on<OpenMobilePaymentSheet>(_onOpenMobilePaymentSheet);
+    on<ClearPaymentSheetData>(_onClearPaymentSheetData);
+    on<PaymentSheetCompleted>(_onPaymentSheetCompleted);
+    on<ClearPaymentSuccess>(_onClearPaymentSuccess);
   }
 
   /// Load all organization dashboard data
@@ -65,6 +73,7 @@ class OrganizationDashboardBloc
         _loadPendingInvites(orgId),
         _loadCallHistory(orgId),
         _loadTransactions(orgId),
+        _loadInvoices(orgId),
       ]);
 
       final organization = results[0] as Map<String, dynamic>?;
@@ -80,6 +89,7 @@ class OrganizationDashboardBloc
           pendingInvites: results[2] as List<Map<String, dynamic>>,
           callHistory: results[3] as List<Map<String, dynamic>>,
           transactions: results[4] as List<Map<String, dynamic>>,
+          invoices: results[5] as List<Map<String, dynamic>>,
         ),
       );
     } catch (e, stackTrace) {
@@ -89,13 +99,58 @@ class OrganizationDashboardBloc
     }
   }
 
-  /// Refresh organization data (same as load but triggered by user action)
+  /// Refresh organization data (silently, without showing loading state)
   Future<void> _onRefreshOrganizationData(
     RefreshOrganizationData event,
     Emitter<OrganizationDashboardState> emit,
   ) async {
-    // Just call load with the same logic
-    await _onLoadOrganizationData(const LoadOrganizationData(), emit);
+    try {
+      final userId = _supabaseService.getCurrentUser()?.id;
+      if (userId == null) return;
+
+      final memberData =
+          await _supabaseService.client
+              .from('organization_members')
+              .select('organization_id, role')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      if (memberData == null) return;
+
+      final orgId = memberData['organization_id'];
+
+      final results = await Future.wait([
+        _loadOrganization(orgId),
+        _loadMembers(orgId),
+        _loadPendingInvites(orgId),
+        _loadCallHistory(orgId),
+        _loadTransactions(orgId),
+        _loadInvoices(orgId),
+      ]);
+
+      final organization = results[0] as Map<String, dynamic>?;
+      if (organization == null) return;
+
+      final currentState = state;
+      emit(
+        OrganizationDashboardLoaded(
+          organization: organization,
+          members: results[1] as List<Map<String, dynamic>>,
+          pendingInvites: results[2] as List<Map<String, dynamic>>,
+          callHistory: results[3] as List<Map<String, dynamic>>,
+          transactions: results[4] as List<Map<String, dynamic>>,
+          invoices: results[5] as List<Map<String, dynamic>>,
+          // Preserve existing transient state
+          paymentSuccessAmount:
+              currentState is OrganizationDashboardLoaded
+                  ? currentState.paymentSuccessAmount
+                  : null,
+        ),
+      );
+    } catch (e) {
+      log('OrganizationDashboardBloc._onRefreshOrganizationData error: $e');
+      // Silently fail — keep existing state
+    }
   }
 
   /// Send an invitation to a doctor
@@ -221,9 +276,18 @@ class OrganizationDashboardBloc
     }
   }
 
-  /// Process a top-up to the organization wallet
+  /// Process a top-up to the organization wallet (legacy — redirects to Stripe)
   Future<void> _onProcessTopUp(
     ProcessTopUp event,
+    Emitter<OrganizationDashboardState> emit,
+  ) async {
+    // Delegate to OpenStripeCheckout
+    add(OpenStripeCheckout(event.amount));
+  }
+
+  /// Open Stripe Checkout for wallet top-up
+  Future<void> _onOpenStripeCheckout(
+    OpenStripeCheckout event,
     Emitter<OrganizationDashboardState> emit,
   ) async {
     final currentState = state;
@@ -232,22 +296,266 @@ class OrganizationDashboardBloc
     try {
       emit(currentState.copyWith(isProcessingTopUp: true));
 
-      // TODO: Implement actual payment processing
-      // For now, just show a message that it's coming soon
+      final orgId = currentState.organizationId;
+
+      // Call the create-checkout-session edge function
+      final response = await _supabaseService.client.functions.invoke(
+        'create-checkout-session',
+        body: {
+          'organization_id': orgId,
+          'amount': event.amount,
+          'success_url':
+              'https://gwvxwaqicnwiplafayoh.supabase.co/functions/v1/payment-success',
+          'cancel_url':
+              'https://gwvxwaqicnwiplafayoh.supabase.co/functions/v1/payment-cancelled',
+        },
+      );
+
+      final data = response.data as Map<String, dynamic>?;
+
+      if (response.status != 200 ||
+          data == null ||
+          data['checkout_url'] == null) {
+        final errorMsg = data?['error'] ?? 'Failed to create checkout session';
+        emit(
+          currentState.copyWith(
+            isProcessingTopUp: false,
+            message: errorMsg.toString(),
+            isError: true,
+          ),
+        );
+        return;
+      }
 
       emit(
         currentState.copyWith(
           isProcessingTopUp: false,
-          message: 'Payment processing coming soon!',
+          checkoutUrl: data['checkout_url'] as String,
+          message: 'Redirecting to payment...',
           isError: false,
         ),
       );
     } catch (e) {
-      log('OrganizationDashboardBloc._onProcessTopUp error: $e');
+      log('OrganizationDashboardBloc._onOpenStripeCheckout error: $e');
       emit(
         currentState.copyWith(
           isProcessingTopUp: false,
           message: 'Failed to process top-up: $e',
+          isError: true,
+        ),
+      );
+    }
+  }
+
+  /// Clear the checkout URL after UI has consumed it
+  void _onClearCheckoutUrl(
+    ClearCheckoutUrl event,
+    Emitter<OrganizationDashboardState> emit,
+  ) {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+    emit(currentState.copyWith(checkoutUrl: null));
+  }
+
+  /// Open Stripe native Payment Sheet on mobile
+  Future<void> _onOpenMobilePaymentSheet(
+    OpenMobilePaymentSheet event,
+    Emitter<OrganizationDashboardState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+
+    try {
+      emit(currentState.copyWith(isProcessingTopUp: true));
+
+      final orgId = currentState.organizationId;
+
+      // Call the create-payment-intent edge function
+      final response = await _supabaseService.client.functions.invoke(
+        'create-payment-intent',
+        body: {'organization_id': orgId, 'amount': event.amount},
+      );
+
+      final data = response.data as Map<String, dynamic>?;
+
+      if (response.status != 200 ||
+          data == null ||
+          data['payment_intent'] == null) {
+        final errorMsg = data?['error'] ?? 'Failed to create payment intent';
+        emit(
+          currentState.copyWith(
+            isProcessingTopUp: false,
+            message: errorMsg.toString(),
+            isError: true,
+          ),
+        );
+        return;
+      }
+
+      emit(
+        currentState.copyWith(
+          isProcessingTopUp: false,
+          paymentSheetData: {
+            'paymentIntentClientSecret': data['payment_intent'] as String,
+            'ephemeralKeySecret': data['ephemeral_key'] as String,
+            'customerId': data['customer'] as String,
+            'amount': event.amount.toString(),
+          },
+          message: null,
+          isError: false,
+        ),
+      );
+    } catch (e) {
+      log('OrganizationDashboardBloc._onOpenMobilePaymentSheet error: $e');
+      emit(
+        currentState.copyWith(
+          isProcessingTopUp: false,
+          message: 'Failed to process top-up: $e',
+          isError: true,
+        ),
+      );
+    }
+  }
+
+  /// Clear payment sheet data after UI has consumed it
+  void _onClearPaymentSheetData(
+    ClearPaymentSheetData event,
+    Emitter<OrganizationDashboardState> emit,
+  ) {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+    emit(currentState.copyWith(paymentSheetData: null));
+  }
+
+  /// Handle payment completed from mobile Payment Sheet
+  Future<void> _onPaymentSheetCompleted(
+    PaymentSheetCompleted event,
+    Emitter<OrganizationDashboardState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+
+    final previousBalance = currentState.walletBalance;
+
+    emit(
+      currentState.copyWith(
+        paymentSuccessAmount: event.amount,
+        message: null,
+        isError: false,
+      ),
+    );
+
+    // Wait for Stripe webhook to process and update the wallet balance.
+    // The webhook typically takes 1-3 seconds.
+    // Retry up to 3 times with increasing delay.
+    for (int attempt = 0; attempt < 3; attempt++) {
+      await Future.delayed(Duration(seconds: 2 + attempt));
+      // Fetch the latest org data silently
+      try {
+        final userId = _supabaseService.getCurrentUser()?.id;
+        if (userId == null) break;
+        final memberData =
+            await _supabaseService.client
+                .from('organization_members')
+                .select('organization_id')
+                .eq('user_id', userId)
+                .maybeSingle();
+        if (memberData == null) break;
+        final orgData = await _loadOrganization(memberData['organization_id']);
+        if (orgData != null) {
+          final newBalance =
+              (orgData['wallet_balance'] as num?)?.toDouble() ?? 0.0;
+          if (newBalance > previousBalance) {
+            // Balance updated — emit refreshed state
+            add(const RefreshOrganizationData());
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('_onPaymentSheetCompleted retry $attempt error: $e');
+      }
+    }
+
+    // Final fallback refresh even if balance didn't change
+    add(const RefreshOrganizationData());
+  }
+
+  void _onClearPaymentSuccess(
+    ClearPaymentSuccess event,
+    Emitter<OrganizationDashboardState> emit,
+  ) {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+    emit(currentState.copyWith(paymentSuccessAmount: null));
+  }
+
+  /// Load invoices
+  Future<void> _onLoadInvoices(
+    LoadInvoices event,
+    Emitter<OrganizationDashboardState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+
+    try {
+      final invoices = await _loadInvoices(currentState.organizationId);
+      emit(currentState.copyWith(invoices: invoices));
+    } catch (e) {
+      log('OrganizationDashboardBloc._onLoadInvoices error: $e');
+    }
+  }
+
+  /// Generate a monthly invoice
+  Future<void> _onGenerateInvoice(
+    GenerateInvoice event,
+    Emitter<OrganizationDashboardState> emit,
+  ) async {
+    final currentState = state;
+    if (currentState is! OrganizationDashboardLoaded) return;
+
+    try {
+      emit(currentState.copyWith(isGeneratingInvoice: true));
+
+      final response = await _supabaseService.client.functions.invoke(
+        'generate-invoice',
+        body: {
+          'organization_id': currentState.organizationId,
+          'year': event.year,
+          'month': event.month,
+          'send_email': event.sendEmail,
+        },
+      );
+
+      final data = response.data as Map<String, dynamic>?;
+
+      if (data?['status'] == 'no_data') {
+        emit(
+          currentState.copyWith(
+            isGeneratingInvoice: false,
+            message: 'No calls found for this billing period',
+            isError: false,
+          ),
+        );
+        return;
+      }
+
+      // Reload invoices
+      final invoices = await _loadInvoices(currentState.organizationId);
+
+      emit(
+        currentState.copyWith(
+          isGeneratingInvoice: false,
+          invoices: invoices,
+          message: 'Invoice generated successfully!',
+          isError: false,
+        ),
+      );
+    } catch (e) {
+      log('OrganizationDashboardBloc._onGenerateInvoice error: $e');
+      emit(
+        currentState.copyWith(
+          isGeneratingInvoice: false,
+          message: 'Failed to generate invoice: $e',
           isError: true,
         ),
       );
@@ -321,7 +629,7 @@ class OrganizationDashboardBloc
 
       // Load profiles for all members
       final memberUserIds =
-          (membersRaw as List).map((m) => m['user_id'] as String).toList();
+          (membersRaw).map((m) => m['user_id'] as String).toList();
 
       final profiles =
           memberUserIds.isNotEmpty
@@ -334,7 +642,7 @@ class OrganizationDashboardBloc
       // Combine members with their profiles
       final profileMap = {for (var p in profiles) p['user_id']: p};
 
-      return (membersRaw as List).map((m) {
+      return (membersRaw).map((m) {
         return Map<String, dynamic>.from({
           ...m,
           'users_profile': profileMap[m['user_id']],
@@ -399,6 +707,24 @@ class OrganizationDashboardBloc
           .toList();
     } catch (e) {
       debugPrint('Error loading transactions: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadInvoices(String orgId) async {
+    try {
+      final invoices = await _supabaseService.client
+          .from('invoices')
+          .select()
+          .eq('organization_id', orgId)
+          .order('billing_period_start', ascending: false)
+          .limit(24);
+
+      return (invoices as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      debugPrint('Error loading invoices: $e');
       return [];
     }
   }

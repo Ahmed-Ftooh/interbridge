@@ -88,4 +88,19 @@ class AdminService {
         .update({'is_verified': verified})
         .eq('user_id', userId);
   }
+
+  Future<void> updateGovernmentIdStatus(
+    String governmentIdId, {
+    required String status,
+    String? reviewerNotes,
+  }) async {
+    await _client
+        .from('government_ids')
+        .update({
+          'status': status,
+          if (reviewerNotes != null && reviewerNotes.isNotEmpty)
+            'reviewer_notes': reviewerNotes,
+        })
+        .eq('id', governmentIdId);
+  }
 }

@@ -3,7 +3,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
-import 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
+import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
+    if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Web version of the interpreter quiz hub.
@@ -178,6 +179,7 @@ class _InterpreterQuizHubWebScreenState
 
     if (allQuizzesAttempted) {
       instance<AppPreferences>().setQuizOnboardingDone();
+      if (!mounted) return;
       Navigator.of(
         context,
       ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);

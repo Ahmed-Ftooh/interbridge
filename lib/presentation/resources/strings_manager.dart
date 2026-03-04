@@ -124,7 +124,7 @@ class AppStrings {
       'Psychological and counseling sessions';
   static const String documentation = 'Documentation';
   static const String officialDocumentsAndForms =
-      'Official documents and forms';
+      'Documentation translate forms';
   static const String business = 'Business';
   static const String corporateAndBusinessMeetings =
       'Corporate and business meetings';

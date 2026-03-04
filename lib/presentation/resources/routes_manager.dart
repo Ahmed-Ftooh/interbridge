@@ -37,6 +37,7 @@ import 'package:interbridge/presentation/screens/legal/privacy_policy_view.dart'
 import 'package:interbridge/presentation/screens/legal/terms_of_service_view.dart';
 import 'package:interbridge/presentation/screens/main/setting/change_password_view.dart';
 import 'package:interbridge/admin/screens/admin_list_screen.dart';
+import 'package:interbridge/admin/screens/admin_dashboard_web.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view/organization_register_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_dashboard_view.dart';
@@ -62,7 +63,11 @@ import 'package:interbridge/presentation/screens/auth/web/certificate_upload_web
 import 'package:interbridge/presentation/screens/auth/web/volunteer_success_web.dart';
 import 'package:interbridge/presentation/screens/organization/web/organization_dashboard_web_view.dart';
 import 'package:interbridge/presentation/screens/interpreter/interpreter_quiz_hub_web_screen.dart';
-import 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
+import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
+    if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
+import 'package:interbridge/presentation/screens/auth/web/phone_otp_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/government_id_upload_web.dart';
+import 'package:interbridge/presentation/screens/auth/web/voice_prompt_web.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -104,6 +109,9 @@ class Routes {
   static const String doctorJoinOrganizationRoute = "/doctorJoinOrganization";
   static const String doctorRegisterWithInviteRoute =
       "/doctorRegisterWithInvite";
+  static const String phoneOtpRoute = "/phoneOtp";
+  static const String governmentIdUploadRoute = "/governmentIdUpload";
+  static const String voicePromptRoute = "/voicePrompt";
 }
 
 class RouteGenerator {
@@ -403,7 +411,44 @@ class RouteGenerator {
       case Routes.changePassword:
         return MaterialPageRoute(builder: (_) => const ChangePasswordView());
       case Routes.adminRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(builder: (_) => const AdminDashboardWeb());
+        }
         return MaterialPageRoute(builder: (_) => const AdminListScreen());
+      case Routes.phoneOtpRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const PhoneOtpWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
+        // Mobile fallback — reuse web screen for now
+        return MaterialPageRoute(
+          builder: (_) => const PhoneOtpWebScreen(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
+      case Routes.governmentIdUploadRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const GovernmentIdUploadWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
+        return MaterialPageRoute(
+          builder: (_) => const GovernmentIdUploadWebScreen(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
+      case Routes.voicePromptRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const VoicePromptWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
+          );
+        }
+        return MaterialPageRoute(
+          builder: (_) => const VoicePromptWebScreen(),
+          settings: RouteSettings(arguments: settings.arguments),
+        );
       default:
         log('RouteGenerator: Unmatched route - ${settings.name}');
         log('RouteGenerator: Stack trace: ${StackTrace.current}');

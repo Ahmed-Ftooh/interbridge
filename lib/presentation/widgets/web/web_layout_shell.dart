@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:interbridge/app/app_prf.dart';
+import 'package:interbridge/app/di.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 /// Modern responsive web layout shell with sidebar navigation
 class WebLayoutShell extends StatefulWidget {
@@ -11,6 +15,7 @@ class WebLayoutShell extends StatefulWidget {
   final String? userRole;
   final String? userAvatar;
   final bool isAdmin;
+  final VoidCallback? onLogout;
 
   const WebLayoutShell({
     super.key,
@@ -21,6 +26,7 @@ class WebLayoutShell extends StatefulWidget {
     this.userRole,
     this.userAvatar,
     this.isAdmin = false,
+    this.onLogout,
   });
 
   @override
@@ -516,9 +522,11 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                 size: 18,
                 color: Color(0xFF64748B),
               ),
-              onPressed: () {
-                // Handle logout
-              },
+              onPressed:
+                  widget.onLogout ??
+                  () {
+                    _showLogoutDialog(context);
+                  },
               tooltip: 'Logout',
             ),
           ],
@@ -530,6 +538,52 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
   String _capitalizeRole(String role) {
     if (role.isEmpty) return role;
     return role[0].toUpperCase() + role.substring(1);
+  }
+
+  void _showLogoutDialog(BuildContext outerContext) {
+    showDialog(
+      context: outerContext,
+      builder:
+          (dialogContext) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Sign Out'),
+            content: const Text('Are you sure you want to sign out?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // Capture navigator before any async work
+                  final navigator = Navigator.of(outerContext);
+                  Navigator.pop(dialogContext);
+
+                  // Navigate FIRST to prevent disposed BLoCs from reacting
+                  navigator.pushNamedAndRemoveUntil(
+                    Routes.loginRoute,
+                    (route) => false,
+                  );
+
+                  // THEN sign out (so auth state change fires on login page)
+                  try {
+                    final supabaseService = instance<SupabaseService>();
+                    final appPreferences = instance<AppPreferences>();
+                    await supabaseService.signOut();
+                    await appPreferences.logout();
+                  } catch (_) {}
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Sign Out'),
+              ),
+            ],
+          ),
+    );
   }
 
   Widget _buildCollapseButton() {
@@ -592,7 +646,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: const Color(0xFFE2E8F0)),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),

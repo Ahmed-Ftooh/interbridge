@@ -109,7 +109,7 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildStepIndicator(4, 6),
+              _buildStepIndicator(6, 9),
               const SizedBox(height: 24),
 
               ...fieldData.map((field) {

@@ -21,11 +21,16 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
   final List<Map<String, dynamic>> pendingInvites;
   final List<Map<String, dynamic>> callHistory;
   final List<Map<String, dynamic>> transactions;
+  final List<Map<String, dynamic>> invoices;
 
   // UI state flags
   final bool isSendingInvite;
   final bool isCancellingInvite;
   final bool isProcessingTopUp;
+  final bool isGeneratingInvoice;
+  final String? checkoutUrl;
+  final Map<String, String>? paymentSheetData;
+  final double? paymentSuccessAmount;
   final String? message;
   final bool isError;
 
@@ -35,9 +40,14 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
     this.pendingInvites = const [],
     this.callHistory = const [],
     this.transactions = const [],
+    this.invoices = const [],
     this.isSendingInvite = false,
     this.isCancellingInvite = false,
     this.isProcessingTopUp = false,
+    this.isGeneratingInvoice = false,
+    this.checkoutUrl,
+    this.paymentSheetData,
+    this.paymentSuccessAmount,
     this.message,
     this.isError = false,
   });
@@ -77,9 +87,14 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
     pendingInvites,
     callHistory,
     transactions,
+    invoices,
     isSendingInvite,
     isCancellingInvite,
     isProcessingTopUp,
+    isGeneratingInvoice,
+    checkoutUrl,
+    paymentSheetData,
+    paymentSuccessAmount,
     message,
     isError,
   ];
@@ -90,9 +105,14 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
     List<Map<String, dynamic>>? pendingInvites,
     List<Map<String, dynamic>>? callHistory,
     List<Map<String, dynamic>>? transactions,
+    List<Map<String, dynamic>>? invoices,
     bool? isSendingInvite,
     bool? isCancellingInvite,
     bool? isProcessingTopUp,
+    bool? isGeneratingInvoice,
+    String? checkoutUrl,
+    Map<String, String>? paymentSheetData,
+    double? paymentSuccessAmount,
     String? message,
     bool? isError,
   }) {
@@ -102,9 +122,14 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
       pendingInvites: pendingInvites ?? this.pendingInvites,
       callHistory: callHistory ?? this.callHistory,
       transactions: transactions ?? this.transactions,
+      invoices: invoices ?? this.invoices,
       isSendingInvite: isSendingInvite ?? this.isSendingInvite,
       isCancellingInvite: isCancellingInvite ?? this.isCancellingInvite,
       isProcessingTopUp: isProcessingTopUp ?? this.isProcessingTopUp,
+      isGeneratingInvoice: isGeneratingInvoice ?? this.isGeneratingInvoice,
+      checkoutUrl: checkoutUrl,
+      paymentSheetData: paymentSheetData,
+      paymentSuccessAmount: paymentSuccessAmount,
       message: message, // Don't use ?? to allow clearing message
       isError: isError ?? false,
     );

@@ -126,7 +126,7 @@ class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Step indicator
-              _buildStepIndicator(3, 6),
+              _buildStepIndicator(5, 9),
               const SizedBox(height: 16),
 
               // Language progress

@@ -35,10 +35,9 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
   ];
 
   String _labelFor(String value) {
-    return value.replaceAll('_', ' ').replaceFirst(
-      value[0],
-      value[0].toUpperCase(),
-    );
+    return value
+        .replaceAll('_', ' ')
+        .replaceFirst(value[0], value[0].toUpperCase());
   }
 
   Future<void> _submitFeedback() async {
@@ -149,14 +148,15 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
                   vertical: 10,
                 ),
               ),
-              items: _qualityOptions
-                  .map(
-                    (q) => DropdownMenuItem(
-                      value: q,
-                      child: Text(_labelFor(q)),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  _qualityOptions
+                      .map(
+                        (q) => DropdownMenuItem(
+                          value: q,
+                          child: Text(_labelFor(q)),
+                        ),
+                      )
+                      .toList(),
               onChanged: (v) {
                 if (v != null) setState(() => _connectionQuality = v);
               },
@@ -178,14 +178,15 @@ class _CallFeedbackDialogState extends State<CallFeedbackDialog> {
                   vertical: 10,
                 ),
               ),
-              items: _experienceOptions
-                  .map(
-                    (e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(_labelFor(e)),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  _experienceOptions
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(_labelFor(e)),
+                        ),
+                      )
+                      .toList(),
               onChanged: (v) {
                 if (v != null) setState(() => _callExperience = v);
               },

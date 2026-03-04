@@ -110,7 +110,7 @@ class _LanguageSelectionWebScreenState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Step indicator
-              _buildStepIndicator(2, 6),
+              _buildStepIndicator(4, 9),
               const SizedBox(height: 24),
 
               // Search

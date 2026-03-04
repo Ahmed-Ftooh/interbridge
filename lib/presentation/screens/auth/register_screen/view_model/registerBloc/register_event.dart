@@ -26,6 +26,10 @@ class RegisterSubmitted extends RegisterEvent {
   final String? voiceSamplePath;
   final String? certificatePath;
   final String? medicalCertificatePath;
+  // Native-language voice sample
+  final String? voiceSampleNativePath;
+  final Uint8List? voiceSampleNativeBytes;
+  final String? voiceSampleNativeName;
   // Web: raw bytes for uploads (since path/blob URLs are unavailable after navigation on web)
   final Uint8List? voiceSampleBytes;
   final String? voiceSampleName;
@@ -39,6 +43,9 @@ class RegisterSubmitted extends RegisterEvent {
   final List<String>? shiftAvailability;
   final bool? isOnlineNow;
   final String? employmentType; // 'volunteer' or 'paid'
+  // Profile picture
+  final Uint8List? profileImageBytes;
+  final String? profileImageName;
 
   RegisterSubmitted({
     required this.email,
@@ -51,6 +58,8 @@ class RegisterSubmitted extends RegisterEvent {
     required this.skillIds,
     required this.specializationIds,
     required this.role,
+    this.profileImageBytes,
+    this.profileImageName,
     this.voiceSampleUrl,
     this.voicePrompt,
     this.certificateUrl,
@@ -58,6 +67,9 @@ class RegisterSubmitted extends RegisterEvent {
     this.voiceSamplePath,
     this.certificatePath,
     this.medicalCertificatePath,
+    this.voiceSampleNativePath,
+    this.voiceSampleNativeBytes,
+    this.voiceSampleNativeName,
     this.voiceSampleBytes,
     this.voiceSampleName,
     this.certificateBytes,
@@ -91,6 +103,9 @@ class RegisterSubmitted extends RegisterEvent {
     voiceSamplePath,
     certificatePath,
     medicalCertificatePath,
+    voiceSampleNativePath,
+    voiceSampleNativeBytes,
+    voiceSampleNativeName,
     voiceSampleBytes,
     voiceSampleName,
     certificateBytes,
@@ -103,6 +118,8 @@ class RegisterSubmitted extends RegisterEvent {
     shiftAvailability,
     isOnlineNow,
     employmentType,
+    profileImageBytes,
+    profileImageName,
   ];
 }
 

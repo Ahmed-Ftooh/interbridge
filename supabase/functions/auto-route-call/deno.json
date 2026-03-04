@@ -1,0 +1,4 @@
+{
+  "name": "auto-route-call",
+  "entrypoint": "index.ts"
+}

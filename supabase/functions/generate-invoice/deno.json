@@ -1,0 +1,4 @@
+{
+  "name": "generate-invoice",
+  "entrypoint": "index.ts"
+}

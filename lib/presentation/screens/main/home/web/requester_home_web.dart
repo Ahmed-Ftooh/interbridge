@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:interbridge/data/models/language.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/data/services/auto_routing_service.dart';
 import 'package:interbridge/presentation/screens/main/request_waiting_view.dart';
 
-/// Modern web-specific requester home view with dashboard layout
+/// Modern web-specific requester home view with dashboard layout.
+/// Pre-call intake is 4 fields (~10 seconds) then auto-connect.
 class RequesterHomeWeb extends StatefulWidget {
   const RequesterHomeWeb({super.key});
 
@@ -22,85 +24,104 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
   String? _selectedMedicalSection;
   String _callType = 'voice';
 
-  final List<Map<String, dynamic>> _medicalSections = [
-    {
-      'key': 'neurology',
-      'label': 'Neurology',
-      'icon': FontAwesomeIcons.brain,
-      'color': const Color(0xFF7C4DFF),
-    },
-    {
-      'key': 'cardiology',
-      'label': 'Cardiology',
-      'icon': FontAwesomeIcons.heartPulse,
-      'color': const Color(0xFFE91E63),
-    },
-    {
-      'key': 'respiratory',
-      'label': 'Respiratory',
-      'icon': FontAwesomeIcons.lungs,
-      'color': const Color(0xFF00BCD4),
-    },
-    {
-      'key': 'gastrointestinal',
-      'label': 'Gastrointestinal',
-      'icon': FontAwesomeIcons.disease,
-      'color': const Color(0xFFFF9800),
-    },
-    {
-      'key': 'endocrinology',
-      'label': 'Endocrinology',
-      'icon': FontAwesomeIcons.vial,
-      'color': const Color(0xFF9C27B0),
-    },
-    {
-      'key': 'renal',
-      'label': 'Renal',
-      'icon': FontAwesomeIcons.droplet,
-      'color': const Color(0xFF2196F3),
-    },
-    {
-      'key': 'ob_gyn',
-      'label': 'OB/GYN',
-      'icon': FontAwesomeIcons.personBreastfeeding,
-      'color': const Color(0xFFE91E63),
-    },
-    {
-      'key': 'oncology',
-      'label': 'Oncology',
-      'icon': FontAwesomeIcons.ribbon,
-      'color': const Color(0xFF607D8B),
-    },
+  // Pre-call intake fields
+  final TextEditingController _doctorNameController = TextEditingController();
+  final TextEditingController _patientIdController = TextEditingController();
+  String? _selectedDepartment;
+  int _availableInterpreters = 0;
+  bool _isCheckingAvailability = false;
+
+  static const List<Map<String, dynamic>> _departments = [
     {
       'key': 'emergency',
       'label': 'Emergency',
       'icon': FontAwesomeIcons.truckMedical,
-      'color': const Color(0xFFF44336),
+    },
+    {'key': 'icu', 'label': 'ICU', 'icon': FontAwesomeIcons.bedPulse},
+    {'key': 'surgery', 'label': 'Surgery', 'icon': FontAwesomeIcons.syringe},
+    {'key': 'pediatrics', 'label': 'Pediatrics', 'icon': FontAwesomeIcons.baby},
+    {'key': 'oncology', 'label': 'Oncology', 'icon': FontAwesomeIcons.ribbon},
+    {
+      'key': 'cardiology',
+      'label': 'Cardiology',
+      'icon': FontAwesomeIcons.heartPulse,
+    },
+    {'key': 'neurology', 'label': 'Neurology', 'icon': FontAwesomeIcons.brain},
+    {'key': 'radiology', 'label': 'Radiology', 'icon': FontAwesomeIcons.xRay},
+    {
+      'key': 'ob_gyn',
+      'label': 'OB/GYN',
+      'icon': FontAwesomeIcons.personBreastfeeding,
     },
     {
-      'key': 'psychology',
-      'label': 'Psychology',
-      'icon': FontAwesomeIcons.commentMedical,
-      'color': const Color(0xFF4CAF50),
-    },
-    {
-      'key': 'musculoskeletal',
-      'label': 'Musculoskeletal',
+      'key': 'orthopedics',
+      'label': 'Orthopedics',
       'icon': FontAwesomeIcons.bone,
-      'color': const Color(0xFF795548),
     },
     {
-      'key': 'dermatology',
-      'label': 'Dermatology',
-      'icon': FontAwesomeIcons.handDots,
-      'color': const Color(0xFFFFB74D),
+      'key': 'psychiatry',
+      'label': 'Psychiatry',
+      'icon': FontAwesomeIcons.commentMedical,
+    },
+    {
+      'key': 'general',
+      'label': 'General / Other',
+      'icon': FontAwesomeIcons.hospitalUser,
     },
   ];
+
+  // Department list is defined in _departments static const
 
   @override
   void initState() {
     super.initState();
     _loadLanguages();
+    _tryAutoFillDoctor();
+  }
+
+  @override
+  void dispose() {
+    _doctorNameController.dispose();
+    _patientIdController.dispose();
+    super.dispose();
+  }
+
+  /// Try to auto-fill doctor name from profile
+  Future<void> _tryAutoFillDoctor() async {
+    try {
+      final user = SupabaseService().client.auth.currentUser;
+      if (user != null) {
+        final profile =
+            await SupabaseService().client
+                .from('profiles')
+                .select('full_name')
+                .eq('user_id', user.id)
+                .maybeSingle();
+        if (profile != null && profile['full_name'] != null && mounted) {
+          _doctorNameController.text = profile['full_name'] as String;
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Check available interpreter count when language changes
+  Future<void> _checkAvailability() async {
+    if (_selectedFromLanguage == null || _selectedToLanguage == null) return;
+    setState(() => _isCheckingAvailability = true);
+    try {
+      final count = await AutoRoutingService().getAvailableCount(
+        fromLanguage: _selectedFromLanguage!.name,
+        toLanguage: _selectedToLanguage!.name,
+      );
+      if (mounted) {
+        setState(() {
+          _availableInterpreters = count;
+          _isCheckingAvailability = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingAvailability = false);
+    }
   }
 
   Future<void> _loadLanguages() async {
@@ -268,6 +289,7 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Row(
             children: [
               Container(
@@ -277,36 +299,43 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(
-                  Icons.translate,
+                  Icons.flash_on_rounded,
                   color: Color(0xFF0955FA),
                   size: 24,
                 ),
               ),
               const SizedBox(width: 16),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Request Interpreter',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Quick Connect',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Select your preferences below',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-                  ),
-                ],
+                    Text(
+                      'Fill in details below — we\'ll find the best interpreter automatically',
+                      style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
               ),
+              // Availability indicator
+              if (_selectedToLanguage != null) ...[
+                const SizedBox(width: 16),
+                _buildAvailabilityBadge(),
+              ],
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
 
-          // Language selection row
-          _buildSectionTitle('Languages', Icons.language),
-          const SizedBox(height: 16),
+          // ── Step 1: Language pair (essential) ──
+          _buildSectionTitle('Language', Icons.language),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -316,20 +345,25 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
                   _allLanguages,
                   (lang) {
                     setState(() => _selectedFromLanguage = lang);
+                    _checkAvailability();
                   },
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.swap_horiz, color: Color(0xFF64748B)),
+                child: const Icon(
+                  Icons.arrow_forward,
+                  color: Color(0xFF94A3B8),
+                  size: 20,
+                ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: _buildLanguageDropdown(
                   'Patient speaks',
@@ -337,58 +371,51 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
                   _interpreterLanguages,
                   (lang) {
                     setState(() => _selectedToLanguage = lang);
+                    _checkAvailability();
                   },
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
-          // Interpreter type
-          _buildSectionTitle('Interpreter Type', Icons.person_search),
-          const SizedBox(height: 16),
+          // ── Step 2: Intake fields (2-column layout) ──
+          _buildSectionTitle('Session Details', Icons.assignment_outlined),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _buildTypeCard(
-                  'general',
-                  'General',
-                  'Basic medical interpretation',
-                  Icons.person,
+                child: _buildTextField(
+                  controller: _doctorNameController,
+                  label: 'Your Name',
+                  hint: 'Dr. Smith',
+                  icon: Icons.person_outline,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildTypeCard(
-                  'specialist',
-                  'Specialist',
-                  'Specialized medical fields',
-                  Icons.medical_information,
+                child: _buildTextField(
+                  controller: _patientIdController,
+                  label: 'Patient ID / MRN',
+                  hint: 'e.g. PT-00421',
+                  icon: Icons.badge_outlined,
                 ),
               ),
             ],
           ),
-
-          // Medical sections (if specialist)
-          if (_interpreterType == 'specialist') ...[
-            const SizedBox(height: 32),
-            _buildSectionTitle('Medical Specialty', Icons.local_hospital),
-            const SizedBox(height: 16),
-            _buildMedicalSectionsGrid(),
-          ],
-          const SizedBox(height: 32),
-
-          // Call type
-          _buildSectionTitle('Call Type', Icons.call),
           const SizedBox(height: 16),
+          _buildDepartmentDropdown(),
+          const SizedBox(height: 24),
+
+          // ── Step 3: Call type (compact) ──
           Row(
             children: [
               Expanded(
-                child: _buildCallTypeCard('voice', 'Voice Call', Icons.phone),
+                child: _buildCallTypeChip('voice', 'Voice Call', Icons.phone),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
-                child: _buildCallTypeCard(
+                child: _buildCallTypeChip(
                   'video',
                   'Video Call',
                   Icons.videocam,
@@ -396,13 +423,13 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
 
-          // Request button
+          // ── Connect button ──
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _canSubmit() ? _submitRequest : null,
+              onPressed: _canSubmit() ? _submitAutoRoute : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0955FA),
                 foregroundColor: Colors.white,
@@ -416,13 +443,10 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    _callType == 'video' ? Icons.videocam : Icons.phone,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 12),
+                  const Icon(Icons.flash_on_rounded, size: 20),
+                  const SizedBox(width: 10),
                   Text(
-                    'Request ${_callType == 'video' ? 'Video' : 'Voice'} Interpreter',
+                    'Connect Now${_callType == 'video' ? ' (Video)' : ''}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -433,6 +457,204 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityBadge() {
+    if (_isCheckingAvailability) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    final color =
+        _availableInterpreters > 0
+            ? const Color(0xFF22C55E)
+            : const Color(0xFFF59E0B);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _availableInterpreters > 0
+                ? '$_availableInterpreters available'
+                : 'Queue expected',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey.shade400),
+            prefixIcon: Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF0955FA), width: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDepartmentDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Department',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedDepartment,
+              hint: const Text('Select department'),
+              isExpanded: true,
+              icon: const Icon(Icons.keyboard_arrow_down),
+              items:
+                  _departments.map((dept) {
+                    return DropdownMenuItem<String>(
+                      value: dept['key'] as String,
+                      child: Row(
+                        children: [
+                          FaIcon(
+                            dept['icon'] as IconData,
+                            size: 16,
+                            color: const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(dept['label'] as String),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+              onChanged: (val) => setState(() => _selectedDepartment = val),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCallTypeChip(String type, String label, IconData icon) {
+    final isSelected = _callType == type;
+    return InkWell(
+      onTap: () => setState(() => _callType = type),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? const Color(0xFF0955FA).withValues(alpha: 0.08)
+                  : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color:
+                isSelected ? const Color(0xFF0955FA) : const Color(0xFFE2E8F0),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color:
+                  isSelected
+                      ? const Color(0xFF0955FA)
+                      : const Color(0xFF64748B),
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color:
+                    isSelected
+                        ? const Color(0xFF0955FA)
+                        : const Color(0xFF475569),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -501,198 +723,43 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
     );
   }
 
-  Widget _buildTypeCard(
-    String type,
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
-    final isSelected = _interpreterType == type;
-    return InkWell(
-      onTap: () => setState(() => _interpreterType = type),
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? const Color(0xFF0955FA).withValues(alpha: 0.08)
-                  : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color:
-                isSelected ? const Color(0xFF0955FA) : const Color(0xFFE2E8F0),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color:
-                    isSelected
-                        ? const Color(0xFF0955FA).withValues(alpha: 0.1)
-                        : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color:
-                    isSelected
-                        ? const Color(0xFF0955FA)
-                        : const Color(0xFF64748B),
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          isSelected
-                              ? const Color(0xFF0955FA)
-                              : const Color(0xFF1E293B),
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              const Icon(
-                Icons.check_circle,
-                color: Color(0xFF0955FA),
-                size: 24,
-              ),
-          ],
-        ),
-      ),
-    );
+  // _buildTypeCard and _buildMedicalSectionsGrid removed — auto-routing
+  // picks the best interpreter type automatically based on department/language.
+
+  // _buildCallTypeCard removed — replaced with _buildCallTypeChip above
+
+  bool _canSubmit() {
+    if (_selectedFromLanguage == null || _selectedToLanguage == null) {
+      return false;
+    }
+    return true;
   }
 
-  Widget _buildMedicalSectionsGrid() {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children:
-          _medicalSections.map((section) {
-            final isSelected = _selectedMedicalSection == section['key'];
-            return InkWell(
-              onTap:
-                  () =>
-                      setState(() => _selectedMedicalSection = section['key']),
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      isSelected
-                          ? (section['color'] as Color).withValues(alpha: 0.1)
-                          : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color:
-                        isSelected
-                            ? section['color'] as Color
-                            : const Color(0xFFE2E8F0),
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FaIcon(
-                      section['icon'] as IconData,
-                      size: 16,
-                      color:
-                          isSelected
-                              ? section['color'] as Color
-                              : const Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      section['label'] as String,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color:
-                            isSelected
-                                ? section['color'] as Color
-                                : const Color(0xFF475569),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-    );
-  }
-
-  Widget _buildCallTypeCard(String type, String label, IconData icon) {
-    final isSelected = _callType == type;
-    return InkWell(
-      onTap: () => setState(() => _callType = type),
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? const Color(0xFF0955FA).withValues(alpha: 0.08)
-                  : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                isSelected ? const Color(0xFF0955FA) : const Color(0xFFE2E8F0),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color:
-                  isSelected
-                      ? const Color(0xFF0955FA)
-                      : const Color(0xFF64748B),
-              size: 22,
+  void _submitAutoRoute() {
+    // Navigate to RequestWaitingView with auto-route mode
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (context) => RequestWaitingView(
+              fromLanguageId: _selectedFromLanguage!.name,
+              toLanguageId: _selectedToLanguage!.name,
+              specialization: _selectedDepartment,
+              urgency: 'normal',
+              interpreterType: _interpreterType,
+              medicalSection: _selectedMedicalSection ?? _selectedDepartment,
+              callType: _callType,
+              // New auto-routing fields
+              useAutoRouting: true,
+              doctorName:
+                  _doctorNameController.text.trim().isNotEmpty
+                      ? _doctorNameController.text.trim()
+                      : null,
+              patientId:
+                  _patientIdController.text.trim().isNotEmpty
+                      ? _patientIdController.text.trim()
+                      : null,
+              department: _selectedDepartment,
             ),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color:
-                    isSelected
-                        ? const Color(0xFF0955FA)
-                        : const Color(0xFF475569),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -856,34 +923,6 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  bool _canSubmit() {
-    if (_selectedFromLanguage == null || _selectedToLanguage == null)
-      return false;
-    if (_interpreterType == 'specialist' && _selectedMedicalSection == null)
-      return false;
-    return true;
-  }
-
-  void _submitRequest() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (context) => RequestWaitingView(
-              fromLanguageId: _selectedFromLanguage!.name,
-              toLanguageId: _selectedToLanguage!.name,
-              specialization:
-                  _interpreterType == 'specialist'
-                      ? _selectedMedicalSection
-                      : null,
-              urgency: 'normal',
-              interpreterType: _interpreterType,
-              medicalSection: _selectedMedicalSection,
-              callType: _callType,
-            ),
       ),
     );
   }

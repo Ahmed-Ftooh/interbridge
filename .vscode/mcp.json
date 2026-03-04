@@ -1,9 +1,15 @@
 {
 	"servers": {
 		"supabase": {
-			"type": "http",
-			"url": "https://mcp.supabase.com/mcp?project_ref=gwvxwaqicnwiplafayoh&features=docs,database,account,debugging,development,functions,storage,branching"
+			"command": "npx",
+			"args": [
+				"-y",
+				"@supabase/mcp-server-supabase@latest",
+				"--project-ref",
+				"gwvxwaqicnwiplafayoh",
+				"--access-token",
+				"sbp_6231e1f021c7499cc684a3074cdea007b0ba60f2"
+			]
 		}
-	},
-	"inputs": []
+	}
 }

@@ -4,17 +4,21 @@ import 'dart:developer';
 class CallService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Fetch a short-lived Agora token from your Supabase Edge Function
+  /// Fetch a short-lived Agora token from your Supabase Edge Function.
+  /// [role] can be 'publisher' (default) or 'subscriber' (audience/listen-only).
   Future<String> fetchAgoraToken({
     required String channelName,
     required int uid,
+    String role = 'publisher',
   }) async {
     try {
-      log('Fetching Agora token for channel: $channelName, uid: $uid');
+      log(
+        'Fetching Agora token for channel: $channelName, uid: $uid, role: $role',
+      );
 
       final res = await _supabase.functions.invoke(
         'generate-agora-token',
-        body: {'channelName': channelName, 'uid': uid.toString()},
+        body: {'channelName': channelName, 'uid': uid.toString(), 'role': role},
       );
 
       log('Supabase function response: ${res.data}');
@@ -50,15 +54,16 @@ class CallService {
   /// Look up the other participant from the interpreter_requests table.
   /// Returns a map with 'requester_id', 'accepted_by', 'interpreter_type',
   /// 'from_language', 'to_language', etc.
-  Future<Map<String, dynamic>?> lookupCallParticipants(
-      String requestId) async {
+  Future<Map<String, dynamic>?> lookupCallParticipants(String requestId) async {
     try {
-      final row = await _supabase
-          .from('interpreter_requests')
-          .select(
-              'requester_id, accepted_by, interpreter_type, from_language, to_language, specialization, call_type')
-          .eq('id', requestId)
-          .maybeSingle();
+      final row =
+          await _supabase
+              .from('interpreter_requests')
+              .select(
+                'requester_id, accepted_by, interpreter_type, from_language, to_language, specialization, call_type, organization_id',
+              )
+              .eq('id', requestId)
+              .maybeSingle();
       return row;
     } catch (e) {
       log('Error looking up call participants: $e');
@@ -114,11 +119,12 @@ class CallService {
     String callType = 'humanitarian',
     String? fromLanguage,
     String? toLanguage,
+    String? organizationId,
   }) async {
     try {
       log('Recording call log for request: $requestId');
 
-      await _supabase.from('call_logs').insert({
+      final insertData = {
         'request_id': requestId,
         'interpreter_id': interpreterId,
         'requester_id': requesterId,
@@ -126,11 +132,12 @@ class CallService {
         'started_at': startedAt.toIso8601String(),
         'ended_at': endedAt.toIso8601String(),
         'duration_seconds': durationSeconds,
-        'metadata': {
-          'from_language': fromLanguage,
-          'to_language': toLanguage,
-        },
-      });
+        'metadata': {'from_language': fromLanguage, 'to_language': toLanguage},
+      };
+      if (organizationId != null) {
+        insertData['organization_id'] = organizationId;
+      }
+      await _supabase.from('call_logs').insert(insertData);
 
       log('Call log recorded successfully');
     } catch (e) {
@@ -148,9 +155,16 @@ class CallService {
               .from('call_statistics')
               .select('*')
               .eq('user_id', targetUserId)
-              .single();
+              .maybeSingle();
 
-      return response;
+      // The call_statistics VIEW uses GROUP BY, so users with zero
+      // call_sessions have no row → maybeSingle returns null.
+      return response ??
+          {
+            'total_calls': 0,
+            'total_duration_seconds': 0,
+            'average_duration_seconds': 0,
+          };
     } catch (e) {
       log('Error fetching call statistics: $e');
       return {

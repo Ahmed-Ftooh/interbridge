@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' hide Card;
+import 'package:interbridge/config.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -8,7 +10,9 @@ import 'package:interbridge/presentation/screens/organization/bloc/organization_
 import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_event.dart';
 import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_state.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
+import 'package:interbridge/presentation/widgets/payment_success_dialog.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class OrganizationDashboardView extends StatefulWidget {
   const OrganizationDashboardView({super.key});
@@ -19,12 +23,14 @@ class OrganizationDashboardView extends StatefulWidget {
 }
 
 class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
+  bool _checkoutInProgress = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 4, vsync: this);
     // Load data when view initializes
     context.read<OrganizationDashboardBloc>().add(const LoadOrganizationData());
@@ -32,8 +38,24 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When user returns from external Stripe checkout, refresh data
+    if (state == AppLifecycleState.resumed && _checkoutInProgress) {
+      _checkoutInProgress = false;
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          context.read<OrganizationDashboardBloc>().add(
+            const RefreshOrganizationData(),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -47,6 +69,30 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
             message: state.message!,
             type: state.isError ? SnackBarType.error : SnackBarType.success,
           );
+        }
+        // Handle Stripe checkout URL (fallback, mainly for web)
+        if (state is OrganizationDashboardLoaded && state.checkoutUrl != null) {
+          _openStripeCheckout(state.checkoutUrl!);
+          context.read<OrganizationDashboardBloc>().add(
+            const ClearCheckoutUrl(),
+          );
+        }
+        // Handle mobile Stripe Payment Sheet
+        if (state is OrganizationDashboardLoaded &&
+            state.paymentSheetData != null) {
+          _presentPaymentSheet(state.paymentSheetData!);
+          context.read<OrganizationDashboardBloc>().add(
+            const ClearPaymentSheetData(),
+          );
+        }
+        // Handle payment success — show animated dialog
+        if (state is OrganizationDashboardLoaded &&
+            state.paymentSuccessAmount != null) {
+          final amount = state.paymentSuccessAmount!;
+          context.read<OrganizationDashboardBloc>().add(
+            const ClearPaymentSuccess(),
+          );
+          PaymentSuccessDialog.show(context, amount: amount);
         }
       },
       builder: (context, state) {
@@ -65,13 +111,16 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                 children: [
                   const Text('No organization found'),
                   const SizedBox(height: 16),
-                  Text('User ID: ${state.userId}',
-                      style: const TextStyle(fontSize: 12)),
+                  Text(
+                    'User ID: ${state.userId}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    onPressed: () => context
-                        .read<OrganizationDashboardBloc>()
-                        .add(const LoadOrganizationData()),
+                    onPressed:
+                        () => context.read<OrganizationDashboardBloc>().add(
+                          const LoadOrganizationData(),
+                        ),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -90,9 +139,10 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                   Text(state.message),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => context
-                        .read<OrganizationDashboardBloc>()
-                        .add(const LoadOrganizationData()),
+                    onPressed:
+                        () => context.read<OrganizationDashboardBloc>().add(
+                          const LoadOrganizationData(),
+                        ),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -134,9 +184,10 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () => context
-                .read<OrganizationDashboardBloc>()
-                .add(const RefreshOrganizationData()),
+            onPressed:
+                () => context.read<OrganizationDashboardBloc>().add(
+                  const RefreshOrganizationData(),
+                ),
           ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
@@ -266,9 +317,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
       decoration: BoxDecoration(
         color: ColorManager.backgroundCard,
         borderRadius: BorderRadius.circular(AppSize.s12),
-        border: Border.all(
-          color: ColorManager.primary2.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: ColorManager.primary2.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,16 +453,26 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, size: 64, color: ColorManager.greyMedium),
+            Icon(
+              Icons.people_outline,
+              size: 64,
+              color: ColorManager.greyMedium,
+            ),
             const SizedBox(height: AppSize.s16),
             Text(
               'No doctors yet',
-              style: TextStyle(fontSize: AppSize.s16, color: ColorManager.textSecondary),
+              style: TextStyle(
+                fontSize: AppSize.s16,
+                color: ColorManager.textSecondary,
+              ),
             ),
             const SizedBox(height: AppSize.s8),
             Text(
               'Invite doctors to your organization',
-              style: TextStyle(fontSize: AppSize.s14, color: ColorManager.greyMedium),
+              style: TextStyle(
+                fontSize: AppSize.s14,
+                color: ColorManager.greyMedium,
+              ),
             ),
           ],
         ),
@@ -437,9 +496,10 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
           ),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: role == 'organization_admin'
-                  ? ColorManager.warning
-                  : ColorManager.primary2,
+              backgroundColor:
+                  role == 'organization_admin'
+                      ? ColorManager.warning
+                      : ColorManager.primary2,
               child: Icon(
                 role == 'organization_admin'
                     ? Icons.admin_panel_settings
@@ -470,9 +530,10 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                 vertical: AppSize.s4,
               ),
               decoration: BoxDecoration(
-                color: isActive
-                    ? ColorManager.success.withValues(alpha: 0.1)
-                    : ColorManager.error.withValues(alpha: 0.1),
+                color:
+                    isActive
+                        ? ColorManager.success.withValues(alpha: 0.1)
+                        : ColorManager.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppSize.s8),
               ),
               child: Text(
@@ -500,12 +561,18 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
             const SizedBox(height: AppSize.s16),
             Text(
               'No pending invitations',
-              style: TextStyle(fontSize: AppSize.s16, color: ColorManager.textSecondary),
+              style: TextStyle(
+                fontSize: AppSize.s16,
+                color: ColorManager.textSecondary,
+              ),
             ),
             const SizedBox(height: AppSize.s8),
             Text(
               'Invitations you send will appear here',
-              style: TextStyle(fontSize: AppSize.s14, color: ColorManager.greyMedium),
+              style: TextStyle(
+                fontSize: AppSize.s14,
+                color: ColorManager.greyMedium,
+              ),
             ),
           ],
         ),
@@ -531,27 +598,37 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
               backgroundColor: ColorManager.warning.withValues(alpha: 0.2),
               child: Icon(Icons.hourglass_empty, color: ColorManager.warning),
             ),
-            title: Text(email, style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(
+              email,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (createdAt != null)
                   Text(
                     'Sent: ${DateFormat('MMM d, yyyy').format(createdAt)}',
-                    style: TextStyle(fontSize: AppSize.s12, color: ColorManager.textSecondary),
+                    style: TextStyle(
+                      fontSize: AppSize.s12,
+                      color: ColorManager.textSecondary,
+                    ),
                   ),
                 if (expiresAt != null)
                   Text(
                     'Expires: ${DateFormat('MMM d, yyyy').format(expiresAt)}',
-                    style: TextStyle(fontSize: AppSize.s12, color: ColorManager.warning),
+                    style: TextStyle(
+                      fontSize: AppSize.s12,
+                      color: ColorManager.warning,
+                    ),
                   ),
               ],
             ),
             trailing: IconButton(
               icon: Icon(Icons.cancel, color: ColorManager.error),
-              onPressed: () => context
-                  .read<OrganizationDashboardBloc>()
-                  .add(CancelInvitation(invite['id'])),
+              onPressed:
+                  () => context.read<OrganizationDashboardBloc>().add(
+                    CancelInvitation(invite['id']),
+                  ),
               tooltip: 'Cancel invitation',
             ),
           ),
@@ -563,107 +640,151 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
   Widget _buildCallsTab(OrganizationDashboardLoaded state) {
     return state.callHistory.isEmpty
         ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.call_outlined, size: 64, color: ColorManager.greyMedium),
-                const SizedBox(height: AppSize.s16),
-                Text(
-                  'No calls yet',
-                  style: TextStyle(fontSize: AppSize.s16, color: ColorManager.textSecondary),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.call_outlined,
+                size: 64,
+                color: ColorManager.greyMedium,
+              ),
+              const SizedBox(height: AppSize.s16),
+              Text(
+                'No calls yet',
+                style: TextStyle(
+                  fontSize: AppSize.s16,
+                  color: ColorManager.textSecondary,
                 ),
-              ],
-            ),
-          )
+              ),
+            ],
+          ),
+        )
         : ListView.builder(
-            padding: const EdgeInsets.all(AppSize.s16),
-            itemCount: state.callHistory.length,
-            itemBuilder: (context, index) {
-              final call = state.callHistory[index];
-              final request = call['call_requests'] as Map<String, dynamic>?;
-              final duration = call['duration_seconds'] ?? 0;
-              final cost = call['cost'] ?? 0;
-              final startedAt = DateTime.tryParse(call['started_at'] ?? '');
+          padding: const EdgeInsets.all(AppSize.s16),
+          itemCount: state.callHistory.length,
+          itemBuilder: (context, index) {
+            final call = state.callHistory[index];
+            final request = call['call_requests'] as Map<String, dynamic>?;
+            final duration = call['duration_seconds'] ?? 0;
+            final cost = call['cost'] ?? 0;
+            final startedAt = DateTime.tryParse(call['started_at'] ?? '');
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: AppSize.s12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSize.s12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSize.s16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(AppSize.s8),
-                            decoration: BoxDecoration(
-                              color: ColorManager.primary2.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(AppSize.s8),
-                            ),
-                            child: Icon(
-                              Icons.call,
-                              color: ColorManager.primary2,
-                              size: AppSize.s20,
-                            ),
+            return Card(
+              margin: const EdgeInsets.only(bottom: AppSize.s12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSize.s12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSize.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(AppSize.s8),
+                          decoration: BoxDecoration(
+                            color: ColorManager.primary2.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppSize.s8),
                           ),
-                          const SizedBox(width: AppSize.s12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${request?['from_language'] ?? 'Unknown'} → ${request?['to_language'] ?? 'Unknown'}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                if (startedAt != null)
-                                  Text(
-                                    DateFormat('MMM d, yyyy h:mm a').format(startedAt),
-                                    style: TextStyle(
-                                      fontSize: AppSize.s12,
-                                      color: ColorManager.textSecondary,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                          child: Icon(
+                            Icons.call,
+                            color: ColorManager.primary2,
+                            size: AppSize.s20,
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                        ),
+                        const SizedBox(width: AppSize.s12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '\$${(cost as num).toStringAsFixed(2)}',
-                                style: TextStyle(
+                                '${request?['from_language'] ?? 'Unknown'} → ${request?['to_language'] ?? 'Unknown'}',
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: ColorManager.error,
                                 ),
                               ),
-                              Text(
-                                '${(duration / 60).floor()}:${(duration % 60).toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                  fontSize: AppSize.s12,
-                                  color: ColorManager.textSecondary,
+                              if (startedAt != null)
+                                Text(
+                                  DateFormat(
+                                    'MMM d, yyyy h:mm a',
+                                  ).format(startedAt),
+                                  style: TextStyle(
+                                    fontSize: AppSize.s12,
+                                    color: ColorManager.textSecondary,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '\$${(cost as num).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: ColorManager.error,
+                              ),
+                            ),
+                            Text(
+                              '${(duration / 60).floor()}:${(duration % 60).toString().padLeft(2, '0')}',
+                              style: TextStyle(
+                                fontSize: AppSize.s12,
+                                color: ColorManager.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              );
-            },
-          );
+              ),
+            );
+          },
+        );
   }
 
   Widget _buildBillingTab(OrganizationDashboardLoaded state) {
-    return Column(
+    final lowBalance = state.walletBalance < (state.ratePerMinute * 30);
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSize.s16),
       children: [
+        // Low balance warning
+        if (lowBalance)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppSize.s16),
+            padding: const EdgeInsets.all(AppSize.s12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(AppSize.s12),
+              border: Border.all(color: const Color(0xFFFCA5A5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Low balance (\$${state.walletBalance.toStringAsFixed(2)}). Top up to avoid interruption.',
+                    style: const TextStyle(
+                      color: Color(0xFF991B1B),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // Balance Card
         Container(
-          margin: const EdgeInsets.all(AppSize.s16),
           padding: const EdgeInsets.all(AppSize.s24),
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -688,114 +809,503 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: AppSize.s16),
-              ElevatedButton(
-                onPressed: _showTopUpDialog,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: ColorManager.primary2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppSize.s8),
-                  ),
-                ),
-                child: const Text('Top Up Balance'),
-              ),
-            ],
-          ),
-        ),
-
-        // Transactions List
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSize.s16),
-          child: Row(
-            children: [
+              const SizedBox(height: 4),
               Text(
-                'Transaction History',
-                style: TextStyle(
-                  fontSize: AppSize.s16,
-                  fontWeight: FontWeight.bold,
-                  color: ColorManager.textPrimary,
-                ),
+                'Rate: \$${state.ratePerMinute.toStringAsFixed(2)}/min',
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+              const SizedBox(height: AppSize.s16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _showTopUpDialog,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Top Up'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: ColorManager.primary2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppSize.s8),
+                      ),
+                    ),
+                  ),
+                  if (state.isProcessingTopUp)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: AppSize.s12),
+        const SizedBox(height: AppSize.s24),
 
-        Expanded(
-          child: state.transactions.isEmpty
-              ? Center(
-                  child: Text(
-                    'No transactions yet',
-                    style: TextStyle(color: ColorManager.textSecondary),
+        // Doctor Spending Section
+        if (state.members.any((m) => m['role'] == 'doctor')) ...[
+          _buildMobileSectionHeader('Doctor Spending'),
+          const SizedBox(height: AppSize.s8),
+          ...state.members.where((m) => m['role'] == 'doctor').map((doc) {
+            final profile = doc['users_profile'] as Map<String, dynamic>? ?? {};
+            final name =
+                profile['full_name'] ?? profile['username'] ?? 'Doctor';
+            final spent = (doc['total_spent'] as num?)?.toDouble() ?? 0.0;
+            final limit = (doc['spending_limit'] as num?)?.toDouble() ?? 0.0;
+            final hasLimit = limit > 0;
+            final overLimit = hasLimit && spent >= limit;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: AppSize.s8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor:
+                      overLimit
+                          ? const Color(0xFFFEE2E2)
+                          : const Color(0xFFDBEAFE),
+                  child: Icon(
+                    overLimit ? Icons.warning : Icons.person,
+                    color:
+                        overLimit
+                            ? const Color(0xFFDC2626)
+                            : ColorManager.primary2,
+                    size: 20,
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSize.s16),
-                  itemCount: state.transactions.length,
-                  itemBuilder: (context, index) {
-                    final txn = state.transactions[index];
-                    final type = txn['transaction_type'] as String? ?? '';
-                    final amount = txn['amount'] ?? 0;
-                    final balanceAfter = txn['balance_after'] ?? 0;
-                    final createdAt = DateTime.tryParse(txn['created_at'] ?? '');
-                    final isCredit = type == 'topup' || type == 'refund';
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: AppSize.s8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isCredit
-                              ? ColorManager.success.withValues(alpha: 0.1)
-                              : ColorManager.error.withValues(alpha: 0.1),
-                          child: Icon(
-                            isCredit ? Icons.add : Icons.remove,
-                            color: isCredit ? ColorManager.success : ColorManager.error,
+                ),
+                title: Text(
+                  name.toString(),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle:
+                    hasLimit
+                        ? Text(
+                          'Limit: \$${limit.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: AppSize.s12,
+                            color: ColorManager.textSecondary,
                           ),
+                        )
+                        : null,
+                trailing: Text(
+                  '\$${spent.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color:
+                        overLimit
+                            ? const Color(0xFFDC2626)
+                            : ColorManager.textPrimary,
+                  ),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: AppSize.s24),
+        ],
+
+        // Invoices Section
+        Row(
+          children: [
+            Expanded(child: _buildMobileSectionHeader('Invoices')),
+            OutlinedButton.icon(
+              onPressed:
+                  state.isGeneratingInvoice
+                      ? null
+                      : () => _showGenerateInvoiceDialog(state),
+              icon:
+                  state.isGeneratingInvoice
+                      ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : const Icon(Icons.add_chart, size: 16),
+              label: Text(
+                state.isGeneratingInvoice ? 'Generating...' : 'Generate',
+                style: const TextStyle(fontSize: 12),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSize.s8),
+        if (state.invoices.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                'No invoices yet',
+                style: TextStyle(color: ColorManager.textSecondary),
+              ),
+            ),
+          )
+        else
+          ...state.invoices.map((inv) {
+            final number = inv['invoice_number'] ?? '-';
+            final start = inv['billing_period_start'] ?? '';
+            final end = inv['billing_period_end'] ?? '';
+            final amount = (inv['total_amount'] as num?)?.toDouble() ?? 0.0;
+            final status = inv['status'] ?? 'draft';
+            final pdfUrl = inv['pdf_url'] as String?;
+            final calls = inv['total_calls'] ?? 0;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: AppSize.s8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _invoiceStatusColor(
+                    status,
+                  ).withValues(alpha: 0.15),
+                  child: Text(
+                    '#$number',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _invoiceStatusColor(status),
+                    ),
+                  ),
+                ),
+                title: Text(
+                  '${_formatShortDate(start)} — ${_formatShortDate(end)}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                subtitle: Text(
+                  '$calls calls • ${status[0].toUpperCase()}${status.substring(1)}',
+                  style: TextStyle(
+                    fontSize: AppSize.s12,
+                    color: _invoiceStatusColor(status),
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '\$${amount.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    if (pdfUrl != null)
+                      IconButton(
+                        onPressed: () => _openInvoice(pdfUrl),
+                        icon: Icon(
+                          Icons.download,
+                          size: 20,
+                          color: ColorManager.primary2,
                         ),
-                        title: Text(
-                          type == 'topup'
-                              ? 'Top Up'
-                              : type == 'call_charge'
-                                  ? 'Call Charge'
-                                  : 'Refund',
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        subtitle: createdAt != null
-                            ? Text(
-                                DateFormat('MMM d, yyyy h:mm a').format(createdAt),
-                                style: TextStyle(
-                                  fontSize: AppSize.s12,
-                                  color: ColorManager.textSecondary,
-                                ),
-                              )
-                            : null,
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${isCredit ? '+' : '-'}\$${(amount as num).abs().toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isCredit ? ColorManager.success : ColorManager.error,
+                        tooltip: 'Download',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        const SizedBox(height: AppSize.s24),
+
+        // Transaction History
+        _buildMobileSectionHeader('Transaction History'),
+        const SizedBox(height: AppSize.s8),
+        if (state.transactions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                'No transactions yet',
+                style: TextStyle(color: ColorManager.textSecondary),
+              ),
+            ),
+          )
+        else
+          ...state.transactions.map((txn) {
+            final type = txn['transaction_type'] as String? ?? '';
+            final amount = txn['amount'] ?? 0;
+            final balanceAfter = txn['balance_after'] ?? 0;
+            final createdAt = DateTime.tryParse(txn['created_at'] ?? '');
+            final isCredit = type == 'topup' || type == 'refund';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: AppSize.s8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor:
+                      isCredit
+                          ? ColorManager.success.withValues(alpha: 0.1)
+                          : ColorManager.error.withValues(alpha: 0.1),
+                  child: Icon(
+                    isCredit ? Icons.add : Icons.remove,
+                    color: isCredit ? ColorManager.success : ColorManager.error,
+                  ),
+                ),
+                title: Text(
+                  type == 'topup'
+                      ? 'Top Up'
+                      : type == 'call_charge'
+                      ? 'Call Charge'
+                      : 'Refund',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle:
+                    createdAt != null
+                        ? Text(
+                          DateFormat('MMM d, yyyy h:mm a').format(createdAt),
+                          style: TextStyle(
+                            fontSize: AppSize.s12,
+                            color: ColorManager.textSecondary,
+                          ),
+                        )
+                        : null,
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${isCredit ? '+' : '-'}\$${(amount as num).abs().toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color:
+                            isCredit
+                                ? ColorManager.success
+                                : ColorManager.error,
+                      ),
+                    ),
+                    Text(
+                      'Bal: \$${(balanceAfter as num).toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: AppSize.s12,
+                        color: ColorManager.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildMobileSectionHeader(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: AppSize.s16,
+        fontWeight: FontWeight.bold,
+        color: ColorManager.textPrimary,
+      ),
+    );
+  }
+
+  Color _invoiceStatusColor(String status) {
+    switch (status) {
+      case 'paid':
+        return const Color(0xFF22C55E);
+      case 'sent':
+        return const Color(0xFF3B82F6);
+      case 'overdue':
+        return const Color(0xFFDC2626);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  String _formatShortDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateFormat('MMM d').format(date);
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
+  void _openInvoice(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _openStripeCheckout(String url) async {
+    _checkoutInProgress = true;
+    final uri = Uri.parse(url);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      _checkoutInProgress = false;
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Could not open payment page. Please try again.',
+          type: SnackBarType.error,
+        );
+      }
+    }
+  }
+
+  /// Present Stripe's native Payment Sheet as a bottom sheet
+  Future<void> _presentPaymentSheet(Map<String, String> paymentData) async {
+    try {
+      // Initialize Stripe with publishable key
+      Stripe.publishableKey = stripePublishableKey;
+
+      // Initialize the payment sheet
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: paymentData['paymentIntentClientSecret']!,
+          customerEphemeralKeySecret: paymentData['ephemeralKeySecret']!,
+          customerId: paymentData['customerId']!,
+          merchantDisplayName: 'InterBridge',
+          style: ThemeMode.system,
+        ),
+      );
+
+      // Present the payment sheet (native bottom sheet)
+      await Stripe.instance.presentPaymentSheet();
+
+      // Payment succeeded
+      if (mounted) {
+        final amount = double.tryParse(paymentData['amount'] ?? '0') ?? 0;
+        context.read<OrganizationDashboardBloc>().add(
+          PaymentSheetCompleted(amount),
+        );
+      }
+    } on StripeException catch (e) {
+      if (mounted) {
+        final msg = e.error.localizedMessage ?? 'Payment cancelled';
+        if (e.error.code != FailureCode.Canceled) {
+          CustomSnackBar.show(context, message: msg, type: SnackBarType.error);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Payment failed: $e',
+          type: SnackBarType.error,
+        );
+      }
+    }
+  }
+
+  void _showGenerateInvoiceDialog(OrganizationDashboardLoaded state) {
+    final now = DateTime.now();
+    int selectedYear = now.year;
+    int selectedMonth = now.month == 1 ? 12 : now.month - 1;
+    if (now.month == 1) selectedYear = now.year - 1;
+    bool sendEmail = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('Generate Invoice'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: selectedMonth,
+                          decoration: const InputDecoration(
+                            labelText: 'Month',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                          ),
+                          items: List.generate(
+                            12,
+                            (i) => DropdownMenuItem(
+                              value: i + 1,
+                              child: Text(
+                                DateFormat.MMM().format(DateTime(2024, i + 1)),
                               ),
                             ),
-                            Text(
-                              'Bal: \$${(balanceAfter as num).toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: AppSize.s12,
-                                color: ColorManager.textSecondary,
-                              ),
-                            ),
-                          ],
+                          ),
+                          onChanged:
+                              (v) => setDialogState(() => selectedMonth = v!),
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: selectedYear,
+                          decoration: const InputDecoration(
+                            labelText: 'Year',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                          ),
+                          items:
+                              [now.year - 1, now.year]
+                                  .map(
+                                    (y) => DropdownMenuItem(
+                                      value: y,
+                                      child: Text('$y'),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              (v) => setDialogState(() => selectedYear = v!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: sendEmail,
+                    onChanged:
+                        (v) => setDialogState(() => sendEmail = v ?? false),
+                    title: const Text(
+                      'Send via email',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    context.read<OrganizationDashboardBloc>().add(
+                      GenerateInvoice(
+                        year: selectedYear,
+                        month: selectedMonth,
+                        sendEmail: sendEmail,
                       ),
                     );
                   },
+                  child: const Text('Generate'),
                 ),
-        ),
-      ],
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -904,146 +1414,178 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
 
     showDialog(
       context: context,
-      builder: (dialogContext) => BlocProvider.value(
-        value: context.read<OrganizationDashboardBloc>(),
-        child: BlocConsumer<OrganizationDashboardBloc, OrganizationDashboardState>(
-          listener: (context, blocState) {
-            // Close dialog on success
-            if (blocState is OrganizationDashboardLoaded && 
-                !blocState.isSendingInvite &&
-                blocState.message != null &&
-                !blocState.isError) {
-              Navigator.pop(dialogContext);
-            }
-          },
-          builder: (context, blocState) {
-            final isLoading = blocState is OrganizationDashboardLoaded && 
-                blocState.isSendingInvite;
-            
-            return AlertDialog(
-              title: const Text('Invite Doctor'),
-              content: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Enter the doctor\'s email address to send an invitation:',
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address',
-                        hintText: 'doctor@example.com',
-                        prefixIcon: Icon(Icons.email),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter an email address';
-                        }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                          return 'Please enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: ColorManager.info.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline, color: ColorManager.info, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'The doctor will receive an email with instructions to join your organization.',
-                              style: TextStyle(fontSize: 12, color: ColorManager.info),
-                            ),
+      builder:
+          (dialogContext) => BlocProvider.value(
+            value: context.read<OrganizationDashboardBloc>(),
+            child: BlocConsumer<
+              OrganizationDashboardBloc,
+              OrganizationDashboardState
+            >(
+              listener: (context, blocState) {
+                // Close dialog on success
+                if (blocState is OrganizationDashboardLoaded &&
+                    !blocState.isSendingInvite &&
+                    blocState.message != null &&
+                    !blocState.isError) {
+                  Navigator.pop(dialogContext);
+                }
+              },
+              builder: (context, blocState) {
+                final isLoading =
+                    blocState is OrganizationDashboardLoaded &&
+                    blocState.isSendingInvite;
+
+                return AlertDialog(
+                  title: const Text('Invite Doctor'),
+                  content: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Enter the doctor\'s email address to send an invitation:',
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email Address',
+                            hintText: 'doctor@example.com',
+                            prefixIcon: Icon(Icons.email),
+                            border: OutlineInputBorder(),
                           ),
-                        ],
-                      ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter an email address';
+                            }
+                            if (!RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            ).hasMatch(value)) {
+                              return 'Please enter a valid email address';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: ColorManager.info.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: ColorManager.info,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'The doctor will receive an email with instructions to join your organization.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: ColorManager.info,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed:
+                          isLoading ? null : () => Navigator.pop(dialogContext),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed:
+                          isLoading
+                              ? null
+                              : () {
+                                if (!formKey.currentState!.validate()) return;
+                                context.read<OrganizationDashboardBloc>().add(
+                                  SendDoctorInvitation(
+                                    emailController.text.trim(),
+                                  ),
+                                );
+                              },
+                      icon:
+                          isLoading
+                              ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : const Icon(Icons.send),
+                      label: Text(isLoading ? 'Sending...' : 'Send Invitation'),
                     ),
                   ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          if (!formKey.currentState!.validate()) return;
-                          context.read<OrganizationDashboardBloc>().add(
-                            SendDoctorInvitation(emailController.text.trim()),
-                          );
-                        },
-                  icon: isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                  label: Text(isLoading ? 'Sending...' : 'Send Invitation'),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                );
+              },
+            ),
+          ),
     );
   }
 
   void _showTopUpDialog() {
     final amountController = TextEditingController();
-    
+
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Top Up Balance'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Enter the amount to add to your wallet:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                prefixText: '\$ ',
-                labelText: 'Amount',
-                border: OutlineInputBorder(),
-              ),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Top Up Balance'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Enter the amount to add to your wallet:'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    prefixText: '\$ ',
+                    labelText: 'Amount',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final amount = double.tryParse(amountController.text) ?? 0;
+                  if (amount < 5) {
+                    CustomSnackBar.show(
+                      context,
+                      message: 'Minimum top-up amount is \$5',
+                      type: SnackBarType.error,
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext);
+                  // Use native Stripe Payment Sheet on mobile
+                  context.read<OrganizationDashboardBloc>().add(
+                    OpenMobilePaymentSheet(amount),
+                  );
+                },
+                child: const Text('Continue to Payment'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              context.read<OrganizationDashboardBloc>().add(
-                ProcessTopUp(double.tryParse(amountController.text) ?? 0),
-              );
-            },
-            child: const Text('Continue to Payment'),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -86,7 +86,7 @@ class _AuthWebWrapperState extends State<AuthWebWrapper>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Interpreter Portal',
+                      'Interpreter platform',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -230,7 +230,7 @@ class _AuthWebWrapperState extends State<AuthWebWrapper>
                                           ),
                                         ),
                                         Text(
-                                          'Interpreter Portal',
+                                          'Interpreter plateform',
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,

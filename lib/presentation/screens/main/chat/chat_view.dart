@@ -5,6 +5,7 @@ import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
@@ -137,10 +138,16 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                             context,
                             MaterialPageRoute(
                               builder:
-                                  (_) => EnhancedCallScreen(
-                                    channelId: widget.requestId,
-                                    isVideoCall: false,
-                                  ),
+                                  (_) =>
+                                      kIsWeb
+                                          ? EnhancedCallScreenWeb(
+                                            channelId: widget.requestId,
+                                            isVideoCall: false,
+                                          )
+                                          : EnhancedCallScreen(
+                                            channelId: widget.requestId,
+                                            isVideoCall: false,
+                                          ),
                             ),
                             (route) => false,
                           );
@@ -177,10 +184,16 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                             context,
                             MaterialPageRoute(
                               builder:
-                                  (_) => EnhancedCallScreen(
-                                    channelId: widget.requestId,
-                                    isVideoCall: true,
-                                  ),
+                                  (_) =>
+                                      kIsWeb
+                                          ? EnhancedCallScreenWeb(
+                                            channelId: widget.requestId,
+                                            isVideoCall: true,
+                                          )
+                                          : EnhancedCallScreen(
+                                            channelId: widget.requestId,
+                                            isVideoCall: true,
+                                          ),
                             ),
                             (route) => false,
                           );
@@ -243,9 +256,14 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder:
-                                  (_) => EnhancedCallScreen(
-                                    channelId: widget.requestId,
-                                  ),
+                                  (_) =>
+                                      kIsWeb
+                                          ? EnhancedCallScreenWeb(
+                                            channelId: widget.requestId,
+                                          )
+                                          : EnhancedCallScreen(
+                                            channelId: widget.requestId,
+                                          ),
                             ),
                           );
                         },
@@ -411,9 +429,14 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                             context,
                             MaterialPageRoute(
                               builder:
-                                  (_) => EnhancedCallScreen(
-                                    channelId: widget.requestId,
-                                  ),
+                                  (_) =>
+                                      kIsWeb
+                                          ? EnhancedCallScreenWeb(
+                                            channelId: widget.requestId,
+                                          )
+                                          : EnhancedCallScreen(
+                                            channelId: widget.requestId,
+                                          ),
                             ),
                             (route) => false,
                           );

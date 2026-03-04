@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
@@ -123,6 +124,17 @@ class AppInitializer {
         // Initialize Error Service (no network calls)
         ErrorService().initialize(),
       ]);
+
+      // Initialize Stripe (non-web only)
+      if (!kIsWeb) {
+        final stripeKey = dotenv.env['STRIPEPUBLISHABLEKEY'] ?? '';
+        if (stripeKey.isNotEmpty && stripeKey.startsWith('pk_')) {
+          Stripe.publishableKey = stripeKey;
+          log('Stripe initialized with publishable key');
+        } else {
+          log('Stripe publishable key not configured, payment sheet disabled');
+        }
+      }
 
       // OPTIMIZED: Initialize Firebase and Network Service in background
       // These are not critical for app startup and can complete after the app launches

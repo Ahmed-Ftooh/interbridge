@@ -580,6 +580,32 @@ class SupabaseService {
     final username = (data['username'] as String?) ?? '';
     final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
 
+    // --- Upload profile image if provided ---
+    Uint8List? profileImageBytes;
+    if (data['profileImageBytes'] is Uint8List) {
+      profileImageBytes = data['profileImageBytes'] as Uint8List;
+    } else if (data['profileImageBytesBase64'] is String) {
+      try {
+        profileImageBytes = base64Decode(
+          data['profileImageBytesBase64'] as String,
+        );
+      } catch (e) {
+        log('Error decoding profile image base64: $e');
+      }
+    }
+    if (profileImageBytes != null && profileImageBytes.isNotEmpty) {
+      try {
+        final imageName =
+            data['profileImageName'] as String? ??
+            'profile_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final imageUrl = await uploadProfileImage(imageName, profileImageBytes);
+        data['profileImage'] = imageUrl;
+        log('Profile image uploaded: $imageUrl');
+      } catch (e) {
+        log('Error uploading profile image during registration: $e');
+      }
+    }
+
     // Check if user profile already exists
     bool profileExists = false;
     try {
@@ -904,6 +930,49 @@ class SupabaseService {
       } catch (e) {
         log('Error uploading voice sample: $e');
       }
+    }
+
+    // --- Upload native-language voice sample ---
+    String? voiceNativeUrl;
+    final voiceNativePath = data['voiceSampleNativePath'] as String?;
+    Uint8List? voiceNativeBytes;
+    if (data['voiceSampleNativeBytes'] is Uint8List) {
+      voiceNativeBytes = data['voiceSampleNativeBytes'] as Uint8List;
+    } else if (data['voiceSampleNativeBytesBase64'] is String) {
+      try {
+        voiceNativeBytes = base64Decode(
+          data['voiceSampleNativeBytesBase64'] as String,
+        );
+      } catch (e) {
+        log('Error decoding native voice sample base64: $e');
+      }
+    }
+    try {
+      if (voiceNativeBytes != null && voiceNativeBytes.isNotEmpty) {
+        final voiceNativeName =
+            data['voiceSampleNativeName'] as String? ?? 'voice_native.webm';
+        voiceNativeUrl = await uploadVoiceSampleFromBytes(
+          voiceNativeBytes,
+          fileName: voiceNativeName,
+          prompt: 'native_language_intro',
+          sentenceType: 'onboarding_native',
+        );
+        log('Native voice sample uploaded from bytes: $voiceNativeUrl');
+      } else if (!kIsWeb &&
+          voiceNativePath != null &&
+          voiceNativePath.isNotEmpty) {
+        final file = File(voiceNativePath);
+        if (await file.exists()) {
+          voiceNativeUrl = await uploadVoiceSampleFromPath(
+            voiceNativePath,
+            prompt: 'native_language_intro',
+            sentenceType: 'onboarding_native',
+          );
+          log('Native voice sample uploaded: $voiceNativeUrl');
+        }
+      }
+    } catch (e) {
+      log('Error uploading native voice sample: $e');
     }
 
     // --- Upload training certificate ---
@@ -1532,12 +1601,9 @@ class SupabaseService {
       // Ensure taken_at is set
       attempt['taken_at'] = DateTime.now().toUtc().toIso8601String();
 
-      // Use upsert with onConflict to handle retakes atomically
-      // The unique constraint quiz_attempts_user_quiz_section_unique
-      // is on (user_id, quiz_type, medical_section)
-      await _client
-          .from('quiz_attempts')
-          .upsert(attempt, onConflict: 'user_id,quiz_type,medical_section');
+      // Insert a new row. The unique constraint was dropped so that
+      // users can retry after 30 days — each attempt is stored.
+      await _client.from('quiz_attempts').insert(attempt);
 
       log('Quiz attempt submitted successfully');
     } catch (e, stackTrace) {
@@ -1615,6 +1681,103 @@ class SupabaseService {
         .eq('user_id', userId)
         .order('taken_at', ascending: false);
     return data.cast<Map<String, dynamic>>();
+  }
+
+  // ── Voice prompts ─────────────────────────────────────────────
+
+  /// Fetch [count] random voice prompts from the voice_prompts table.
+  Future<List<Map<String, dynamic>>> getRandomVoicePrompts({
+    int count = 3,
+  }) async {
+    log('getRandomVoicePrompts called (count=$count)');
+    // Fetch all active prompts and pick random subset client-side
+    final List data = await _client
+        .from('voice_prompts')
+        .select()
+        .eq('is_active', true);
+
+    final prompts = data.cast<Map<String, dynamic>>();
+    prompts.shuffle();
+    final result = prompts.take(count).toList();
+    log('getRandomVoicePrompts returning ${result.length} prompts');
+    return result;
+  }
+
+  // ── Government ID ─────────────────────────────────────────────
+
+  /// Upload government ID image to storage and record metadata in government_ids.
+  Future<String?> uploadGovernmentId({
+    required String userId,
+    required List<int> fileBytes,
+    required String fileName,
+    String idType = 'national_id',
+  }) async {
+    log('uploadGovernmentId: userId=$userId, fileName=$fileName');
+    try {
+      final ext = fileName.split('.').last;
+      final path = '$userId/gov_id_${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      await _client.storage.from('government-ids').uploadBinary(
+        path,
+        Uint8List.fromList(fileBytes),
+        fileOptions: const FileOptions(upsert: true),
+      );
+
+      final publicUrl =
+          _client.storage.from('government-ids').getPublicUrl(path);
+
+      // Insert metadata row
+      await _client.from('government_ids').insert({
+        'user_id': userId,
+        'file_url': publicUrl,
+        'file_name': fileName,
+        'status': 'pending',
+        'id_type': idType,
+      });
+
+      // Update users_profile
+      await _client.from('users_profile').update({
+        'government_id_url': publicUrl,
+        'government_id_status': 'pending',
+      }).eq('id', userId);
+
+      log('Government ID uploaded: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      log('Error uploading government ID: $e');
+      return null;
+    }
+  }
+
+  // ── Phone verification helpers ─────────────────────────────────
+
+  /// Record a phone verification result in the phone_verifications table.
+  Future<void> recordPhoneVerification({
+    required String userId,
+    required String phoneNumber,
+    required bool verified,
+    String? email,
+  }) async {
+    log('recordPhoneVerification: userId=$userId, phone=$phoneNumber');
+    try {
+      await _client.from('phone_verifications').upsert({
+        'user_id': userId,
+        'phone_number': phoneNumber,
+        'verified': verified,
+        if (verified) 'verified_at': DateTime.now().toUtc().toIso8601String(),
+        if (email != null) 'email': email,
+      }, onConflict: 'user_id');
+
+      // Also update users_profile
+      await _client.from('users_profile').update({
+        'phone_number': phoneNumber,
+        'phone_verified': verified,
+      }).eq('id', userId);
+
+      log('Phone verification recorded successfully');
+    } catch (e) {
+      log('Error recording phone verification: $e');
+    }
   }
 
   /// Creates an organization and adds the user as organization_admin

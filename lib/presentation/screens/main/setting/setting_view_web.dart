@@ -324,7 +324,7 @@ class _SettingViewWebState extends State<SettingViewWeb> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (dialogContext) => AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -332,20 +332,26 @@ class _SettingViewWebState extends State<SettingViewWeb> {
             content: const Text('Are you sure you want to sign out?'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.pop(context);
-                  await _supabaseService.signOut();
-                  await _appPreferences.logout();
-                  if (mounted) {
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      Routes.loginRoute,
-                      (route) => false,
-                    );
-                  }
+                  // Capture navigator from the settings page context BEFORE async gaps
+                  final navigator = Navigator.of(context);
+                  Navigator.pop(dialogContext);
+
+                  // Navigate FIRST to dispose BLocs cleanly before auth state changes
+                  navigator.pushNamedAndRemoveUntil(
+                    Routes.loginRoute,
+                    (route) => false,
+                  );
+
+                  // THEN sign out — auth change fires on the login page, not the dashboard
+                  try {
+                    await _supabaseService.signOut();
+                    await _appPreferences.logout();
+                  } catch (_) {}
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFEF4444),
@@ -362,7 +368,7 @@ class _SettingViewWebState extends State<SettingViewWeb> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (dialogContext) => AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -378,12 +384,13 @@ class _SettingViewWebState extends State<SettingViewWeb> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
-                  Navigator.pop(context);
+                  final navigator = Navigator.of(context);
+                  Navigator.pop(dialogContext);
                   try {
                     final client = Supabase.instance.client;
                     final user = client.auth.currentUser;
@@ -403,14 +410,14 @@ class _SettingViewWebState extends State<SettingViewWeb> {
                       throw Exception('Deletion failed or not confirmed');
                     }
 
+                    // Navigate first, then sign out
+                    navigator.pushNamedAndRemoveUntil(
+                      Routes.loginRoute,
+                      (route) => false,
+                    );
+
                     await client.auth.signOut();
                     await _appPreferences.logout();
-                    if (mounted) {
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        Routes.loginRoute,
-                        (route) => false,
-                      );
-                    }
                   } catch (e) {
                     if (mounted) {
                       CustomSnackBar.show(

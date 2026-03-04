@@ -73,12 +73,26 @@ Deno.serve(async (req) => {
       .eq("user_id", id)
       .order("uploaded_at", { ascending: false });
 
-    // Get all quiz attempts (quiz results with scores)
+    // Get all quiz attempts (quiz results with scores + anti-cheat fields)
     const quizAttempts = await svc
       .from("quiz_attempts")
-      .select("id, quiz_type, medical_section, total_questions, correct_answers, score_percentage, time_taken_seconds, passed, taken_at")
+      .select("id, quiz_type, medical_section, total_questions, correct_answers, score_percentage, time_taken_seconds, passed, taken_at, tab_switches, copy_paste_attempts, screenshot_attempts, session_start_at, session_end_at, browser_info, is_flagged")
       .eq("user_id", id)
       .order("taken_at", { ascending: false });
+
+    // Get government IDs
+    const governmentIds = await svc
+      .from("government_ids")
+      .select("id, file_url, file_name, status, uploaded_at, reviewer_notes")
+      .eq("user_id", id)
+      .order("uploaded_at", { ascending: false });
+
+    // Get phone verification status
+    const phoneVerification = await svc
+      .from("phone_verifications")
+      .select("id, phone_number, verified, verified_at, email")
+      .eq("user_id", id)
+      .maybeSingle();
 
     // Get all earned badges
     const badges = await svc
@@ -144,6 +158,8 @@ Deno.serve(async (req) => {
       voiceSamples: voiceSamplesList,
       quizAttempts: quizAttempts.data ?? [],
       badges: badges.data ?? [],
+      governmentIds: governmentIds.data ?? [],
+      phoneVerification: phoneVerification.data ?? null,
     });
   } catch (e) {
     return json({ error: e?.message ?? String(e) }, 500);
