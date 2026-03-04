@@ -315,7 +315,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             log('Remote user left: $remoteUid, reason: $reason');
             add(_RemoteUserLeft(remoteUid));
           },
-          onRemoteVideoStateChanged: (connection, remoteUid, state, reason, elapsed) {
+          onRemoteVideoStateChanged: (
+            connection,
+            remoteUid,
+            state,
+            reason,
+            elapsed,
+          ) {
             log(
               'Remote video state changed: uid=$remoteUid, state=$state, reason=$reason',
             );
@@ -408,9 +414,26 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             log('Warning: startPreview failed: $previewErr');
           }
         } else {
+          // On web, enableLocalVideo(true) is REQUIRED for the Iris SDK
+          // to actually create and publish the camera track. Without it,
+          // only the mic track gets published (you can see in the Iris log
+          // that only "track-mic" appears). joinChannel with
+          // publishCameraTrack: true alone is NOT sufficient.
+          await _engine!.enableLocalVideo(true).catchError((err) {
+            log(
+              'Web: enableLocalVideo returned error (expected, ignored): $err',
+            );
+          });
           log(
-            'Web: skipping enableLocalVideo/startPreview — joinChannel with publishCameraTrack handles camera acquisition',
+            'Web: enableLocalVideo(true) completed — camera track should now publish',
           );
+
+          // startPreview on web — some Iris versions need this to bind the
+          // local camera to the video view element.
+          await _engine!.startPreview().catchError((err) {
+            log('Web: startPreview returned error (expected, ignored): $err');
+          });
+          log('Web: startPreview completed');
         }
 
         _speakerOn = true; // Video calls default to speaker
@@ -488,15 +511,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         if (e.isVideoCall) {
           Future.delayed(const Duration(seconds: 2), () {
             if (_engine != null) {
-              log('Web: updating channel media options to re-affirm video subscription');
-              _engine!.updateChannelMediaOptions(
-                const ChannelMediaOptions(
-                  autoSubscribeVideo: true,
-                  autoSubscribeAudio: true,
-                ),
-              ).catchError((err) {
-                log('Web: updateChannelMediaOptions error (ignored): $err');
-              });
+              log(
+                'Web: updating channel media options to re-affirm video subscription',
+              );
+              _engine!
+                  .updateChannelMediaOptions(
+                    const ChannelMediaOptions(
+                      autoSubscribeVideo: true,
+                      autoSubscribeAudio: true,
+                    ),
+                  )
+                  .catchError((err) {
+                    log('Web: updateChannelMediaOptions error (ignored): $err');
+                  });
             }
           });
         }
@@ -598,14 +625,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       if (kIsWeb) {
         // On web, use .catchError() + .timeout() to avoid debugger
         // breaks. The error stays in the Future chain.
-        await _engine?.leaveChannel().timeout(
-          const Duration(seconds: 3),
-          onTimeout: () {
-            log('Web: leaveChannel timed out after 3s — continuing');
-          },
-        ).catchError((err) {
-          log('Web: leaveChannel error (ignored): $err');
-        });
+        await _engine
+            ?.leaveChannel()
+            .timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {
+                log('Web: leaveChannel timed out after 3s — continuing');
+              },
+            )
+            .catchError((err) {
+              log('Web: leaveChannel error (ignored): $err');
+            });
       } else {
         await _engine?.leaveChannel();
       }
@@ -709,14 +739,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // the Iris Web SDK to actually bind remote tracks to views.
     if (kIsWeb && _isVideoCall && _engine != null) {
       log('Web: explicitly subscribing to remote video for uid=${e.uid}');
-      _engine!
-          .muteRemoteVideoStream(uid: e.uid, mute: false)
-          .catchError((err) {
+      _engine!.muteRemoteVideoStream(uid: e.uid, mute: false).catchError((err) {
         log('Web: muteRemoteVideoStream error (ignored): $err');
       });
-      _engine!
-          .muteRemoteAudioStream(uid: e.uid, mute: false)
-          .catchError((err) {
+      _engine!.muteRemoteAudioStream(uid: e.uid, mute: false).catchError((err) {
         log('Web: muteRemoteAudioStream error (ignored): $err');
       });
     }
@@ -814,8 +840,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             ),
           )
           .catchError((err) {
-        log('Web: updateChannelMediaOptions error (ignored): $err');
-      });
+            log('Web: updateChannelMediaOptions error (ignored): $err');
+          });
     }
 
     emit(
@@ -960,8 +986,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               },
             )
             .catchError((err) {
-          log('Web: leaveChannel error in close() (ignored): $err');
-        });
+              log('Web: leaveChannel error in close() (ignored): $err');
+            });
       } else {
         await _engine?.leaveChannel();
       }
@@ -977,8 +1003,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               },
             )
             .catchError((err) {
-          log('Web: engine.release error in close() (ignored): $err');
-        });
+              log('Web: engine.release error in close() (ignored): $err');
+            });
       } else {
         await _engine?.release();
       }
