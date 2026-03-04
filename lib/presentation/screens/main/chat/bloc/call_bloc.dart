@@ -354,14 +354,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           log('Warning: enableVideo failed (web?): $enableVideoErr');
         }
 
-        // Video encoder config — some settings may not be supported on web
+        // Video encoder config — use reasonable settings for web
         try {
+          final videoDims =
+              kIsWeb
+                  ? const VideoDimensions(width: 1280, height: 720)
+                  : const VideoDimensions(width: 1920, height: 1080);
           await _engine!.setVideoEncoderConfiguration(
-            const VideoEncoderConfiguration(
-              dimensions: VideoDimensions(width: 1920, height: 1080),
-              frameRate: 30,
-              bitrate: 4000,
-              minBitrate: 1000,
+            VideoEncoderConfiguration(
+              dimensions: videoDims,
+              frameRate: kIsWeb ? 24 : 30,
+              bitrate: kIsWeb ? 1800 : 4000,
+              minBitrate: kIsWeb ? 600 : 1000,
               orientationMode: OrientationMode.orientationModeAdaptive,
               degradationPreference: DegradationPreference.maintainQuality,
               mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
@@ -371,17 +375,26 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           log('Warning: Could not set video encoder config: $videoConfigErr');
         }
 
-        try {
-          await _engine!.enableLocalVideo(true);
-        } catch (localVideoErr) {
-          log('Warning: enableLocalVideo failed: $localVideoErr');
-        }
-        try {
-          await _engine!.startPreview();
-        } catch (previewErr) {
-          log(
-            'Warning: startPreview failed (may still render via AgoraVideoView): $previewErr',
-          );
+        // On web, skip enableLocalVideo and startPreview before joinChannel.
+        // The browser acquires the camera during joinChannel via the
+        // publishCameraTrack option. Calling these before joinChannel
+        // creates a conflicting getUserMedia request that causes the
+        // camera to briefly open then close.
+        if (!kIsWeb) {
+          try {
+            await _engine!.enableLocalVideo(true);
+          } catch (localVideoErr) {
+            log('Warning: enableLocalVideo failed: $localVideoErr');
+          }
+          try {
+            await _engine!.startPreview();
+          } catch (previewErr) {
+            log(
+              'Warning: startPreview failed (may still render via AgoraVideoView): $previewErr',
+            );
+          }
+        } else {
+          log('Web: skipping enableLocalVideo/startPreview before joinChannel');
         }
         _speakerOn = true; // Video calls default to speaker
       } else {
@@ -612,16 +625,21 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _videoEnabled = !_videoEnabled;
     try {
       await _engine?.muteLocalVideoStream(!_videoEnabled);
-      try {
-        if (_videoEnabled) {
-          await _engine?.startPreview();
-        } else {
-          await _engine?.stopPreview();
+      // On web, skip startPreview/stopPreview — the browser manages
+      // the camera track through the WebRTC connection. Calling these
+      // on web can conflict with the active track and kill the camera.
+      if (!kIsWeb) {
+        try {
+          if (_videoEnabled) {
+            await _engine?.startPreview();
+          } else {
+            await _engine?.stopPreview();
+          }
+        } catch (previewErr) {
+          log(
+            'Warning: preview toggle not supported on this platform: $previewErr',
+          );
         }
-      } catch (previewErr) {
-        log(
-          'Warning: preview toggle not supported on this platform: $previewErr',
-        );
       }
     } catch (err) {
       log('Warning: Could not toggle video: $err');

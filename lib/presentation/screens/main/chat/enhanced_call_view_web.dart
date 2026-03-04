@@ -49,8 +49,54 @@ class _EnhancedCallScreenWebBodyState
   String _patientCallStatus = '';
   bool _isPatientCallLoading = false;
 
+  // Cached video controllers — prevents recreation on every BlocConsumer
+  // rebuild (timer ticks every 1s). On web, recreating controllers
+  // destroys/recreates the <video> element which kills the camera stream.
+  VideoViewController? _localController;
+  VideoViewController? _remoteController;
+  int? _cachedRemoteUid;
+  RtcEngine? _cachedEngine;
+
+  VideoViewController _getLocalController(RtcEngine engine) {
+    if (_localController == null || _cachedEngine != engine) {
+      _cachedEngine = engine;
+      _localController = VideoViewController(
+        rtcEngine: engine,
+        canvas: const VideoCanvas(
+          uid: 0,
+          renderMode: RenderModeType.renderModeHidden,
+        ),
+      );
+    }
+    return _localController!;
+  }
+
+  VideoViewController _getRemoteController(
+    RtcEngine engine,
+    int remoteUid,
+    String channelId,
+  ) {
+    if (_remoteController == null ||
+        _cachedRemoteUid != remoteUid ||
+        _cachedEngine != engine) {
+      _cachedEngine = engine;
+      _cachedRemoteUid = remoteUid;
+      _remoteController = VideoViewController.remote(
+        rtcEngine: engine,
+        canvas: VideoCanvas(
+          uid: remoteUid,
+          renderMode: RenderModeType.renderModeHidden,
+        ),
+        connection: RtcConnection(channelId: channelId),
+      );
+    }
+    return _remoteController!;
+  }
+
   @override
   void dispose() {
+    _localController?.dispose();
+    _remoteController?.dispose();
     if (_patientCallSid != null) {
       _twilioService.endCall(_patientCallSid!);
     }
@@ -887,6 +933,12 @@ class _EnhancedCallScreenWebBodyState
         state.videoEnabled &&
         engine != null &&
         state.remoteUids.isNotEmpty) {
+      final remoteCtrl = _getRemoteController(
+        engine,
+        state.remoteUids.first,
+        widget.channelId,
+      );
+      final localCtrl = _getLocalController(engine);
       return Container(
         color: Colors.black,
         child: Stack(
@@ -895,16 +947,7 @@ class _EnhancedCallScreenWebBodyState
             // Remote video - full area, fills entire screen
             Positioned.fill(
               child: SizedBox.expand(
-                child: AgoraVideoView(
-                  controller: VideoViewController.remote(
-                    rtcEngine: engine,
-                    canvas: VideoCanvas(
-                      uid: state.remoteUids.first,
-                      renderMode: RenderModeType.renderModeHidden,
-                    ),
-                    connection: RtcConnection(channelId: widget.channelId),
-                  ),
-                ),
+                child: AgoraVideoView(controller: remoteCtrl),
               ),
             ),
             // Local video PiP — offset down to avoid top bar overlay
@@ -928,15 +971,7 @@ class _EnhancedCallScreenWebBodyState
                   ],
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: AgoraVideoView(
-                  controller: VideoViewController(
-                    rtcEngine: engine,
-                    canvas: const VideoCanvas(
-                      uid: 0,
-                      renderMode: RenderModeType.renderModeHidden,
-                    ),
-                  ),
-                ),
+                child: AgoraVideoView(controller: localCtrl),
               ),
             ),
           ],
@@ -946,6 +981,7 @@ class _EnhancedCallScreenWebBodyState
 
     // Video call with local camera but no remote user yet — show local full screen
     if (state.isVideoCall && state.videoEnabled && engine != null) {
+      final localCtrl = _getLocalController(engine);
       return Container(
         color: Colors.black,
         child: Stack(
@@ -954,15 +990,7 @@ class _EnhancedCallScreenWebBodyState
             // Local camera preview — full area
             Positioned.fill(
               child: SizedBox.expand(
-                child: AgoraVideoView(
-                  controller: VideoViewController(
-                    rtcEngine: engine,
-                    canvas: const VideoCanvas(
-                      uid: 0,
-                      renderMode: RenderModeType.renderModeHidden,
-                    ),
-                  ),
-                ),
+                child: AgoraVideoView(controller: localCtrl),
               ),
             ),
             // "Waiting" overlay
