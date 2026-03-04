@@ -51,6 +51,47 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   String _patientCallStatus = '';
   bool _isPatientCallLoading = false;
 
+  // Cached video controllers — prevents recreation on every rebuild
+  // (timer ticks every 1s). Recreating controllers can destroy the
+  // native video surface and cause black frames or flickering.
+  VideoViewController? _localController;
+  VideoViewController? _remoteController;
+  int? _cachedRemoteUid;
+  RtcEngine? _cachedEngine;
+
+  VideoViewController _getLocalController(RtcEngine engine) {
+    if (_localController == null || _cachedEngine != engine) {
+      _cachedEngine = engine;
+      _localController = VideoViewController(
+        rtcEngine: engine,
+        canvas: const VideoCanvas(uid: 0),
+      );
+    }
+    return _localController!;
+  }
+
+  VideoViewController _getRemoteController(
+    RtcEngine engine,
+    int remoteUid,
+    String channelId,
+  ) {
+    if (_remoteController == null ||
+        _cachedRemoteUid != remoteUid ||
+        _cachedEngine != engine) {
+      _cachedEngine = engine;
+      _cachedRemoteUid = remoteUid;
+      _remoteController = VideoViewController.remote(
+        rtcEngine: engine,
+        canvas: VideoCanvas(
+          uid: remoteUid,
+          renderMode: RenderModeType.renderModeHidden,
+        ),
+        connection: RtcConnection(channelId: channelId),
+      );
+    }
+    return _remoteController!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +99,8 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
 
   @override
   void dispose() {
+    _localController?.dispose();
+    _remoteController?.dispose();
     // End any active patient call when leaving the screen
     if (_patientCallSid != null) {
       _twilioService.endCall(_patientCallSid!);
@@ -391,14 +434,10 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                               engine != null &&
                               callState.remoteUids.isNotEmpty
                           ? AgoraVideoView(
-                            controller: VideoViewController.remote(
-                              rtcEngine: engine,
-                              canvas: VideoCanvas(
-                                uid: callState.remoteUids.first,
-                              ),
-                              connection: RtcConnection(
-                                channelId: widget.channelId,
-                              ),
+                            controller: _getRemoteController(
+                              engine,
+                              callState.remoteUids.first,
+                              widget.channelId,
                             ),
                           )
                           : Center(
@@ -498,10 +537,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: AgoraVideoView(
-                        controller: VideoViewController(
-                          rtcEngine: engine,
-                          canvas: const VideoCanvas(uid: 0),
-                        ),
+                        controller: _getLocalController(engine),
                       ),
                     ),
                   ),

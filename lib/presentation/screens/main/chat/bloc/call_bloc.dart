@@ -315,22 +315,32 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             log('Remote user left: $remoteUid, reason: $reason');
             add(_RemoteUserLeft(remoteUid));
           },
+          onRemoteVideoStateChanged: (connection, remoteUid, state, reason, elapsed) {
+            log(
+              'Remote video state changed: uid=$remoteUid, state=$state, reason=$reason',
+            );
+          },
         ),
       );
 
       // 4) Audio setup
       //    enableAudio() must be called on both web and mobile to
       //    initialize the audio module in the Iris SDK.
-      try {
-        await _engine!.enableAudio();
-        log('enableAudio() succeeded');
-      } catch (audioErr) {
-        log('Warning: enableAudio failed: $audioErr');
-      }
-
-      //    Audio profile, scenario, route & enableLocalAudio are
-      //    mobile-only — these APIs throw -4 (unsupported) on web.
-      if (!kIsWeb) {
+      if (kIsWeb) {
+        // On web, use .catchError() so the error stays in the Future
+        // chain and never "throws" — this prevents the VS Code debugger
+        // from pausing on caught exceptions.
+        await _engine!.enableAudio().catchError((err) {
+          log('Web: enableAudio returned error (expected, ignored): $err');
+        });
+        log('enableAudio() completed on web');
+      } else {
+        try {
+          await _engine!.enableAudio();
+          log('enableAudio() succeeded');
+        } catch (audioErr) {
+          log('Warning: enableAudio failed: $audioErr');
+        }
         try {
           await _engine!.enableLocalAudio(true);
         } catch (audioErr) {
@@ -355,11 +365,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         // The Agora Iris SDK uses it internally as a flag — without it,
         // setupLocalVideo (called by AgoraVideoView) silently no-ops
         // and the video view stays black.
-        try {
-          await _engine!.enableVideo();
-          log('enableVideo() succeeded');
-        } catch (enableVideoErr) {
-          log('Warning: enableVideo failed: $enableVideoErr');
+        if (kIsWeb) {
+          // Use .catchError() to avoid debugger break on caught exceptions
+          await _engine!.enableVideo().catchError((err) {
+            log('Web: enableVideo returned error (expected, ignored): $err');
+          });
+          log('enableVideo() completed on web');
+        } else {
+          try {
+            await _engine!.enableVideo();
+            log('enableVideo() succeeded');
+          } catch (enableVideoErr) {
+            log('Warning: enableVideo failed: $enableVideoErr');
+          }
         }
 
         if (!kIsWeb) {
@@ -463,6 +481,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
               log('Web: joinChannel error (handled via callbacks): $err');
             });
         log('joinChannel called on web (fire-and-forget, callbacks pending)');
+
+        // After a short delay, re-affirm video subscription.
+        // The web Iris SDK sometimes needs an updateChannelMediaOptions
+        // "kick" to properly bind remote video tracks to views.
+        if (e.isVideoCall) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (_engine != null) {
+              log('Web: updating channel media options to re-affirm video subscription');
+              _engine!.updateChannelMediaOptions(
+                const ChannelMediaOptions(
+                  autoSubscribeVideo: true,
+                  autoSubscribeAudio: true,
+                ),
+              ).catchError((err) {
+                log('Web: updateChannelMediaOptions error (ignored): $err');
+              });
+            }
+          });
+        }
       } else {
         await _engine!
             .joinChannel(
@@ -559,14 +596,16 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     try {
       log('Leaving Agora channel...');
       if (kIsWeb) {
-        // On web, leaveChannel can hang indefinitely.
-        // Use a timeout so the UI is never stuck.
+        // On web, use .catchError() + .timeout() to avoid debugger
+        // breaks. The error stays in the Future chain.
         await _engine?.leaveChannel().timeout(
           const Duration(seconds: 3),
           onTimeout: () {
             log('Web: leaveChannel timed out after 3s — continuing');
           },
-        );
+        ).catchError((err) {
+          log('Web: leaveChannel error (ignored): $err');
+        });
       } else {
         await _engine?.leaveChannel();
       }
@@ -665,6 +704,23 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   void _onRemoteUserJoined(_RemoteUserJoined e, Emitter<CallState> emit) {
     _remoteUids.add(e.uid);
 
+    // On web, explicitly unmute / subscribe to the remote video stream.
+    // autoSubscribeVideo in ChannelMediaOptions may not be sufficient on
+    // the Iris Web SDK to actually bind remote tracks to views.
+    if (kIsWeb && _isVideoCall && _engine != null) {
+      log('Web: explicitly subscribing to remote video for uid=${e.uid}');
+      _engine!
+          .muteRemoteVideoStream(uid: e.uid, mute: false)
+          .catchError((err) {
+        log('Web: muteRemoteVideoStream error (ignored): $err');
+      });
+      _engine!
+          .muteRemoteAudioStream(uid: e.uid, mute: false)
+          .catchError((err) {
+        log('Web: muteRemoteAudioStream error (ignored): $err');
+      });
+    }
+
     // Start timer if this is the first remote user and timer hasn't started
     if (_startedAt == null) {
       log('First remote user joined. Starting call timer.');
@@ -742,6 +798,25 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // _onStartCall, and AgoraVideoView renders via setupLocalVideo
     // through the Iris SDK. On web, joinChannel with publishCameraTrack
     // already acquired the camera track.
+
+    // On web, re-affirm video subscription now that we're in the channel.
+    // The Iris Web SDK may have ignored autoSubscribeVideo during
+    // joinChannel; repeating it via updateChannelMediaOptions ensures
+    // remote tracks get subscribed once the PeerConnection is live.
+    if (kIsWeb && _isVideoCall && _engine != null) {
+      _engine!
+          .updateChannelMediaOptions(
+            const ChannelMediaOptions(
+              autoSubscribeVideo: true,
+              autoSubscribeAudio: true,
+              publishCameraTrack: true,
+              publishMicrophoneTrack: true,
+            ),
+          )
+          .catchError((err) {
+        log('Web: updateChannelMediaOptions error (ignored): $err');
+      });
+    }
 
     emit(
       CallOngoing(
@@ -874,25 +949,36 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _timer = null;
     try {
       if (kIsWeb) {
-        // On web, leaveChannel / release can hang — use timeout.
-        await _engine?.leaveChannel().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () {
-            log('Web: leaveChannel timed out in close()');
-          },
-        );
+        // On web, leaveChannel / release can hang — use timeout + catchError
+        // to prevent debugger breaks on caught exceptions.
+        await _engine
+            ?.leaveChannel()
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () {
+                log('Web: leaveChannel timed out in close()');
+              },
+            )
+            .catchError((err) {
+          log('Web: leaveChannel error in close() (ignored): $err');
+        });
       } else {
         await _engine?.leaveChannel();
       }
     } catch (_) {}
     try {
       if (kIsWeb) {
-        await _engine?.release().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () {
-            log('Web: engine.release timed out in close()');
-          },
-        );
+        await _engine
+            ?.release()
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () {
+                log('Web: engine.release timed out in close()');
+              },
+            )
+            .catchError((err) {
+          log('Web: engine.release error in close() (ignored): $err');
+        });
       } else {
         await _engine?.release();
       }
