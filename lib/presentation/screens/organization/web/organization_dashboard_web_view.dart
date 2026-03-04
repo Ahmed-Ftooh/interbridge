@@ -11,7 +11,8 @@ import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/payment_success_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:web/web.dart' as html;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 /// Web-specific organization dashboard with modern design
 class OrganizationDashboardWebView extends StatefulWidget {
@@ -1484,27 +1485,36 @@ class _OrganizationDashboardWebViewState
   void _openStripeCheckout(String url) {
     _checkoutInProgress = true;
 
-    // Open in a centered popup window (not a new tab).
-    // Popup windows opened by script CAN be closed by window.close().
-    final screenW = html.window.screen.width;
-    final screenH = html.window.screen.height;
+    // Open in a centered popup window via JS interop.
+    final screenW = (globalContext['screen']! as JSObject)['width'] as JSNumber;
+    final screenH =
+        (globalContext['screen']! as JSObject)['height'] as JSNumber;
     final w = 550;
     final h = 700;
-    final left = ((screenW - w) / 2).round();
-    final top = ((screenH - h) / 2).round();
+    final left = ((screenW.toDartDouble - w) / 2).round();
+    final top = ((screenH.toDartDouble - h) / 2).round();
 
-    final popup = html.window.open(
-      url,
-      'stripe_checkout',
-      'width=$w,height=$h,left=$left,top=$top,toolbar=no,menubar=no,scrollbars=yes,resizable=yes',
-    );
+    final features =
+        'width=$w,height=$h,left=$left,top=$top,toolbar=no,menubar=no,scrollbars=yes,resizable=yes';
+    final popup =
+        globalContext.callMethod(
+              'open'.toJS,
+              url.toJS,
+              'stripe_checkout'.toJS,
+              features.toJS,
+            )
+            as JSObject?;
 
     // Poll every 500ms to detect when the popup closes.
     _popupPollTimer?.cancel();
     _popupPollTimer = Timer.periodic(const Duration(milliseconds: 500), (
       timer,
     ) {
-      final isClosed = popup?.closed ?? true;
+      bool isClosed = true;
+      if (popup != null) {
+        final closedVal = popup['closed'];
+        isClosed = closedVal != null ? (closedVal as JSBoolean).toDart : true;
+      }
       if (isClosed) {
         timer.cancel();
         _popupPollTimer = null;
