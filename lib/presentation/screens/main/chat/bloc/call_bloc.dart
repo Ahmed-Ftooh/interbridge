@@ -147,6 +147,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   bool _speakerOn = true;
   bool _videoEnabled = true;
   bool _isVideoCall = false;
+  bool _webPostJoinDone = false;
   final Set<int> _remoteUids = {};
 
   /// Expose engine for video rendering in UI
@@ -177,6 +178,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // Store video call flag
       _isVideoCall = e.isVideoCall;
       _videoEnabled = e.isVideoCall; // Start with video on for video calls
+      _webPostJoinDone = false; // Reset for new call
 
       // 1) Request microphone permission (skip on web — browser handles via getUserMedia)
       if (!kIsWeb) {
@@ -886,8 +888,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   /// .catchError() so errors stay in the Future chain and NEVER throw
   /// — neither in user code nor in the VS Code debugger.
   void _webPostJoinSetup() {
+    if (_webPostJoinDone) {
+      log('Web post-join: already done, skipping duplicate');
+      return;
+    }
     final engine = _engine;
     if (engine == null) return;
+    _webPostJoinDone = true;
 
     // 1. enableVideo — sets the internal Iris SDK flag so
     //    setupLocalVideo (from AgoraVideoView) actually renders.
