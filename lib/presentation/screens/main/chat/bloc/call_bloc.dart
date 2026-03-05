@@ -333,7 +333,23 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           },
           onError: (errorCode, errorMsg) {
             log('Agora RTC Engine error: $errorCode - $errorMsg');
-            add(_AgoraError('Voice call error: $errorMsg'));
+            // On web the Iris bridge fires many non-fatal errors (device
+            // warnings, network quality, internal retries).  Only fatal
+            // errors should crash the call.
+            final fatal = {
+              ErrorCodeType.errFailed,
+              ErrorCodeType.errInvalidAppId,
+              ErrorCodeType.errInvalidToken,
+              ErrorCodeType.errTokenExpired,
+              ErrorCodeType.errInvalidChannelName,
+              ErrorCodeType.errJoinChannelRejected,
+              ErrorCodeType.errNotInitialized,
+            };
+            if (fatal.contains(errorCode)) {
+              add(_AgoraError('Call error: $errorMsg'));
+            } else {
+              log('Agora non-fatal error (ignored): $errorCode');
+            }
           },
           onConnectionStateChanged: (connection, state, reason) {
             log('Connection state changed: $state, reason: $reason');

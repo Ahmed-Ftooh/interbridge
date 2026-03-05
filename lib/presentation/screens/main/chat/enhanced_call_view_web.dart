@@ -324,15 +324,12 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   Widget build(BuildContext context) {
     return BlocConsumer<CallBloc, CallState>(
       listener: (context, state) {
+        log('CallScreen: state changed to ${state.runtimeType}');
         if (state is CallEnded) {
-          if (state.isRemote) {
-            _showFeedbackAndNavigateHome();
-          } else {
-            _showFeedbackAndNavigateHome();
-          }
+          _showFeedbackAndNavigateHome();
         } else if (state is CallError) {
-          _showSnackBar(state.error.message, isError: true);
-          Future.delayed(const Duration(seconds: 2), _navigateToHome);
+          log('CallScreen: error — ${state.error.message}');
+          // Don't auto-navigate; let the error screen handle retry/dismiss.
         }
       },
       builder: (context, state) {
@@ -351,14 +348,112 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   Widget _buildBody(BuildContext context, CallState state) {
+    log('CallScreen: building with state ${state.runtimeType}');
     if (state is CallConnecting) {
       return _buildConnectingScreen();
     }
     if (state is CallOngoing) {
       return _buildOngoingCallScreen(context, state);
     }
-    // Idle / other
-    return const Center(child: CircularProgressIndicator(color: _kAccentBlue));
+    if (state is CallError) {
+      return _buildErrorScreen(context, state);
+    }
+    if (state is CallEnded) {
+      return _buildEndedScreen();
+    }
+    // CallIdle — waiting for bloc to process StartCall
+    return _buildConnectingScreen();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ERROR SCREEN
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildErrorScreen(BuildContext context, CallError state) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _kEndRed.withAlpha(30),
+            ),
+            child: const Icon(
+              Icons.error_outline,
+              color: _kEndRed,
+              size: 48,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Call Failed',
+            style: TextStyle(
+              color: _kTextPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              state.error.message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _kTextSecondary, fontSize: 14),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _navigateToHome,
+                icon: const Icon(Icons.home, size: 18),
+                label: const Text('Go Home'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _kTextPrimary,
+                  side: const BorderSide(color: _kSurfaceLight),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ENDED SCREEN
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildEndedScreen() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.call_end, color: _kTextSecondary, size: 48),
+          const SizedBox(height: 16),
+          const Text(
+            'Call Ended',
+            style: TextStyle(
+              color: _kTextPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const CircularProgressIndicator(color: _kAccentBlue),
+        ],
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -487,7 +582,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
           if (state.videoEnabled && engine != null)
             Positioned.fill(
               child: ClipRRect(
-                child: AgoraVideoView(controller: _getLocalController(engine)),
+                child: _safeAgoraView(
+                  () => _getLocalController(engine),
+                  fallback: _buildVoiceAvatar(false),
+                ),
               ),
             )
           else
@@ -520,9 +618,14 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
     // Video call, has remote user → show remote full screen
     final remoteUid = state.remoteUids.first;
-    return AgoraVideoView(
-      controller: _getRemoteController(engine, remoteUid, state.channelId),
-    );
+    try {
+      return AgoraVideoView(
+        controller: _getRemoteController(engine, remoteUid, state.channelId),
+      );
+    } catch (e) {
+      log('CallScreen: AgoraVideoView (remote) error: $e');
+      return Center(child: _buildVoiceAvatar(true));
+    }
   }
 
   // ─── Voice-only avatar ──────────────────────────────────────
@@ -693,6 +796,20 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     );
   }
 
+  // ─── Safe AgoraVideoView wrapper ──────────────────────────
+  Widget _safeAgoraView(
+    VideoViewController Function() controllerFn, {
+    required Widget fallback,
+  }) {
+    try {
+      final controller = controllerFn();
+      return AgoraVideoView(controller: controller);
+    } catch (e) {
+      log('CallScreen: AgoraVideoView error: $e');
+      return Center(child: fallback);
+    }
+  }
+
   // ─── Local PiP video ────────────────────────────────────────
   Widget _buildLocalPiP(RtcEngine engine) {
     return Container(
@@ -714,7 +831,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         child: Stack(
           children: [
             Positioned.fill(
-              child: AgoraVideoView(controller: _getLocalController(engine)),
+              child: _safeAgoraView(
+                () => _getLocalController(engine),
+                fallback: const Icon(Icons.person, color: _kTextSecondary, size: 40),
+              ),
             ),
             // "You" label
             Positioned(
