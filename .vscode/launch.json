@@ -6,10 +6,8 @@
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "args": [
-        "--web-renderer",
-        "html"
-      ]
+      "dart.debugExternalPackageLibraries": false,
+      "dart.debugSdkLibraries": false
     },
     {
       "name": "interbridge (debug, Chrome)",
@@ -18,10 +16,10 @@
       "program": "lib/main.dart",
       "args": [
         "-d",
-        "chrome",
-        "--web-renderer",
-        "html"
-      ]
+        "chrome"
+      ],
+      "dart.debugExternalPackageLibraries": false,
+      "dart.debugSdkLibraries": false
     },
     {
       "name": "interbridge (profile)",
