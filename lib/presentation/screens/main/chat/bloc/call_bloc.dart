@@ -260,14 +260,29 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         }
         _engine = null;
       }
-      _engine = createAgoraRtcEngine();
+
+      try {
+        _engine = createAgoraRtcEngine();
+        log('createAgoraRtcEngine() succeeded');
+      } catch (createErr) {
+        log('FATAL: createAgoraRtcEngine() failed: $createErr');
+        emit(
+          CallError(
+            AppError(
+              message: 'Failed to create call engine: $createErr',
+              type: ErrorType.unknown,
+              userAction: 'Please refresh the page and try again.',
+              isRetryable: true,
+            ),
+          ),
+        );
+        return;
+      }
 
       // Check if Agora App ID is properly configured
-      String appId;
-      try {
-        appId = agoraAppId;
-      } catch (err) {
-        log('Agora App ID not configured: $err');
+      final appId = agoraAppId;
+      if (appId.isEmpty || appId == 'PLACEHOLDER_AGORA_APP_ID') {
+        log('Agora App ID not configured: $appId');
         emit(
           CallError(
             AppError(
@@ -281,9 +296,26 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         );
         return;
       }
+      log('Agora App ID: ${appId.substring(0, 8)}...');
 
-      await _engine!.initialize(RtcEngineContext(appId: appId));
-      log('Agora RTC Engine initialized successfully');
+      try {
+        await _engine!.initialize(RtcEngineContext(appId: appId));
+        log('Agora RTC Engine initialized successfully');
+      } catch (initErr) {
+        log('FATAL: engine.initialize() failed: $initErr');
+        _engine = null;
+        emit(
+          CallError(
+            AppError(
+              message: 'Failed to initialize call engine: $initErr',
+              type: ErrorType.unknown,
+              userAction: 'Please refresh the page and try again.',
+              isRetryable: true,
+            ),
+          ),
+        );
+        return;
+      }
 
       // 3) Handlers
       // 3) Handlers — ALL callbacks use add() so they work even after
@@ -433,19 +465,30 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       }
 
       // 5) Token from Supabase with timeout
-      log('Fetching Agora token for channel: ${e.channelId}');
-      final token = await service
-          .fetchAgoraToken(channelName: e.channelId, uid: e.localUid)
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              log('Token fetch timeout after 15 seconds');
-              throw Exception(
-                'Failed to get voice call token. Please try again.',
-              );
-            },
-          );
-      log('Successfully obtained Agora token');
+      log(
+        'Fetching Agora token for channel: ${e.channelId}, uid: ${e.localUid}',
+      );
+      String token;
+      try {
+        token = await service
+            .fetchAgoraToken(channelName: e.channelId, uid: e.localUid)
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () {
+                log('Token fetch timeout after 15 seconds');
+                throw Exception(
+                  'Failed to get voice call token. Please try again.',
+                );
+              },
+            );
+        log('Successfully obtained Agora token (length: ${token.length})');
+      } catch (tokenErr) {
+        log('Error fetching Agora token: $tokenErr');
+        emit(
+          CallError(ErrorHandler.handleError(tokenErr, context: 'FetchToken')),
+        );
+        return;
+      }
 
       // 6) Join channel
       //    On web the Agora Iris bridge triggers getUserMedia (browser
@@ -459,23 +502,66 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         // Fire-and-forget on web — callbacks drive the state machine.
         // joinChannel triggers the browser permission prompt (getUserMedia)
         // which can take an unpredictable amount of time.
-        _engine!
-            .joinChannel(
-              token: token,
-              channelId: e.channelId,
-              uid: e.localUid,
-              options: ChannelMediaOptions(
-                clientRoleType: ClientRoleType.clientRoleBroadcaster,
-                publishCameraTrack: e.isVideoCall,
-                publishMicrophoneTrack: true,
-                autoSubscribeVideo: e.isVideoCall,
-                autoSubscribeAudio: true,
+        final engine = _engine;
+        if (engine == null) {
+          log('FATAL: engine is null before joinChannel on web');
+          emit(
+            CallError(
+              AppError(
+                message: 'Call engine lost before joining channel',
+                type: ErrorType.unknown,
+                userAction: 'Please try again.',
+                isRetryable: true,
               ),
-            )
-            .catchError((err) {
-              log('Web: joinChannel error (handled via callbacks): $err');
-            });
-        log('joinChannel called on web (fire-and-forget, callbacks pending)');
+            ),
+          );
+          return;
+        }
+
+        log(
+          'Web: calling joinChannel with uid=${e.localUid}, '
+          'channel=${e.channelId}, isVideo=${e.isVideoCall}',
+        );
+
+        try {
+          engine
+              .joinChannel(
+                token: token,
+                channelId: e.channelId,
+                uid: e.localUid,
+                options: ChannelMediaOptions(
+                  clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                  publishCameraTrack: e.isVideoCall,
+                  publishMicrophoneTrack: true,
+                  autoSubscribeVideo: e.isVideoCall,
+                  autoSubscribeAudio: true,
+                ),
+              )
+              .then((_) {
+                log('Web: joinChannel Future completed successfully');
+              })
+              .catchError((err) {
+                log('Web: joinChannel async error: $err');
+                // Dispatch error event so the UI can react instead of
+                // staying stuck on "Connecting..." forever.
+                add(_AgoraError('Failed to join call: $err'));
+              });
+          log('Web: joinChannel dispatched (fire-and-forget)');
+        } catch (syncErr) {
+          // Catch synchronous errors from the JS interop bridge
+          log('Web: joinChannel SYNC error: $syncErr');
+          emit(
+            CallError(
+              AppError(
+                message: 'Failed to join call: $syncErr',
+                type: ErrorType.unknown,
+                userAction: 'Please try again.',
+                isRetryable: true,
+              ),
+            ),
+          );
+          return;
+        }
       } else {
         await _engine!
             .joinChannel(
