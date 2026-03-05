@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:developer';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +8,7 @@ import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/call_feedback_dialog.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 
-/// Professional web-optimized call screen — Zoom / Google Meet style
+/// Professional web-optimized call screen with modern dashboard-style layout
 class EnhancedCallScreenWeb extends StatelessWidget {
   final String channelId;
   final bool isVideoCall;
@@ -43,20 +42,12 @@ class _EnhancedCallScreenWebBody extends StatefulWidget {
       _EnhancedCallScreenWebBodyState();
 }
 
-class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
-    with SingleTickerProviderStateMixin {
+class _EnhancedCallScreenWebBodyState
+    extends State<_EnhancedCallScreenWebBody> {
   final TwilioCallService _twilioService = TwilioCallService();
   String? _patientCallSid;
   String _patientCallStatus = '';
   bool _isPatientCallLoading = false;
-
-  // Controls visibility — auto-hide after inactivity
-  bool _controlsVisible = true;
-  Timer? _hideControlsTimer;
-
-  // Pulse animation for connecting/waiting states
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnimation;
 
   // Cached video controllers — prevents recreation on every BlocConsumer
   // rebuild (timer ticks every 1s). On web, recreating controllers
@@ -103,22 +94,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _resetHideTimer();
-  }
-
-  @override
   void dispose() {
-    _pulseController.dispose();
-    _hideControlsTimer?.cancel();
     _localController?.dispose();
     _remoteController?.dispose();
     if (_patientCallSid != null) {
@@ -127,18 +103,6 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     super.dispose();
   }
 
-  void _resetHideTimer() {
-    _hideControlsTimer?.cancel();
-    if (!_controlsVisible) {
-      setState(() => _controlsVisible = true);
-    }
-    _hideControlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _controlsVisible = false);
-    });
-  }
-
-  // ─── Twilio third-party call ───────────────────────────────────────
-
   void _showCallPatientDialog() {
     final phoneController = TextEditingController();
 
@@ -146,100 +110,87 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       context: context,
       builder:
           (dialogContext) => AlertDialog(
-            backgroundColor: const Color(0xFF2D2E30),
+            backgroundColor: const Color(0xFF1E293B),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
             ),
-            title: const Row(
-              children: [
-                Icon(
-                  Icons.person_add_rounded,
-                  color: Color(0xFF8AB4F8),
-                  size: 22,
-                ),
-                SizedBox(width: 10),
-                Text(
-                  'Add Participant',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+            title: const Text(
+              'Add Third Party',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    labelStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
                     hintText: '+1 (555) 123-4567',
                     hintStyle: TextStyle(
                       color: Colors.white.withValues(alpha: 0.3),
                     ),
                     prefixIcon: Icon(
-                      Icons.phone_rounded,
-                      color: Colors.white.withValues(alpha: 0.5),
-                      size: 20,
+                      Icons.phone,
+                      color: Colors.white.withValues(alpha: 0.7),
                     ),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.06),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.2),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Color(0xFF8AB4F8),
-                        width: 1.5,
-                      ),
+                      borderSide: const BorderSide(color: Color(0xFF3B82F6)),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.05),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Text(
-                  'Enter the patient\'s phone number to bridge them in.',
+                  'Enter the patient\'s phone number to add them to the call.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 12,
                   ),
                 ),
               ],
             ),
-            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
                 child: Text(
                   'Cancel',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                 ),
               ),
-              FilledButton.icon(
+              ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pop(dialogContext);
                   _initiatePatientCall(phoneController.text.trim());
                 },
-                icon: const Icon(Icons.call_rounded, size: 18),
+                icon: const Icon(Icons.call, size: 18),
                 label: const Text('Call'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A73E8),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF22C55E),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
                   ),
                 ),
               ),
@@ -278,7 +229,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         _patientCallStatus = '';
       });
       _showSnackBar(
-        result.errorMessage ?? 'Failed to call participant',
+        result.errorMessage ?? 'Failed to call patient',
         isError: true,
       );
     }
@@ -302,9 +253,9 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     });
 
     if (success) {
-      _showSnackBar('Participant call ended');
+      _showSnackBar('Patient call ended');
     } else {
-      _showSnackBar('Failed to end participant call', isError: true);
+      _showSnackBar('Failed to end patient call', isError: true);
     }
   }
 
@@ -312,13 +263,11 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontSize: 14)),
-        backgroundColor:
-            isError ? const Color(0xFFD93025) : const Color(0xFF1E8E3E),
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
         behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -333,6 +282,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   Future<void> _showFeedbackAndNavigateHome() async {
     if (!mounted) return;
 
+    // Mark request as completed AND clear local session
     await SessionService.endSession(requestId: widget.channelId);
     log('Web: Session marked completed and cleared after call ended');
 
@@ -343,12 +293,12 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       builder:
           (dialogContext) => CallFeedbackDialog(
             requestId: widget.channelId,
-            onComplete: () => _navigateToHome(),
+            onComplete: () {
+              _navigateToHome();
+            },
           ),
     );
   }
-
-  // ─── Build ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -358,147 +308,129 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
           log('Web: Call ended (isRemote: ${callState.isRemote})');
           _showFeedbackAndNavigateHome();
         } else if (callState is CallError) {
-          _showErrorDialog(callState);
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder:
+                (dialogContext) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E293B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: const Text(
+                    'Call Error',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        callState.error.message,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      if (callState.error.userAction != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          callState.error.userAction!,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        _navigateToHome();
+                      },
+                      child: const Text(
+                        'OK',
+                        style: TextStyle(color: Color(0xFF3B82F6)),
+                      ),
+                    ),
+                  ],
+                ),
+          );
         }
       },
       builder: (context, callState) {
         return Scaffold(
-          backgroundColor: const Color(0xFF202124),
-          body: _buildBody(callState),
+          backgroundColor: const Color(0xFF0F172A),
+          body: _buildCallInterface(callState),
         );
       },
     );
   }
 
-  void _showErrorDialog(CallError callState) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: const Color(0xFF2D2E30),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: const Row(
-              children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  color: Color(0xFFD93025),
-                  size: 22,
-                ),
-                SizedBox(width: 10),
-                Text(
-                  'Call Error',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  callState.error.message,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                  ),
-                ),
-                if (callState.error.userAction != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    callState.error.userAction!,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  _navigateToHome();
-                },
-                child: const Text(
-                  'OK',
-                  style: TextStyle(color: Color(0xFF8AB4F8)),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Widget _buildBody(CallState callState) {
+  Widget _buildCallInterface(CallState callState) {
     log('Web: Building interface for state: ${callState.runtimeType}');
 
-    if (callState is CallConnecting) return _buildConnectingScreen();
-    if (callState is CallOngoing) return _buildOngoingScreen(callState);
-    if (callState is CallIdle) {
-      return _buildWaitingScreen(
-        'Initializing...',
-        'Setting up secure connection',
-      );
+    if (callState is CallConnecting) {
+      return _buildConnectingScreen();
     }
-    if (callState is CallEnded) return _buildEndedScreen();
-    if (callState is CallError) return _buildErrorScreen(callState);
-    return _buildWaitingScreen(
-      'Initializing...',
-      'Setting up secure connection',
-    );
+
+    if (callState is CallOngoing) {
+      return _buildOngoingCallScreen(callState);
+    }
+
+    if (callState is CallIdle) {
+      return _buildInitializingScreen();
+    }
+
+    if (callState is CallEnded) {
+      return _buildEndedScreen();
+    }
+
+    if (callState is CallError) {
+      return _buildErrorScreen(callState);
+    }
+
+    return _buildInitializingScreen();
   }
 
-  // ─── Waiting / Connecting ──────────────────────────────────────────
-
-  Widget _buildWaitingScreen(String title, String subtitle) {
+  Widget _buildInitializingScreen() {
     return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder:
-                (context, child) => Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(
-                      0xFF8AB4F8,
-                    ).withValues(alpha: _pulseAnimation.value * 0.12),
-                    border: Border.all(
-                      color: const Color(
-                        0xFF8AB4F8,
-                      ).withValues(alpha: _pulseAnimation.value * 0.4),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.call_rounded,
-                    color: Color(0xFF8AB4F8),
-                    size: 40,
-                  ),
-                ),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -0.3,
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                width: 2,
+              ),
+            ),
+            child: const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                color: Color(0xFF3B82F6),
+                strokeWidth: 3,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
+          const Text(
+            'Initializing Call...',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
-            subtitle,
+            'Setting up secure connection',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 14,
+              fontSize: 15,
             ),
           ),
         ],
@@ -507,25 +439,66 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   Widget _buildConnectingScreen() {
-    return _buildWaitingScreen('Connecting...', 'Joining the session');
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF22C55E).withValues(alpha: 0.3),
+                width: 2,
+              ),
+            ),
+            child: const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                color: Color(0xFF22C55E),
+                strokeWidth: 3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          const Text(
+            'Connecting...',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Please wait while we connect your call',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.5),
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildEndedScreen() {
     return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 80,
-            height: 80,
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
+              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
               shape: BoxShape.circle,
-              color: const Color(0xFFD93025).withValues(alpha: 0.12),
             ),
             child: const Icon(
               Icons.call_end_rounded,
-              color: Color(0xFFD93025),
-              size: 36,
+              size: 64,
+              color: Color(0xFFEF4444),
             ),
           ),
           const SizedBox(height: 24),
@@ -533,24 +506,24 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             'Call Ended',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w500,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 32),
-          FilledButton.icon(
+          ElevatedButton.icon(
             onPressed: () async {
               await SessionService.clearSession();
               _navigateToHome();
             },
-            icon: const Icon(Icons.home_rounded, size: 18),
+            icon: const Icon(Icons.home_rounded),
             label: const Text('Return to Dashboard'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF1A73E8),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
@@ -561,59 +534,59 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
   Widget _buildErrorScreen(CallError callState) {
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 480),
+        padding: const EdgeInsets.all(40),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 80,
-              height: 80,
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                 shape: BoxShape.circle,
-                color: const Color(0xFFD93025).withValues(alpha: 0.12),
               ),
               child: const Icon(
                 Icons.error_outline_rounded,
-                color: Color(0xFFD93025),
-                size: 36,
+                size: 64,
+                color: Color(0xFFEF4444),
               ),
             ),
             const SizedBox(height: 24),
             const Text(
-              'Something went wrong',
+              'Call Error',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Text(
               callState.error.message,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 14,
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 15,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            FilledButton.icon(
+            ElevatedButton.icon(
               onPressed: () async {
                 await SessionService.clearSession();
                 _navigateToHome();
               },
-              icon: const Icon(Icons.home_rounded, size: 18),
+              icon: const Icon(Icons.home_rounded),
               label: const Text('Return to Dashboard'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1A73E8),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 14,
+                  horizontal: 32,
+                  vertical: 16,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
@@ -623,59 +596,251 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     );
   }
 
-  // ─── Ongoing Call (main layout) ────────────────────────────────────
-
-  Widget _buildOngoingScreen(CallOngoing state) {
+  Widget _buildOngoingCallScreen(CallOngoing state) {
     final engine = context.read<CallBloc>().engine;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 900;
+    final showSidePanel = isWide && !state.isVideoCall;
 
-    return MouseRegion(
-      onHover: (_) => _resetHideTimer(),
-      child: GestureDetector(
-        onTap: _resetHideTimer,
-        child: Stack(
-          fit: StackFit.expand,
+    // For video calls: video fills 100% of screen, controls overlaid on top
+    if (state.isVideoCall && state.videoEnabled) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Video fills entire area edge-to-edge
+          Positioned.fill(child: _buildMainVideoArea(state, engine)),
+          // Top bar overlay — semi-transparent
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _buildTopBarOverlay(state),
+          ),
+          // Bottom controls overlay — semi-transparent
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomControlsOverlay(state, isWide),
+          ),
+        ],
+      );
+    }
+
+    // Voice calls / video off: traditional column layout
+    return Column(
+      children: [
+        _buildTopBar(state),
+        Expanded(
+          child:
+              showSidePanel
+                  ? Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: _buildMainVideoArea(state, engine),
+                      ),
+                      Container(
+                        width: 260,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          border: Border(
+                            left: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                        ),
+                        child: _buildSidePanel(state),
+                      ),
+                    ],
+                  )
+                  : _buildMainVideoArea(state, engine),
+        ),
+        _buildBottomControls(state, isWide),
+      ],
+    );
+  }
+
+  Widget _buildTopBar(CallOngoing state) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Back button
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white70),
+            onPressed: () => Navigator.of(context).maybePop(),
+            tooltip: 'Minimize',
+          ),
+          const SizedBox(width: 12),
+
+          // Call type indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: (state.isVideoCall
+                      ? const Color(0xFF3B82F6)
+                      : const Color(0xFF22C55E))
+                  .withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF22C55E),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  state.isVideoCall ? 'Video Call' : 'Voice Call',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Spacer(),
+
+          // Duration
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.timer_outlined,
+                  color: Colors.white.withValues(alpha: 0.6),
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _formatDuration(state.elapsed),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Channel ID
+          Text(
+            'Session: ${widget.channelId.substring(0, 8)}...',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.4),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Semi-transparent top bar overlaid on video — gradient fades into video
+  Widget _buildTopBarOverlay(CallOngoing state) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.7),
+            Colors.black.withValues(alpha: 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.7, 1.0],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
           children: [
-            // Main content area
-            _buildMainArea(state, engine),
-
-            // Top info bar — fades in/out
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              top: _controlsVisible ? 0 : -80,
-              left: 0,
-              right: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _controlsVisible ? 1.0 : 0.0,
-                child: _buildTopInfoBar(state),
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              onPressed: () => Navigator.of(context).maybePop(),
+              tooltip: 'Minimize',
+            ),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF22C55E),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Video Call',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            // Local video PiP (video calls only)
-            if (state.isVideoCall && state.videoEnabled && engine != null)
-              _buildLocalPiP(state, engine),
-
-            // Third-party call chip
-            if (_patientCallStatus.isNotEmpty)
-              Positioned(
-                top: 72,
-                left: 0,
-                right: 0,
-                child: _buildThirdPartyChip(),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(20),
               ),
-
-            // Floating control bar — Google Meet style
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              bottom: _controlsVisible ? 24 : -100,
-              left: 0,
-              right: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _controlsVisible ? 1.0 : 0.0,
-                child: _buildFloatingControlBar(state),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.timer_outlined,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDuration(state.elapsed),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -684,10 +849,86 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     );
   }
 
-  // ─── Main content area ─────────────────────────────────────────────
+  /// Semi-transparent bottom controls overlaid on video
+  Widget _buildBottomControlsOverlay(CallOngoing state, bool isWide) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 48 : 24, vertical: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.7),
+            Colors.black.withValues(alpha: 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.7, 1.0],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildControlButton(
+            icon: state.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            label: state.muted ? 'Unmute' : 'Mute',
+            isActive: state.muted,
+            activeColor: const Color(0xFFEF4444),
+            onTap: () => context.read<CallBloc>().add(ToggleMute()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon:
+                state.videoEnabled
+                    ? Icons.videocam_rounded
+                    : Icons.videocam_off_rounded,
+            label: state.videoEnabled ? 'Camera' : 'Camera Off',
+            isActive: !state.videoEnabled,
+            activeColor: const Color(0xFFEF4444),
+            onTap: () => context.read<CallBloc>().add(ToggleVideo()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon: Icons.call_end_rounded,
+            label: 'End Call',
+            isActive: true,
+            activeColor: const Color(0xFFEF4444),
+            isEndCall: true,
+            onTap: () => context.read<CallBloc>().add(EndCall()),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon:
+                _patientCallSid != null
+                    ? Icons.phone_disabled_rounded
+                    : Icons.add_call,
+            label: _patientCallSid != null ? 'End Party' : 'Add Party',
+            isActive: _patientCallSid != null,
+            activeColor: const Color(0xFFF59E0B),
+            onTap:
+                _isPatientCallLoading
+                    ? () {}
+                    : (_patientCallSid != null
+                        ? _endPatientCall
+                        : _showCallPatientDialog),
+          ),
+          const SizedBox(width: 20),
+          _buildControlButton(
+            icon: Icons.cameraswitch_rounded,
+            label: 'Flip',
+            isActive: false,
+            activeColor: Colors.white,
+            onTap:
+                state.videoEnabled
+                    ? () => context.read<CallBloc>().add(SwitchCamera())
+                    : () {},
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _buildMainArea(CallOngoing state, RtcEngine? engine) {
-    // Video call with remote user — remote fills screen
+  Widget _buildMainVideoArea(CallOngoing state, RtcEngine? engine) {
+    // Video call with remote video — show remote full + local PiP
     if (state.isVideoCall &&
         state.videoEnabled &&
         engine != null &&
@@ -697,63 +938,80 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         state.remoteUids.first,
         widget.channelId,
       );
-      return Container(
-        color: const Color(0xFF202124),
-        child: AgoraVideoView(controller: remoteCtrl),
-      );
-    }
-
-    // Video call — local preview while waiting for remote
-    if (state.isVideoCall && state.videoEnabled && engine != null) {
       final localCtrl = _getLocalController(engine);
       return Container(
-        color: const Color(0xFF202124),
+        color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            AgoraVideoView(controller: localCtrl),
-            // Waiting pill overlay
+            // Remote video - full area, fills entire screen
+            Positioned.fill(
+              child: SizedBox.expand(
+                child: AgoraVideoView(controller: remoteCtrl),
+              ),
+            ),
+            // Local video PiP — offset down to avoid top bar overlay
             Positioned(
-              bottom: 100,
+              top: 70,
+              right: 16,
+              child: Container(
+                width: 240,
+                height: 180,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: AgoraVideoView(controller: localCtrl),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Video call with local camera but no remote user yet — show local full screen
+    if (state.isVideoCall && state.videoEnabled && engine != null) {
+      final localCtrl = _getLocalController(engine);
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Local camera preview — full area
+            Positioned.fill(
+              child: SizedBox.expand(
+                child: AgoraVideoView(controller: localCtrl),
+              ),
+            ),
+            // "Waiting" overlay
+            Positioned(
+              bottom: 24,
               left: 0,
               right: 0,
               child: Center(
-                child: AnimatedBuilder(
-                  animation: _pulseAnimation,
-                  builder:
-                      (context, _) => Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white.withValues(
-                                  alpha: _pulseAnimation.value,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Waiting for participant...',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Waiting for participant to join...',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
                 ),
               ),
             ),
@@ -762,101 +1020,74 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       );
     }
 
-    // Voice call or camera off — centered avatar
+    // Voice call or video off
     return Container(
-      color: const Color(0xFF202124),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0xFF0F172A),
+            const Color(0xFF1A1040).withValues(alpha: 0.5),
+            const Color(0xFF0F172A),
+          ],
+        ),
+      ),
       child: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Avatar with pulse ring
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder:
-                  (context, child) => Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.transparent,
-                      border:
-                          state.remoteUids.isEmpty
-                              ? Border.all(
-                                color: const Color(0xFF8AB4F8).withValues(
-                                  alpha: _pulseAnimation.value * 0.5,
-                                ),
-                                width: 3,
-                              )
-                              : null,
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient:
-                              state.remoteUids.isNotEmpty
-                                  ? const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      Color(0xFF1A73E8),
-                                      Color(0xFF8AB4F8),
-                                    ],
-                                  )
-                                  : const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      Color(0xFF3C4043),
-                                      Color(0xFF5F6368),
-                                    ],
-                                  ),
-                        ),
-                        child: Icon(
-                          state.isVideoCall
-                              ? Icons.videocam_off_rounded
-                              : Icons.person_rounded,
-                          size: 52,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+            // Avatar
+            Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                    blurRadius: 40,
+                    spreadRadius: 8,
                   ),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              state.isVideoCall ? 'Camera Off' : 'Voice Call',
-              style: const TextStyle(
+                ],
+              ),
+              child: Icon(
+                state.isVideoCall ? Icons.videocam_off_rounded : Icons.person,
+                size: 64,
                 color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 32),
+            Text(
+              state.isVideoCall ? 'Video Call' : 'Voice Call',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
             Text(
               state.remoteUids.isEmpty
                   ? 'Waiting for participant...'
                   : 'Connected',
               style: TextStyle(
-                color:
-                    state.remoteUids.isEmpty
-                        ? Colors.white.withValues(alpha: 0.5)
-                        : const Color(0xFF1E8E3E),
-                fontSize: 14,
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 16,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
+            // Large duration
             Text(
               _formatDuration(state.elapsed),
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 40,
-                fontWeight: FontWeight.w300,
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
                 fontFamily: 'monospace',
-                letterSpacing: 2,
               ),
             ),
           ],
@@ -865,360 +1096,307 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     );
   }
 
-  // ─── Local PiP ────────────────────────────────────────────────────
-
-  Widget _buildLocalPiP(CallOngoing state, RtcEngine engine) {
-    // Only show PiP when remote user has joined
-    if (state.remoteUids.isEmpty) return const SizedBox.shrink();
-
-    final localCtrl = _getLocalController(engine);
-    return Positioned(
-      top: 80,
-      right: 20,
-      child: Container(
-        width: 200,
-        height: 150,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
+  Widget _buildSidePanel(CallOngoing state) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Call Info',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AgoraVideoView(controller: localCtrl),
-            // "You" label
-            Positioned(
-              bottom: 6,
-              left: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'You',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+          ),
+          const SizedBox(height: 20),
+
+          // Status
+          _buildInfoRow(
+            Icons.circle,
+            'Status',
+            state.remoteUids.isEmpty ? 'Waiting...' : 'Connected',
+            state.remoteUids.isEmpty
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFF22C55E),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            Icons.people_outline,
+            'Participants',
+            '${state.remoteUids.length + 1}',
+            const Color(0xFF3B82F6),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            state.muted ? Icons.mic_off : Icons.mic,
+            'Microphone',
+            state.muted ? 'Muted' : 'Active',
+            state.muted ? const Color(0xFFEF4444) : const Color(0xFF22C55E),
+          ),
+
+          // Patient call status
+          if (_patientCallStatus.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Divider(color: Color(0xFF334155)),
+            const SizedBox(height: 16),
+            const Text(
+              'Third Party Call',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Top info bar ──────────────────────────────────────────────────
-
-  Widget _buildTopInfoBar(CallOngoing state) {
-    final isVideo = state.isVideoCall && state.videoEnabled;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        gradient:
-            isVideo
-                ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.6),
-                    Colors.transparent,
-                  ],
-                )
-                : null,
-        color: isVideo ? null : const Color(0xFF202124),
-        border:
-            isVideo
-                ? null
-                : Border(
-                  bottom: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.06),
-                  ),
-                ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            // Back
-            _buildSmallIconButton(
-              icon: Icons.arrow_back_rounded,
-              onTap: () => Navigator.of(context).maybePop(),
-              tooltip: 'Back',
-            ),
-            const SizedBox(width: 12),
-
-            // Encrypted badge
+            const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(6),
+                color: (_patientCallSid != null
+                        ? const Color(0xFF22C55E)
+                        : const Color(0xFFF59E0B))
+                    .withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (_patientCallSid != null
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFFF59E0B))
+                      .withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.lock_rounded,
-                    size: 13,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    _patientCallSid != null ? Icons.phone_in_talk : Icons.phone,
+                    color:
+                        _patientCallSid != null
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFFF59E0B),
+                    size: 18,
                   ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Encrypted',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _patientCallStatus,
+                      style: TextStyle(
+                        color:
+                            _patientCallSid != null
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFFF59E0B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+          ],
 
-            const Spacer(),
+          const Spacer(),
 
-            // Timer
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
+          // Session ID
+          Text(
+            'Session: ${widget.channelId}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.3),
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 12,
+                ),
               ),
-              child: Text(
-                _formatDuration(state.elapsed),
+              Text(
+                value,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  fontFamily: 'monospace',
-                  letterSpacing: 1,
                 ),
               ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Participants count
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.people_rounded,
-                    size: 15,
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    '${state.remoteUids.length + 1}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Third-party call chip ─────────────────────────────────────────
-
-  Widget _buildThirdPartyChip() {
-    final isActive = _patientCallSid != null;
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: (isActive ? const Color(0xFF1E8E3E) : const Color(0xFFE37400))
-              .withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: (isActive
-                    ? const Color(0xFF1E8E3E)
-                    : const Color(0xFFE37400))
-                .withValues(alpha: 0.4),
+            ],
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_isPatientCallLoading)
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color:
-                      isActive
-                          ? const Color(0xFF1E8E3E)
-                          : const Color(0xFFE37400),
-                ),
-              )
-            else
-              Icon(
-                isActive ? Icons.phone_in_talk_rounded : Icons.phone_rounded,
-                size: 15,
-                color:
-                    isActive
-                        ? const Color(0xFF1E8E3E)
-                        : const Color(0xFFE37400),
-              ),
-            const SizedBox(width: 8),
-            Text(
-              _patientCallStatus,
-              style: TextStyle(
-                color:
-                    isActive
-                        ? const Color(0xFF1E8E3E)
-                        : const Color(0xFFE37400),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 
-  // ─── Floating control bar ──────────────────────────────────────────
-
-  Widget _buildFloatingControlBar(CallOngoing state) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF303134),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
+  Widget _buildBottomControls(CallOngoing state, bool isWide) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 48 : 24, vertical: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Mic
-            _ControlPill(
-              icon: state.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-              label: state.muted ? 'Unmute' : 'Mute',
-              isActive: !state.muted,
-              isToggled: state.muted,
-              onTap: () => context.read<CallBloc>().add(ToggleMute()),
-            ),
-            const SizedBox(width: 4),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Mute
+          _buildControlButton(
+            icon: state.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            label: state.muted ? 'Unmute' : 'Mute',
+            isActive: state.muted,
+            activeColor: const Color(0xFFEF4444),
+            onTap: () => context.read<CallBloc>().add(ToggleMute()),
+          ),
+          const SizedBox(width: 20),
 
-            // Camera (video calls only)
-            if (state.isVideoCall) ...[
-              _ControlPill(
-                icon:
-                    state.videoEnabled
-                        ? Icons.videocam_rounded
-                        : Icons.videocam_off_rounded,
-                label:
-                    state.videoEnabled ? 'Turn off camera' : 'Turn on camera',
-                isActive: state.videoEnabled,
-                isToggled: !state.videoEnabled,
-                onTap: () => context.read<CallBloc>().add(ToggleVideo()),
-              ),
-              const SizedBox(width: 4),
-            ],
-
-            // Flip camera (video only, when camera is on)
-            if (state.isVideoCall && state.videoEnabled) ...[
-              _ControlPill(
-                icon: Icons.cameraswitch_rounded,
-                label: 'Switch camera',
-                isActive: true,
-                onTap: () => context.read<CallBloc>().add(SwitchCamera()),
-              ),
-              const SizedBox(width: 4),
-            ],
-
-            // Add / End third party
-            _ControlPill(
+          // Video toggle
+          if (state.isVideoCall) ...[
+            _buildControlButton(
               icon:
-                  _patientCallSid != null
-                      ? Icons.phone_disabled_rounded
-                      : Icons.person_add_alt_1_rounded,
-              label:
-                  _patientCallSid != null
-                      ? 'End participant call'
-                      : 'Add participant',
-              isActive: true,
-              isToggled: _patientCallSid != null,
-              toggledColor: const Color(0xFFE37400),
+                  state.videoEnabled
+                      ? Icons.videocam_rounded
+                      : Icons.videocam_off_rounded,
+              label: state.videoEnabled ? 'Camera' : 'Camera Off',
+              isActive: !state.videoEnabled,
+              activeColor: const Color(0xFFEF4444),
+              onTap: () => context.read<CallBloc>().add(ToggleVideo()),
+            ),
+            const SizedBox(width: 20),
+          ],
+
+          // End Call
+          _buildControlButton(
+            icon: Icons.call_end_rounded,
+            label: 'End Call',
+            isActive: true,
+            activeColor: const Color(0xFFEF4444),
+            isEndCall: true,
+            onTap: () => context.read<CallBloc>().add(EndCall()),
+          ),
+          const SizedBox(width: 20),
+
+          // Add Party
+          _buildControlButton(
+            icon:
+                _patientCallSid != null
+                    ? Icons.phone_disabled_rounded
+                    : Icons.add_call,
+            label: _patientCallSid != null ? 'End Party' : 'Add Party',
+            isActive: _patientCallSid != null,
+            activeColor: const Color(0xFFF59E0B),
+            onTap:
+                _isPatientCallLoading
+                    ? () {}
+                    : (_patientCallSid != null
+                        ? _endPatientCall
+                        : _showCallPatientDialog),
+          ),
+
+          // Camera switch for video
+          if (state.isVideoCall) ...[
+            const SizedBox(width: 20),
+            _buildControlButton(
+              icon: Icons.cameraswitch_rounded,
+              label: 'Flip',
+              isActive: false,
+              activeColor: Colors.white,
               onTap:
-                  _isPatientCallLoading
-                      ? () {}
-                      : (_patientCallSid != null
-                          ? _endPatientCall
-                          : _showCallPatientDialog),
-            ),
-
-            // Separator before end call
-            Container(
-              width: 1,
-              height: 36,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
-
-            // End Call — prominent red
-            _EndCallButton(
-              onTap: () => context.read<CallBloc>().add(EndCall()),
+                  state.videoEnabled
+                      ? () => context.read<CallBloc>().add(SwitchCamera())
+                      : () {},
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────────
-
-  Widget _buildSmallIconButton({
+  Widget _buildControlButton({
     required IconData icon,
+    required String label,
+    required bool isActive,
+    required Color activeColor,
     required VoidCallback onTap,
-    String? tooltip,
+    bool isEndCall = false,
   }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          hoverColor: Colors.white.withValues(alpha: 0.08),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
+    final buttonColor =
+        isEndCall
+            ? activeColor
+            : (isActive ? activeColor : Colors.white.withValues(alpha: 0.8));
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: isEndCall ? 64 : 52,
+              height: isEndCall ? 64 : 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color:
+                    isEndCall
+                        ? activeColor
+                        : (isActive
+                            ? activeColor.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.08)),
+                border:
+                    isEndCall
+                        ? null
+                        : Border.all(
+                          color: buttonColor.withValues(alpha: 0.3),
+                          width: 1.5,
+                        ),
+                boxShadow:
+                    isEndCall
+                        ? [
+                          BoxShadow(
+                            color: activeColor.withValues(alpha: 0.4),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                        : null,
+              ),
+              child: Icon(
+                icon,
+                color: isEndCall ? Colors.white : buttonColor,
+                size: isEndCall ? 28 : 22,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1231,132 +1409,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
     if (hours > 0) {
       return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Extracted widgets
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Individual control button in the floating bar (Google Meet pill style)
-class _ControlPill extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final bool isToggled;
-  final Color? toggledColor;
-  final VoidCallback onTap;
-
-  const _ControlPill({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    this.isToggled = false,
-    this.toggledColor,
-    required this.onTap,
-  });
-
-  @override
-  State<_ControlPill> createState() => _ControlPillState();
-}
-
-class _ControlPillState extends State<_ControlPill> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final toggledCol = widget.toggledColor ?? const Color(0xFFD93025);
-    final bgColor =
-        widget.isToggled
-            ? toggledCol.withValues(alpha: 0.15)
-            : (_hovered
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.white.withValues(alpha: 0.05));
-    final iconColor =
-        widget.isToggled
-            ? toggledCol
-            : Colors.white.withValues(alpha: _hovered ? 0.95 : 0.75);
-
-    return Tooltip(
-      message: widget.label,
-      waitDuration: const Duration(milliseconds: 400),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-              border:
-                  widget.isToggled
-                      ? Border.all(color: toggledCol.withValues(alpha: 0.3))
-                      : null,
-            ),
-            child: Icon(widget.icon, color: iconColor, size: 22),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Prominent end-call button
-class _EndCallButton extends StatefulWidget {
-  final VoidCallback onTap;
-  const _EndCallButton({required this.onTap});
-
-  @override
-  State<_EndCallButton> createState() => _EndCallButtonState();
-}
-
-class _EndCallButtonState extends State<_EndCallButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Leave call',
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 60,
-            height: 48,
-            decoration: BoxDecoration(
-              color:
-                  _hovered ? const Color(0xFFB3261E) : const Color(0xFFD93025),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow:
-                  _hovered
-                      ? [
-                        BoxShadow(
-                          color: const Color(0xFFD93025).withValues(alpha: 0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                      : null,
-            ),
-            child: const Icon(
-              Icons.call_end_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
