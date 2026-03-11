@@ -44,7 +44,7 @@ class VolunteerSuccessWebScreen extends StatelessWidget {
           const SizedBox(height: 28),
 
           const Text(
-            'Welcome, Volunteer!',
+            'Welcome, interpreter!',
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w700,
@@ -56,7 +56,7 @@ class VolunteerSuccessWebScreen extends StatelessWidget {
           const SizedBox(height: 12),
 
           const Text(
-            'Thank you for joining InterBridge as a volunteer interpreter. '
+            'Thank you for joining InterBridge as an interpreter. '
             'Your contribution helps bridge communication gaps for those in need.',
             style: TextStyle(
               fontSize: 15,
@@ -119,7 +119,7 @@ class VolunteerSuccessWebScreen extends StatelessWidget {
                 _buildRewardItem(
                   icon: Icons.card_membership_outlined,
                   title: 'Experience certificate',
-                  subtitle: 'Official volunteer certificate',
+                  subtitle: 'Official interpreter certificate',
                 ),
               ],
             ),

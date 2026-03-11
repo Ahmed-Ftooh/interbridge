@@ -393,13 +393,63 @@ class _OrganizationRegistrationScreenState
                 activeColor: ColorManager.primary2,
               ),
               Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
-                  child: Text(
-                    'I confirm that all the information provided is accurate and I agree to the Terms of Service and Privacy Policy.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: ColorManager.textSecondary,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12.0),
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: ColorManager.textSecondary,
+                        height: 1.5,
+                      ),
+                      children: [
+                        const TextSpan(
+                          text:
+                              'I confirm that all the information provided is accurate and I agree to the ',
+                        ),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(
+                                context,
+                              ).pushNamed(Routes.termsOfService);
+                            },
+                            child: Text(
+                              'Terms of Service',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: ColorManager.primary2,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const TextSpan(text: ' and '),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(
+                                context,
+                              ).pushNamed(Routes.privacyPolicy);
+                            },
+                            child: Text(
+                              'Privacy Policy',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: ColorManager.primary2,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
                     ),
                   ),
                 ),
@@ -526,7 +576,10 @@ class _OrganizationRegistrationScreenState
             ),
           if (_currentStep > 0) const SizedBox(width: AppSize.s16),
           Expanded(
-            flex: _currentStep == 0 ? 1 : 1,
+            flex:
+                _currentStep == 0
+                    ? 1
+                    : 2, // Give more space to Submit button when Back is showing
             child: CustomButton(
               onTap: () {
                 if (!isLoading) _nextStep(context);
@@ -540,6 +593,10 @@ class _OrganizationRegistrationScreenState
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
+                maxLines: 1,
+                overflow:
+                    TextOverflow
+                        .ellipsis, // Ensure it doesn't wrap or get cut off strangely
               ),
             ),
           ),

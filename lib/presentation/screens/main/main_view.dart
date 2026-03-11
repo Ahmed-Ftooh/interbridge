@@ -23,6 +23,7 @@ import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:lottie/lottie.dart';
@@ -113,34 +114,36 @@ class _MainViewState extends State<MainView> {
 
       final requestId = session['requestId'] as String;
 
-      // Check if the request status has changed to accepted
       final response =
           await Supabase.instance.client
               .from('interpreter_requests')
-              .select('status, accepted_by, accepted_at')
+              .select('status, accepted_by, requester_id, call_type')
               .eq('id', requestId)
               .single();
 
-      if (response['status'] == 'accepted') {
+      final dbStatus = response['status'] as String?;
+      if (dbStatus != 'accepted') {
+        // Call is no longer active — discard stale session
         log(
-          'Request was accepted while app was in background, updating session...',
+          'Session request $requestId has status $dbStatus — clearing stale session',
         );
-
-        // Update session to reflect that request was accepted - go to call, not chat
-        await SessionService.saveSession(
-          requestId: requestId,
-          requesterId: session['requesterId'] as String,
-          interpreterId: response['accepted_by'] as String,
-          currentScreen: 'call', // Go directly to call view
-        );
+        await SessionService.clearSession();
+        return;
       }
 
-      // Automatically restore session without showing dialog
+      // Call is still in-progress — refresh session data and restore
+      await SessionService.saveSession(
+        requestId: requestId,
+        requesterId: response['requester_id'] as String,
+        interpreterId: response['accepted_by'] as String,
+        currentScreen: 'call',
+        callData: {'call_type': response['call_type'] ?? 'voice'},
+      );
+
       await _restoreSession();
     } catch (e) {
-      log('Error checking request status: $e');
-      // If there's an error, still try to restore session
-      await _restoreSession();
+      log('Error checking request status: $e — clearing stale session');
+      await SessionService.clearSession();
     }
   }
 
@@ -158,31 +161,46 @@ class _MainViewState extends State<MainView> {
 
       log('Restoring session: $currentScreen for request: $requestId');
 
-      // Don't restore if screen is 'waiting_request' - the request might have been accepted
-      // The _checkIfRequestWasAccepted already handled updating the session if needed
       if (currentScreen == 'waiting_request') {
         log('Skipping restore for waiting_request - already checked status');
         return;
       }
 
-      Widget targetScreen;
+      if (currentScreen == 'call' || currentScreen == 'chat') {
+        if (!mounted) return;
 
-      switch (currentScreen) {
-        case 'call':
-        case 'chat': // Legacy: treat chat as call since we don't use chat anymore
-          targetScreen = EnhancedCallScreen(channelId: requestId);
-          break;
-        default:
-          log('Unknown screen type: $currentScreen');
-          return;
-      }
+        // Compute stable Agora UID from the current authenticated user's UUID
+        final currentUserId =
+            Supabase.instance.client.auth.currentUser?.id ?? '';
+        final hex = currentUserId.replaceAll('-', '');
+        final first8 =
+            hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
+        final localUid = int.tryParse(first8, radix: 16) ?? 1;
 
-      if (mounted) {
-        // Use pushAndRemoveUntil to make chat the main screen and clear navigation stack
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => targetScreen),
-          (route) => false, // Remove all previous routes
+        final callData = session['callData'] as Map<String, dynamic>? ?? {};
+        final isVideoCall = callData['call_type'] == 'video';
+
+        // Dispatch StartCall so Agora re-joins the channel
+        context.read<CallBloc>().add(
+          StartCall(
+            channelId: requestId,
+            localUid: localUid,
+            isVideoCall: isVideoCall,
+          ),
         );
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder:
+                (_) => EnhancedCallScreen(
+                  channelId: requestId,
+                  isVideoCall: isVideoCall,
+                ),
+          ),
+          (route) => false,
+        );
+      } else {
+        log('Unknown screen type: $currentScreen');
       }
     } catch (e) {
       log('Error restoring session: $e');

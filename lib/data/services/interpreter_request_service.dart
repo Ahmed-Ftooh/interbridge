@@ -1,5 +1,4 @@
 import 'dart:developer';
-import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 

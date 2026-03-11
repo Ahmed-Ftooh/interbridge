@@ -74,6 +74,23 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   Uint8List? _profileImageBytes;
   String? _profileImageName;
 
+  // Government ID
+  Uint8List? governmentIdBytes;
+  String? governmentIdFileName;
+  String? governmentIdType;
+
+  // Phone number
+  String? phoneNumber;
+
+  // Voice prompt verification recordings (3 recordings from VoicePromptWebScreen)
+  List<Map<String, dynamic>>? voicePromptRecordings;
+
+  // Doctor invite data
+  String? _incomingRole;
+  String? _inviteOrganizationId;
+  String? _inviteOrgRole;
+  String? _inviteId;
+
   @override
   void initState() {
     super.initState();
@@ -173,6 +190,30 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
     } else {
       employmentType = 'volunteer';
     }
+
+    // Government ID
+    governmentIdBytes = widget.data['governmentIdBytes'] as Uint8List?;
+    governmentIdFileName = widget.data['governmentIdFileName'] as String?;
+    governmentIdType = widget.data['governmentIdType'] as String?;
+
+    // Phone number
+    phoneNumber = widget.data['phoneNumber'] as String?;
+
+    // Voice prompt recordings (3 samples from VoicePromptWebScreen)
+    final rawPromptRecs = widget.data['voicePromptRecordings'];
+    if (rawPromptRecs is List) {
+      voicePromptRecordings =
+          rawPromptRecs
+              .whereType<Map>()
+              .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+              .toList();
+    }
+
+    // Doctor invite / incoming role
+    _incomingRole = widget.data['role'] as String?;
+    _inviteOrganizationId = widget.data['organization_id'] as String?;
+    _inviteOrgRole = widget.data['organization_role'] as String? ?? 'doctor';
+    _inviteId = widget.data['invite_id'] as String?;
   }
 
   @override
@@ -196,11 +237,26 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
       return;
     }
 
-    if (_selectedGender == null) {
+    if (_selectedGender == null && _incomingRole != 'doctor_with_invite') {
       CustomSnackBar.show(
         context,
         message: 'Please select your gender',
         type: SnackBarType.warning,
+      );
+      return;
+    }
+
+    if (_incomingRole == 'doctor_with_invite' &&
+        _inviteOrganizationId != null) {
+      context.read<RegisterBloc>().add(
+        DoctorWithInviteRegisterSubmitted(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          username: _usernameController.text.trim(),
+          organizationId: _inviteOrganizationId!,
+          role: _inviteOrgRole ?? 'doctor',
+          inviteId: _inviteId,
+        ),
       );
       return;
     }
@@ -234,6 +290,11 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
         bio: bio,
         yearsExperience: yearsExperience,
         employmentType: employmentType,
+        governmentIdBytes: governmentIdBytes,
+        governmentIdFileName: governmentIdFileName,
+        governmentIdType: governmentIdType,
+        phoneNumber: phoneNumber,
+        voicePromptRecordings: voicePromptRecordings,
       ),
     );
   }
@@ -260,7 +321,10 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
 
         return AuthWebWrapper(
           title: 'Create your account',
-          subtitle: 'Final step — set up your interpreter profile ',
+          subtitle:
+              _incomingRole == 'doctor_with_invite'
+                  ? 'Final step — complete your doctor profile'
+                  : 'Final step — set up your interpreter profile ',
           child: Form(
             key: _formKey,
             child: Column(
@@ -270,41 +334,43 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
                 _buildProfilePicturePicker(),
                 const SizedBox(height: 24),
 
-                // Summary badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFBAE6FD)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle,
-                        color: Color(0xFF0EA5E9),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${languages.length} language${languages.length != 1 ? 's' : ''} · '
-                          '${specializations.length} specialization${specializations.length != 1 ? 's' : ''} · '
-                          '${employmentType == 'paid' ? 'Professional' : 'Volunteer'} track',
-                          style: const TextStyle(
-                            color: Color(0xFF0C4A6E),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                // Summary badge (interpreter only)
+                if (_incomingRole != 'doctor_with_invite') ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF0EA5E9),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${languages.length} language${languages.length != 1 ? 's' : ''} · '
+                            '${specializations.length} specialization${specializations.length != 1 ? 's' : ''} · '
+                            '${employmentType == 'paid' ? 'Professional' : 'Volunteer'} track',
+                            style: const TextStyle(
+                              color: Color(0xFF0C4A6E),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
+                ],
 
                 // Username field
                 _buildTextField(

@@ -170,7 +170,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
       final weekSessions = await Supabase.instance.client
           .from('call_sessions')
           .select('id')
-          .eq('user_id', userId)
+          .or('user_id.eq.$userId,remote_user_id.eq.$userId')
           .gte('created_at', weekStart.toIso8601String());
 
       // Fetch average rating from feedback received (where interpreter is the remote user)
@@ -268,7 +268,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                       const SizedBox(height: 24),
                       _buildOnlineStatusCard(),
                       const SizedBox(height: 24),
-                      _buildQuickActionsCard(),
                     ],
                   ),
                 ),
@@ -285,7 +284,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                 const SizedBox(height: 24),
                 _buildRecentCallsSection(),
                 const SizedBox(height: 24),
-                _buildQuickActionsCard(),
               ],
             ),
         ],
@@ -1305,88 +1303,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActionsCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildActionButton(
-            'View History',
-            Icons.history,
-            const Color(0xFF0EA5E9),
-          ),
-          const SizedBox(height: 12),
-          _buildActionButton(
-            'Take Quiz',
-            Icons.quiz_outlined,
-            const Color(0xFF9333EA),
-          ),
-          const SizedBox(height: 12),
-          _buildActionButton(
-            'Earnings',
-            Icons.account_balance_wallet_outlined,
-            const Color(0xFF22C55E),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(String label, IconData icon, Color color) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {},
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, color: color, size: 16),
-            ],
-          ),
-        ),
       ),
     );
   }

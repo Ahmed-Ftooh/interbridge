@@ -1836,6 +1836,23 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
         widget.userId,
         verified: verify,
       );
+
+      // Send verification email when approving
+      if (verify) {
+        final email = _profile['email']?.toString();
+        final name = _profile['username']?.toString() ?? 'Interpreter';
+        if (email != null && email.isNotEmpty) {
+          try {
+            await _service.sendVerificationEmail(
+              to: email,
+              interpreterName: name,
+            );
+          } catch (_) {
+            // Email is best-effort; don't block verification
+          }
+        }
+      }
+
       _snack(
         verify ? 'Interpreter verified' : 'Verification revoked',
         color: verify ? const Color(0xFF10B981) : Colors.orange,

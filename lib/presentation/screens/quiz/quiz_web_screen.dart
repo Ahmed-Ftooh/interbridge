@@ -839,7 +839,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
           Container(
             padding: const EdgeInsets.all(28),
             decoration: const BoxDecoration(
-              color: const Color(0xFFFEF3C7),
+              color: Color(0xFFFEF3C7),
               shape: BoxShape.circle,
             ),
             child: const Icon(

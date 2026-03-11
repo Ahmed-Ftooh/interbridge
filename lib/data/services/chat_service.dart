@@ -4,7 +4,8 @@ import 'supabase_service.dart';
 import 'dart:io';
 
 class ChatService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  // Use a getter so construction is safe even before Supabase.initialize() finishes.
+  SupabaseClient get _supabase => Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
 
   // OPTIMIZED: Add pagination support to prevent loading all messages at once

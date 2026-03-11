@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'register_event.dart';
@@ -51,6 +52,24 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       );
       if (usernameError != null) {
         emit(RegisterFailure(usernameError.message));
+        return;
+      }
+
+      // Pre-check: ensure the organization email is not already taken.
+      final orgEmail = event.organizationEmail.trim().toLowerCase();
+      final existingOrg =
+          await Supabase.instance.client
+              .from('organizations')
+              .select('id')
+              .eq('email', orgEmail)
+              .maybeSingle();
+      if (existingOrg != null) {
+        emit(
+          RegisterFailure(
+            'This organization email is already registered. '
+            'Please use a different organization email.',
+          ),
+        );
         return;
       }
 
@@ -240,6 +259,31 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
           'profileImageBytesBase64': base64Encode(event.profileImageBytes!),
         if (event.profileImageName != null)
           'profileImageName': event.profileImageName,
+        if (event.governmentIdBytes != null)
+          'governmentIdBytesBase64': base64Encode(event.governmentIdBytes!),
+        if (event.governmentIdFileName != null)
+          'governmentIdFileName': event.governmentIdFileName,
+        if (event.governmentIdType != null)
+          'governmentIdType': event.governmentIdType,
+        if (event.phoneNumber != null && event.phoneNumber!.isNotEmpty)
+          'phoneNumber': event.phoneNumber,
+        // Voice prompt verification recordings — base64-encode bytes for JSON storage
+        if (event.voicePromptRecordings != null &&
+            event.voicePromptRecordings!.isNotEmpty)
+          'voicePromptRecordings':
+              event.voicePromptRecordings!
+                  .map((rec) {
+                    final bytes = rec['bytes'];
+                    return <String, dynamic>{
+                      'prompt_id': rec['prompt_id'],
+                      'prompt_text': rec['prompt_text'],
+                      'duration': rec['duration'],
+                      if (bytes is Uint8List && bytes.isNotEmpty)
+                        'bytesBase64': base64Encode(bytes),
+                    };
+                  })
+                  .where((r) => r.containsKey('bytesBase64'))
+                  .toList(),
       };
       await GetIt.I<AppPreferences>().savePendingRegistration(
         jsonEncode(pending),

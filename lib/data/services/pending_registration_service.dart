@@ -24,6 +24,10 @@ class PendingRegistrationService {
   /// LoginViewWeb on web.
   Future<bool>? _activeFuture;
 
+  /// Exposes the last human-readable error from finalization so the UI can
+  /// surface it (e.g. "Organization email already taken").
+  String? lastError;
+
   bool get hasPendingRegistration =>
       _preferences.getPendingRegistration()?.isNotEmpty ?? false;
 
@@ -51,6 +55,7 @@ class PendingRegistrationService {
   }
 
   Future<bool> _doFinalize(String pendingJson, bool refreshSession) async {
+    lastError = null;
     try {
       if (refreshSession) {
         await Supabase.instance.client.auth.refreshSession();
@@ -83,6 +88,15 @@ class PendingRegistrationService {
         'Pending registration finalization failed: $e',
         stackTrace: stackTrace,
       );
+      // If the org email is a duplicate clear the stale pending data so the
+      // user is not stuck in an infinite retry loop and can re-register.
+      if (e.toString().contains('Organization email already exists') ||
+          e.toString().contains('organizations_email_key')) {
+        lastError =
+            'An organization with that email is already registered. '
+            'Please register again with a different organization email.';
+        await _preferences.clearPendingRegistration();
+      }
       return false;
     }
   }

@@ -18,10 +18,11 @@ class IncomingCallService {
 
   RealtimeChannel? _subscription;
   bool _isListening = false;
-  Set<String> _shownRequestIds = {};
+  final Set<String> _shownRequestIds = {};
   Set<String> _declinedRequestIds = {};
   bool _isShowingIncomingCall = false;
   List<String>? _interpreterLanguageIds;
+  String _employmentType = 'volunteer';
 
   /// Start listening for incoming calls for the interpreter.
   /// Set [skipOnlineCheck] to true when the caller has already ensured
@@ -49,8 +50,9 @@ class IncomingCallService {
       log('IncomingCallService: Skipping online check (caller verified)');
     }
 
-    // Load interpreter's languages
+    // Load interpreter's languages and employment type
     await _loadInterpreterLanguages(userId);
+    await _loadEmploymentType(userId);
 
     if (_interpreterLanguageIds == null || _interpreterLanguageIds!.isEmpty) {
       log('IncomingCallService: No languages found for interpreter');
@@ -122,6 +124,25 @@ class IncomingCallService {
     }
   }
 
+  /// Load the interpreter's employment type to filter by interpreter_type
+  Future<void> _loadEmploymentType(String userId) async {
+    try {
+      final response =
+          await Supabase.instance.client
+              .from('users_profile')
+              .select('employment_type')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      _employmentType =
+          (response?['employment_type'] as String?) ?? 'volunteer';
+      log('IncomingCallService: employment_type=$_employmentType');
+    } catch (e) {
+      log('IncomingCallService: Error loading employment_type: $e');
+      _employmentType = 'volunteer';
+    }
+  }
+
   /// Check if interpreter is currently online
   Future<bool> _checkIsOnline(String userId) async {
     try {
@@ -165,12 +186,21 @@ class IncomingCallService {
         log('IncomingCallService: Could not fetch declined jobs: $e');
       }
 
-      // Fetch pending requests matching interpreter's languages
-      final response = await Supabase.instance.client
+      // Fetch pending requests matching interpreter's languages AND type
+      // Paid interpreters can handle both general and specialist requests.
+      // Volunteers only handle general requests.
+      var query = Supabase.instance.client
           .from('interpreter_requests')
           .select('*')
           .eq('status', 'pending')
-          .inFilter('to_language', _interpreterLanguageIds!)
+          .inFilter('from_language', _interpreterLanguageIds!)
+          .inFilter('to_language', _interpreterLanguageIds!);
+
+      if (_employmentType != 'paid') {
+        query = query.eq('interpreter_type', 'general');
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
           .limit(1); // Only get most recent pending request
 
@@ -219,11 +249,26 @@ class IncomingCallService {
       // If startListening() was called, the interpreter was verified online.
       // Re-querying the DB can return stale data and block valid calls.
 
-      // Check if this request matches interpreter's languages
+      // Check if this request matches interpreter's languages (BOTH directions)
       if (_interpreterLanguageIds == null ||
+          !_interpreterLanguageIds!.contains(request.fromLanguage) ||
           !_interpreterLanguageIds!.contains(request.toLanguage)) {
         log(
-          'IncomingCallService: Request language ${request.toLanguage} does not match interpreter languages',
+          'IncomingCallService: Request languages '
+          '(from=${request.fromLanguage}, to=${request.toLanguage}) '
+          'do not match interpreter languages $_interpreterLanguageIds',
+        );
+        return;
+      }
+
+      // Check if request type matches interpreter's employment type:
+      // volunteer → general only
+      // paid      → general AND specialist
+      final requestType = (record['interpreter_type'] as String?) ?? 'general';
+      if (_employmentType != 'paid' && requestType != 'general') {
+        log(
+          'IncomingCallService: Request type "$requestType" '
+          'not allowed for volunteer interpreter',
         );
         return;
       }

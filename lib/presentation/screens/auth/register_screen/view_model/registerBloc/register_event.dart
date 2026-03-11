@@ -46,6 +46,14 @@ class RegisterSubmitted extends RegisterEvent {
   // Profile picture
   final Uint8List? profileImageBytes;
   final String? profileImageName;
+  // Government ID
+  final Uint8List? governmentIdBytes;
+  final String? governmentIdFileName;
+  final String? governmentIdType;
+  // Phone number
+  final String? phoneNumber;
+  // Web: voice prompt verification recordings [{prompt_id, prompt_text, bytes: Uint8List, duration}]
+  final List<Map<String, dynamic>>? voicePromptRecordings;
 
   RegisterSubmitted({
     required this.email,
@@ -60,6 +68,10 @@ class RegisterSubmitted extends RegisterEvent {
     required this.role,
     this.profileImageBytes,
     this.profileImageName,
+    this.governmentIdBytes,
+    this.governmentIdFileName,
+    this.governmentIdType,
+    this.phoneNumber,
     this.voiceSampleUrl,
     this.voicePrompt,
     this.certificateUrl,
@@ -82,6 +94,7 @@ class RegisterSubmitted extends RegisterEvent {
     this.shiftAvailability,
     this.isOnlineNow,
     this.employmentType,
+    this.voicePromptRecordings,
   });
 
   @override
@@ -120,6 +133,11 @@ class RegisterSubmitted extends RegisterEvent {
     employmentType,
     profileImageBytes,
     profileImageName,
+    governmentIdBytes,
+    governmentIdFileName,
+    governmentIdType,
+    phoneNumber,
+    voicePromptRecordings,
   ];
 }
 

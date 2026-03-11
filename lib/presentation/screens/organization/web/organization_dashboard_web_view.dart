@@ -941,10 +941,7 @@ class _OrganizationDashboardWebViewState
                 call['requester_profile'] as Map<String, dynamic>? ?? {};
             final durationSeconds = (call['duration_seconds'] ?? 0) as int;
             final cost = call['cost'] ?? 0;
-            final doctorName =
-                requester['username'] ??
-                '${requester['first_name'] ?? ''} ${requester['last_name'] ?? ''}'
-                    .trim();
+            final doctorName = requester['username'] as String? ?? '';
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: const BoxDecoration(

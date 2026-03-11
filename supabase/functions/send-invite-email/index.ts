@@ -184,12 +184,22 @@ function buildInviteEmailHtml({
               <!-- Instructions -->
               <div style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
                 <h3 style="margin: 0 0 15px; color: #333333; font-size: 16px; font-weight: 600;">How to Join:</h3>
+                
+                <p style="margin: 0 0 10px; color: #333333; font-size: 14px; font-weight: 600;">If you're new to InterBridge:</p>
+                <ol style="margin: 0 0 20px; padding-left: 20px; color: #555555; font-size: 14px; line-height: 1.8;">
+                  <li>Download the InterBridge app from the App Store or Google Play</li>
+                  <li>Open the app and tap <strong>Create Account</strong></li>
+                  <li>On the role selection screen, choose <strong>Join Organization</strong></li>
+                  <li>Enter the invite code shown above</li>
+                  <li>Complete your registration and you're all set!</li>
+                </ol>
+                
+                <p style="margin: 0 0 10px; color: #333333; font-size: 14px; font-weight: 600;">If you already have an InterBridge account:</p>
                 <ol style="margin: 0; padding-left: 20px; color: #555555; font-size: 14px; line-height: 1.8;">
-                  <li>Download the InterBridge app if you haven't already</li>
-                  <li>Sign in or create an account</li>
-                  <li>Go to Settings → Join Organization</li>
-                  <li>Enter the invite code above</li>
-                  <li>Start requesting interpretation services!</li>
+                  <li>Open the InterBridge app and sign in</li>
+                  <li>Go to <strong>Settings</strong> → <strong>Join Organization</strong></li>
+                  <li>Enter the invite code shown above</li>
+                  <li>Confirm and start requesting interpretation services!</li>
                 </ol>
               </div>
               

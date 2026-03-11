@@ -236,9 +236,7 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
     }
     args['voicePromptRecordings'] = promptRecordings;
 
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+    Navigator.of(context).pushNamed(Routes.phoneOtpRoute, arguments: args);
   }
 
   String _formatDuration(int seconds) {
@@ -257,7 +255,7 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(8, 9),
+          _buildStepIndicator(6, 9),
           const SizedBox(height: 24),
 
           if (_loadingPrompts)

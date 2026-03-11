@@ -1,6 +1,7 @@
 /// Web audio helper — default (mobile) stub.
 ///
 /// On non-web platforms these are no-ops.
+library;
 
 /// Opaque handle for a web audio element. Null on non-web.
 class WebAudioHandle {

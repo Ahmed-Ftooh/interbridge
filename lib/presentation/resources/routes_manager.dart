@@ -39,7 +39,6 @@ import 'package:interbridge/presentation/screens/main/setting/change_password_vi
 import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/admin/screens/admin_dashboard_web.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
-import 'package:interbridge/presentation/screens/auth/register_screen/view/organization_register_view.dart';
 import 'package:interbridge/presentation/screens/organization/organization_dashboard_view.dart';
 import 'package:interbridge/presentation/screens/organization/bloc/organization_dashboard_bloc.dart';
 import 'package:interbridge/presentation/screens/organization/organization_registration_screen.dart';

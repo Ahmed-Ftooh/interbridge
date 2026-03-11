@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_event.dart';
 import 'login_state.dart';
 
@@ -51,6 +52,21 @@ class LoginBloc extends Bloc<LoginEvent, LoginState> {
               isSubmitting: false,
               isFailure: true,
               errorMessage: passwordError.message,
+            ),
+          );
+          return;
+        }
+
+        // Guard: make sure Supabase was initialized before attempting login
+        try {
+          Supabase.instance.client; // throws StateError if not initialized
+        } catch (_) {
+          emit(
+            state.copyWith(
+              isSubmitting: false,
+              isFailure: true,
+              errorMessage:
+                  'Service not ready. Please refresh the page and try again.',
             ),
           );
           return;

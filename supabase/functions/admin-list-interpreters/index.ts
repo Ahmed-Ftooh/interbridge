@@ -76,12 +76,12 @@ Deno.serve(async (req) => {
     if (filterStatus === "verified") {
       query = query.eq("interpreter_details.is_verified", true);
     } else if (filterStatus === "unverified") {
-      query = query.or("interpreter_details.is_verified.is.null,interpreter_details.is_verified.eq.false");
+      query = query.or("is_verified.is.null,is_verified.eq.false", { referencedTable: 'interpreter_details' });
     }
 
     // Apply account filter (active/suspended)
     if (filterAccount === "active") {
-      query = query.or("interpreter_details.is_suspended.is.null,interpreter_details.is_suspended.eq.false");
+      query = query.or("is_suspended.is.null,is_suspended.eq.false", { referencedTable: 'interpreter_details' });
     } else if (filterAccount === "suspended") {
       query = query.eq("interpreter_details.is_suspended", true);
     }

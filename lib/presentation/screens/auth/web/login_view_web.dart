@@ -53,6 +53,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   final _passwordFocus = FocusNode();
   StreamSubscription<AuthState>? _authSub;
   bool _isNavigating = false;
+  bool _isFinalizing = false;
 
   @override
   void initState() {
@@ -69,8 +70,12 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       AppInitializer.markInitialAuthHandled();
       // Finalize pending registration BEFORE navigating so the profile,
       // certificates, and voice samples are persisted first.
-      await PendingRegistrationService().finalizePendingRegistration();
+      if (mounted) setState(() => _isFinalizing = true);
+      try {
+        await PendingRegistrationService().finalizePendingRegistration();
+      } catch (_) {}
       if (!mounted) return;
+      setState(() => _isFinalizing = false);
       await _navigateBasedOnRole(user.id);
       return;
     }
@@ -85,8 +90,12 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           if (_isNavigating) return;
           _isNavigating = true;
           AppInitializer.markInitialAuthHandled();
-          await PendingRegistrationService().finalizePendingRegistration();
+          if (mounted) setState(() => _isFinalizing = true);
+          try {
+            await PendingRegistrationService().finalizePendingRegistration();
+          } catch (_) {}
           if (!mounted) return;
+          setState(() => _isFinalizing = false);
           _navigateBasedOnRole(event.session!.user.id);
         }
       });
@@ -260,6 +269,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                 _isNavigating = false;
                 return;
               }
+              setState(() => _isFinalizing = true);
               try {
                 await PendingRegistrationService()
                     .finalizePendingRegistration();
@@ -282,6 +292,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
               } catch (e) {
                 log('Error during post-login navigation: $e');
                 _isNavigating = false;
+                if (mounted) setState(() => _isFinalizing = false);
                 if (mounted) {
                   // Fallback: try to navigate to main route
                   final userId = _supabaseService.getCurrentUser()?.id;
@@ -416,7 +427,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed:
-                          state.isSubmitting
+                          state.isSubmitting || _isFinalizing
                               ? null
                               : () => bloc.add(LoginSubmitted()),
                       style: ElevatedButton.styleFrom(
@@ -431,7 +442,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                         ).withValues(alpha: 0.5),
                       ),
                       child:
-                          state.isSubmitting
+                          state.isSubmitting || _isFinalizing
                               ? const SizedBox(
                                 width: 22,
                                 height: 22,
@@ -451,6 +462,14 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                               ),
                     ),
                   ),
+                  if (_isFinalizing) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Setting up your account, please wait...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    ),
+                  ],
                   const SizedBox(height: 28),
 
                   // Divider
@@ -481,7 +500,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                       onPressed:
                           () => Navigator.of(
                             context,
-                          ).pushNamed(Routes.phoneOtpRoute),
+                          ).pushNamed(Routes.interpreterTrackSelection),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF0F172A),
                         side: const BorderSide(color: Color(0xFFE2E8F0)),

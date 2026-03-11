@@ -1,7 +1,6 @@
 import 'dart:developer';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart' as callkit;
-import 'package:interbridge/data/services/onesignal_service.dart';
 
 /// Mobile-specific CallKit listener initialization
 void initializeCallKitListeners({

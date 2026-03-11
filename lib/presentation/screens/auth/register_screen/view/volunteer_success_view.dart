@@ -53,7 +53,7 @@ class VolunteerSuccessScreen extends StatelessWidget {
 
               // Title
               Text(
-                'Welcome, Volunteer!',
+                'Welcome, interpreter!',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: ColorManager.textPrimary,
@@ -64,7 +64,7 @@ class VolunteerSuccessScreen extends StatelessWidget {
 
               // Description
               Text(
-                'Thank you for joining Interbridge as a volunteer interpreter. Your contribution helps bridge communication gaps for those in need.',
+                'Thank you for joining Interbridge as an interpreter. Your contribution helps bridge communication gaps for those in need.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: ColorManager.textSecondary,
                   height: 1.5,

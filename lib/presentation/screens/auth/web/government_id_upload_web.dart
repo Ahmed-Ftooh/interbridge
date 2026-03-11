@@ -20,7 +20,7 @@ class _GovernmentIdUploadWebScreenState
   Uint8List? _idBytes;
   String? _fileName;
   String _selectedIdType = 'national_id';
-  bool _isUploading = false;
+  final bool _isUploading = false;
 
   static const _idTypes = [
     ('national_id', 'National ID'),
@@ -73,25 +73,14 @@ class _GovernmentIdUploadWebScreenState
     if (_idBytes == null) return;
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-            {};
+        {};
     args['governmentIdBytes'] = _idBytes;
     args['governmentIdFileName'] = _fileName;
     args['governmentIdType'] = _selectedIdType;
 
-    Navigator.of(context).pushNamed(
-      Routes.interpreterTrackSelection,
-      arguments: args,
-    );
-  }
-
-  void _skip() {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-            {};
-    Navigator.of(context).pushNamed(
-      Routes.interpreterTrackSelection,
-      arguments: args,
-    );
+    Navigator.of(
+      context,
+    ).pushNamed(Routes.certificateUploadRoute, arguments: args);
   }
 
   @override
@@ -103,7 +92,7 @@ class _GovernmentIdUploadWebScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(2, 9),
+          _buildStepIndicator(8, 9),
           const SizedBox(height: 28),
 
           // ID Type selector
@@ -126,17 +115,18 @@ class _GovernmentIdUploadWebScreenState
               child: DropdownButton<String>(
                 value: _selectedIdType,
                 isExpanded: true,
-                icon: const Icon(Icons.keyboard_arrow_down,
-                    color: Color(0xFF64748B)),
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF0F172A),
+                icon: const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Color(0xFF64748B),
                 ),
-                items: _idTypes
-                    .map(
-                      (t) => DropdownMenuItem(value: t.$1, child: Text(t.$2)),
-                    )
-                    .toList(),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                items:
+                    _idTypes
+                        .map(
+                          (t) =>
+                              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                        )
+                        .toList(),
                 onChanged: (v) {
                   if (v != null) setState(() => _selectedIdType = v);
                 },
@@ -167,7 +157,11 @@ class _GovernmentIdUploadWebScreenState
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.info_outline, size: 16, color: Color(0xFF3B82F6)),
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Color(0xFF3B82F6),
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'Photo guidelines',
@@ -191,14 +185,20 @@ class _GovernmentIdUploadWebScreenState
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('  •  ',
-                            style: TextStyle(
-                                color: Color(0xFF3B82F6), fontSize: 12)),
+                        const Text(
+                          '  •  ',
+                          style: TextStyle(
+                            color: Color(0xFF3B82F6),
+                            fontSize: 12,
+                          ),
+                        ),
                         Expanded(
                           child: Text(
                             g,
                             style: const TextStyle(
-                                fontSize: 12, color: Color(0xFF374151)),
+                              fontSize: 12,
+                              color: Color(0xFF374151),
+                            ),
                           ),
                         ),
                       ],
@@ -225,41 +225,35 @@ class _GovernmentIdUploadWebScreenState
                 disabledBackgroundColor: const Color(0xFFE2E8F0),
                 disabledForegroundColor: const Color(0xFF94A3B8),
               ),
-              child: _isUploading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
+              child:
+                  _isUploading
+                      ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                      : const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    )
-                  : const Text(
-                      'Continue',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
             ),
           ),
           const SizedBox(height: 12),
 
-          // Skip
-          Center(
-            child: TextButton(
-              onPressed: _skip,
-              child: const Text(
-                'Skip for now',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
           Center(
             child: TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              style:
-                  TextButton.styleFrom(foregroundColor: const Color(0xFF64748B)),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF64748B),
+              ),
               child: const Text('Back'),
             ),
           ),
@@ -286,8 +280,11 @@ class _GovernmentIdUploadWebScreenState
           child: const Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.cloud_upload_outlined,
-                  size: 40, color: Color(0xFF94A3B8)),
+              Icon(
+                Icons.cloud_upload_outlined,
+                size: 40,
+                color: Color(0xFF94A3B8),
+              ),
               SizedBox(height: 12),
               Text(
                 'Click to upload your ID',
@@ -321,8 +318,7 @@ class _GovernmentIdUploadWebScreenState
       child: Column(
         children: [
           ClipRRect(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(11)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
               child: Image.memory(
@@ -333,15 +329,17 @@ class _GovernmentIdUploadWebScreenState
             ),
           ),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
             ),
             child: Row(
               children: [
-                const Icon(Icons.check_circle,
-                    color: Color(0xFF22C55E), size: 18),
+                const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF22C55E),
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -356,8 +354,11 @@ class _GovernmentIdUploadWebScreenState
                 ),
                 IconButton(
                   onPressed: _removeFile,
-                  icon: const Icon(Icons.delete_outline,
-                      color: Color(0xFFEF4444), size: 20),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Color(0xFFEF4444),
+                    size: 20,
+                  ),
                   tooltip: 'Remove and re-upload',
                   splashRadius: 18,
                 ),
@@ -379,9 +380,10 @@ class _GovernmentIdUploadWebScreenState
             margin: EdgeInsets.only(right: i < total - 1 ? 6 : 0),
             height: 4,
             decoration: BoxDecoration(
-              color: isCurrent
-                  ? const Color(0xFF3B82F6)
-                  : isActive
+              color:
+                  isCurrent
+                      ? const Color(0xFF3B82F6)
+                      : isActive
                       ? const Color(0xFF3B82F6).withValues(alpha: 0.4)
                       : const Color(0xFFE2E8F0),
               borderRadius: BorderRadius.circular(2),

@@ -689,7 +689,7 @@ class OrganizationDashboardBloc
       if (requesterIds.isNotEmpty) {
         final profiles = await _supabaseService.client
             .from('users_profile')
-            .select('user_id, username, first_name, last_name')
+            .select('user_id, username')
             .inFilter('user_id', requesterIds);
 
         final profileMap = {

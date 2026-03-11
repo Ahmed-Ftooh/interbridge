@@ -80,6 +80,18 @@ Deno.serve(async (req) => {
       .eq("user_id", id)
       .order("taken_at", { ascending: false });
 
+    // Deduplicate quiz attempts: keep only the latest attempt per quiz_type + medical_section
+    const quizData = quizAttempts.data ?? [];
+    const quizMap = new Map<string, any>();
+    for (const qa of quizData) {
+      const key = `${qa.quiz_type ?? ""}::${qa.medical_section ?? ""}`;
+      if (!quizMap.has(key)) {
+        quizMap.set(key, qa);
+      }
+      // already sorted desc by taken_at, so first occurrence is the latest
+    }
+    const dedupedQuizAttempts = Array.from(quizMap.values());
+
     // Get government IDs
     const governmentIds = await svc
       .from("government_ids")
@@ -101,45 +113,46 @@ Deno.serve(async (req) => {
       .eq("user_id", id)
       .order("earned_at", { ascending: false });
 
-    // Fetch voice samples from storage bucket (not a table)
-    // Voice samples are stored in bucket "voice_samples" at path: voice_samples/{user_id}/filename.m4a
-    // The bucket is PRIVATE so we need signed URLs
+    // Fetch voice samples from DB table (metadata + URLs stored on upload)
+    const voiceSamplesQuery = await svc
+      .from("voice_samples")
+      .select("id, url, prompt, sentence_type, file_size, created_at, is_verified")
+      .eq("user_id", id)
+      .order("created_at", { ascending: false });
+
+    // Generate fresh signed URLs for each voice sample
     let voiceSamplesList: any[] = [];
     try {
-      const folderPath = `voice_samples/${id}`;
-      const { data: files, error: listError } = await svc.storage
-        .from("voice_samples")
-        .list(folderPath, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-      
-      console.log("Listing path:", folderPath, "Result:", files?.length ?? 0, "files, error:", listError?.message);
-      
-      if (!listError && files && files.length > 0) {
-        // Filter out .emptyFolderPlaceholder and create signed URLs
-        const validFiles = files.filter((f: any) => f.name && !f.name.startsWith('.'));
-        
-        // Create signed URLs for each file (valid for 1 hour)
-        voiceSamplesList = await Promise.all(
-          validFiles.map(async (f: any) => {
-            const fullPath = `${folderPath}/${f.name}`;
-            const { data: signedData, error: signError } = await svc.storage
-              .from("voice_samples")
-              .createSignedUrl(fullPath, 3600); // 1 hour expiry
-            
-            return {
-              id: f.id,
-              name: f.name,
-              url: signError ? null : signedData?.signedUrl,
-              created_at: f.created_at,
-            };
-          })
-        );
-        
-        // Filter out any that failed to get signed URL
-        voiceSamplesList = voiceSamplesList.filter((v: any) => v.url);
-      }
-      console.log("Voice samples from storage:", voiceSamplesList.length, "files with signed URLs");
+      const rows = voiceSamplesQuery.data ?? [];
+      voiceSamplesList = await Promise.all(
+        rows.map(async (row: any) => {
+          let signedUrl: string | null = null;
+          if (row.url) {
+            // Extract bucket and path from the stored URL
+            // Format: .../object/sign/voice_samples/voice_samples/{user_id}/file?token=...
+            // or .../object/public/voice_samples/voice_samples/{user_id}/file
+            const pathMatch = row.url.match(/\/(?:object\/(?:sign|public)\/)?(voice_samples)\/(voice_samples\/.+?)(?:\?|$)/);
+            if (pathMatch) {
+              const bucket = pathMatch[1];
+              const objectPath = pathMatch[2];
+              const { data: sd } = await svc.storage.from(bucket).createSignedUrl(objectPath, 3600);
+              signedUrl = sd?.signedUrl ?? null;
+            }
+          }
+          return {
+            id: row.id,
+            prompt: row.prompt,
+            sentence_type: row.sentence_type,
+            file_size: row.file_size,
+            url: signedUrl,
+            created_at: row.created_at,
+            is_verified: row.is_verified,
+          };
+        })
+      );
+      voiceSamplesList = voiceSamplesList.filter((v: any) => v.url);
     } catch (e) {
-      console.error("Error listing voice samples:", e);
+      console.error("Error processing voice samples:", e);
     }
 
     // Attempt to re-sign certificate URLs if expired (parse bucket + path from stored url if possible)
@@ -156,7 +169,7 @@ Deno.serve(async (req) => {
       specializations: specs.data ?? [],
       certificates,
       voiceSamples: voiceSamplesList,
-      quizAttempts: quizAttempts.data ?? [],
+      quizAttempts: dedupedQuizAttempts,
       badges: badges.data ?? [],
       governmentIds: governmentIds.data ?? [],
       phoneVerification: phoneVerification.data ?? null,

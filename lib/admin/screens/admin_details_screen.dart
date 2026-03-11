@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:interbridge/admin/services/admin_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:interbridge/admin/widgets/admin_stats_card.dart';
 import 'package:interbridge/admin/widgets/certificate_tile.dart';
 import 'package:interbridge/admin/widgets/verification_section.dart';
@@ -90,6 +91,8 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
         final voiceSamples = (data['voiceSamples'] ?? []) as List;
         final quizAttempts = (data['quizAttempts'] ?? []) as List;
         final badges = (data['badges'] ?? []) as List;
+        final governmentIds = (data['governmentIds'] ?? []) as List;
+        final phoneVerification = data['phoneVerification'] as Map?;
 
         // Debug: Print voice samples data
         debugPrint('Voice Samples received: ${voiceSamples.length} items');
@@ -373,6 +376,122 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                       padding: EdgeInsets.all(16.0),
                       child: Text(
                         'No certificates uploaded',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Phone Verification Section
+                  _buildSectionTitle(context, 'Phone Verification'),
+                  if (phoneVerification != null)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Icon(
+                              phoneVerification['verified'] == true
+                                  ? Icons.verified
+                                  : Icons.phone_android,
+                              color:
+                                  phoneVerification['verified'] == true
+                                      ? Colors.green
+                                      : Colors.orange,
+                              size: 32,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    phoneVerification['phone_number']
+                                            ?.toString() ??
+                                        'N/A',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  if (phoneVerification['verified'] == true &&
+                                      phoneVerification['verified_at'] != null)
+                                    Text(
+                                      'Verified on ${phoneVerification['verified_at'].toString().split('T')[0]}',
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    phoneVerification['verified'] == true
+                                        ? Colors.green.shade100
+                                        : Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      phoneVerification['verified'] == true
+                                          ? Colors.green
+                                          : Colors.orange,
+                                ),
+                              ),
+                              child: Text(
+                                phoneVerification['verified'] == true
+                                    ? 'VERIFIED'
+                                    : 'UNVERIFIED',
+                                style: TextStyle(
+                                  color:
+                                      phoneVerification['verified'] == true
+                                          ? Colors.green.shade800
+                                          : Colors.orange.shade800,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No phone verification data',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+
+                  // Government IDs Section
+                  _buildSectionTitle(
+                    context,
+                    'Government IDs (${governmentIds.length})',
+                  ),
+                  if (governmentIds.isNotEmpty)
+                    ...governmentIds.map(
+                      (g) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: _GovernmentIdTile(
+                          govId: g as Map,
+                          service: _service,
+                          onChanged: _load,
+                        ),
+                      ),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'No government IDs uploaded',
                         style: TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -1041,6 +1160,183 @@ class _VoiceSampleTileState extends State<_VoiceSampleTile> {
           style: TextStyle(color: Colors.grey[600], fontSize: 12),
         ),
         trailing: Icon(Icons.mic, color: Colors.blue.shade300),
+      ),
+    );
+  }
+}
+
+class _GovernmentIdTile extends StatefulWidget {
+  final Map govId;
+  final AdminService service;
+  final VoidCallback onChanged;
+
+  const _GovernmentIdTile({
+    required this.govId,
+    required this.service,
+    required this.onChanged,
+  });
+
+  @override
+  State<_GovernmentIdTile> createState() => _GovernmentIdTileState();
+}
+
+class _GovernmentIdTileState extends State<_GovernmentIdTile> {
+  bool _busy = false;
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return Colors.green;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Future<void> _view() async {
+    final url = widget.govId['file_url']?.toString();
+    if (url == null || url.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No file URL available')));
+      }
+      return;
+    }
+    final uri = Uri.parse(url);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _updateStatus(String status) async {
+    final id = widget.govId['id']?.toString();
+    if (id == null) return;
+    setState(() => _busy = true);
+    try {
+      await widget.service.updateGovernmentIdStatus(id, status: status);
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = (widget.govId['status'] ?? 'pending').toString();
+    final fileName = (widget.govId['file_name'] ?? '').toString();
+    final uploadedAt =
+        widget.govId['uploaded_at']?.toString().split('T')[0] ?? '';
+    final reviewerNotes = widget.govId['reviewer_notes']?.toString() ?? '';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.badge, size: 20, color: Colors.blueGrey),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    fileName.isEmpty ? 'Government ID' : fileName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _statusColor(status).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _statusColor(status)),
+                  ),
+                  child: Text(
+                    status.toUpperCase(),
+                    style: TextStyle(
+                      color: _statusColor(status),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (uploadedAt.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Uploaded: $uploadedAt',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ),
+            if (reviewerNotes.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Notes: $reviewerNotes',
+                  style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _busy ? null : _view,
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('View'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (status != 'approved')
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => _updateStatus('approved'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.green,
+                      side: const BorderSide(color: Colors.green),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    child: const Text('Approve'),
+                  ),
+                const SizedBox(width: 8),
+                if (status != 'rejected')
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => _updateStatus('rejected'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    child: const Text('Reject'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

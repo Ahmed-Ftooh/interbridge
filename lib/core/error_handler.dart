@@ -77,6 +77,17 @@ class ErrorHandler {
       return _handlePostgrestException(error);
     }
 
+    // StateError — e.g. "Supabase has not been initialized"
+    if (error is StateError) {
+      return AppError(
+        message: 'Service not ready. Please refresh the page.',
+        type: ErrorType.unknown,
+        technicalDetails: error.toString(),
+        userAction: 'Refresh the page and try again.',
+        isRetryable: true,
+      );
+    }
+
     // Permission errors are typically handled through string detection
 
     // Handle string-based error detection
@@ -85,12 +96,26 @@ class ErrorHandler {
     if (errorString.contains('network') ||
         errorString.contains('connection') ||
         errorString.contains('unreachable') ||
-        errorString.contains('no internet')) {
+        errorString.contains('no internet') ||
+        errorString.contains('xmlhttprequest') ||
+        errorString.contains('failed to fetch') ||
+        errorString.contains('fetch error')) {
       return AppError(
         message: 'Network connection error',
         type: ErrorType.network,
         technicalDetails: error.toString(),
         userAction: 'Please check your internet connection and try again.',
+        isRetryable: true,
+      );
+    }
+
+    if (errorString.contains('not initialized') ||
+        errorString.contains('bad state')) {
+      return AppError(
+        message: 'Service not ready. Please refresh the page.',
+        type: ErrorType.unknown,
+        technicalDetails: error.toString(),
+        userAction: 'Refresh the page and try again.',
         isRetryable: true,
       );
     }

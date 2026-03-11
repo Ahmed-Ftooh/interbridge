@@ -1,7 +1,6 @@
 import 'dart:developer';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -90,6 +89,14 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   // Profile picture
   Uint8List? _profileImageBytes;
   String? _profileImageName;
+
+  // Government ID (from web onboarding flow)
+  Uint8List? _governmentIdBytes;
+  String? _governmentIdFileName;
+  String? _governmentIdType;
+
+  // Phone number (from web onboarding flow)
+  String? _phoneNumber;
 
   // Organization data
   late String? organizationName;
@@ -248,9 +255,17 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
     organizationPhone = widget.data['organizationPhone'] as String?;
     organizationAddress = widget.data['organizationAddress'] as String?;
 
+    // Government ID data (from web onboarding)
+    _governmentIdBytes = widget.data['governmentIdBytes'] as Uint8List?;
+    _governmentIdFileName = widget.data['governmentIdFileName'] as String?;
+    _governmentIdType = widget.data['governmentIdType'] as String?;
+
+    // Phone number (from web onboarding)
+    _phoneNumber = widget.data['phoneNumber'] as String?;
+
     // Doctor invite data (for doctors joining via invite code)
     inviteOrganizationId = widget.data['organization_id'] as String?;
-    inviteRole = widget.data['role'] as String? ?? 'doctor';
+    inviteRole = widget.data['organization_role'] as String? ?? 'doctor';
     inviteId = widget.data['invite_id'] as String?;
 
     // Pre-fill admin fields if coming from organization registration
@@ -762,6 +777,10 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     voiceSampleName: voiceSampleName,
                                     profileImageBytes: _profileImageBytes,
                                     profileImageName: _profileImageName,
+                                    governmentIdBytes: _governmentIdBytes,
+                                    governmentIdFileName: _governmentIdFileName,
+                                    governmentIdType: _governmentIdType,
+                                    phoneNumber: _phoneNumber,
                                     certificateBytes: certificateBytes,
                                     certificateName: certificateName,
                                     medicalCertificateBytes:

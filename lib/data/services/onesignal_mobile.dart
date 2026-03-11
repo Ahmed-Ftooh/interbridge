@@ -1,5 +1,6 @@
 /// Mobile-specific OneSignal implementation
 /// Exports mobile-only types and functions
+library;
 
 export 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 export 'package:flutter_local_notifications/flutter_local_notifications.dart';

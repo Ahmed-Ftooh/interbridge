@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,6 +13,8 @@ class FirebaseService {
   FirebaseService._();
 
   Future<void> initialize() async {
+    // Firebase is not configured for web in this project — skip entirely.
+    if (kIsWeb) return;
     // Initialize Firebase Core (still needed for other Firebase features if any)
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Service to monitor network connectivity and provide network status
 class NetworkService {
@@ -52,10 +53,13 @@ class NetworkService {
 
   /// Check network connectivity by attempting to reach a reliable server
   Future<bool> _checkConnectivity() async {
+    // InternetAddress.lookup is not supported on web — assume connected.
+    // The browser itself manages actual network connectivity.
+    if (kIsWeb) return true;
     try {
       final result = await InternetAddress.lookup(
         'google.com',
-      ).timeout(const Duration(seconds: 2)); // Reduced from 5 to 2 seconds
+      ).timeout(const Duration(seconds: 2));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (e) {
       log('Connectivity check failed: $e');

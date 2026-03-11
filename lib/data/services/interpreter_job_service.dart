@@ -1,5 +1,4 @@
 import 'dart:developer';
-import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 
@@ -29,12 +28,6 @@ class InterpreterJobService {
         log('No languages found for interpreter');
         return [];
       }
-      // final interpreterSpecialization= await _client
-      //     .from('interpreter_specializations')
-      //     .select('''
-      //       specialization_id,
-      //     ''')
-      //     .eq('user_id', user.id);
 
       final languageIds =
           interpreterData
@@ -42,6 +35,37 @@ class InterpreterJobService {
               .toList();
 
       log('Interpreter languages: $languageIds');
+
+      // Fetch this interpreter's employment type so we only show matching
+      // request types: volunteer → general requests, paid → specialist requests.
+      // employment_type is stored in users_profile, NOT interpreter_details.
+      String employmentType = 'volunteer'; // safe default
+      try {
+        final detailsRow =
+            await _client
+                .from('users_profile')
+                .select('employment_type')
+                .eq('user_id', user.id)
+                .maybeSingle();
+        if (detailsRow != null) {
+          employmentType =
+              (detailsRow['employment_type'] as String?) ?? 'volunteer';
+        }
+      } catch (e) {
+        log(
+          'Could not fetch interpreter employment_type (defaulting to volunteer): $e',
+        );
+      }
+
+      // Map employment type → allowed interpreter_type values in requests:
+      // volunteer → 'general' only
+      // paid      → 'general' AND 'specialist'
+      final requestTypeFilter =
+          employmentType == 'paid' ? 'specialist' : 'general';
+      log(
+        'Interpreter employment_type=$employmentType → showing '
+        '${employmentType == 'paid' ? '"general" + "specialist"' : '"general"'} requests only',
+      );
 
       // Fetch declined job ids for this specific interpreter
       Set<String> declinedJobIds = {};
@@ -61,8 +85,11 @@ class InterpreterJobService {
         // Continue without filtering - table will be created on first decline
       }
 
-      // Fetch all pending jobs that match interpreter's languages
-      final response = await _client
+      // Fetch pending jobs that match interpreter's languages AND type
+      // An interpreter must know BOTH languages (from and to) to handle
+      // a request, so filter on both columns.
+      // Paid interpreters can take any type; volunteers only take general.
+      var query = _client
           .from('interpreter_requests')
           .select('''
             *,
@@ -71,7 +98,14 @@ class InterpreterJobService {
             specialization
           ''')
           .eq('status', 'pending')
-          .inFilter('to_language', languageIds)
+          .inFilter('from_language', languageIds)
+          .inFilter('to_language', languageIds);
+
+      if (employmentType != 'paid') {
+        query = query.eq('interpreter_type', requestTypeFilter);
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
           .limit(50);
 

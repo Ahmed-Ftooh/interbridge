@@ -7,6 +7,7 @@ import 'package:interbridge/data/services/call_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'package:interbridge/core/web_media.dart';
 import 'package:interbridge/presentation/services/call_state_manager.dart';
 
 /// ===== Events =====
@@ -180,7 +181,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _videoEnabled = e.isVideoCall; // Start with video on for video calls
       _webPostJoinDone = false; // Reset for new call
 
-      // 1) Request microphone permission (skip on web — browser handles via getUserMedia)
+      // 1) Request microphone/camera permission
       if (!kIsWeb) {
         log('Requesting microphone permission...');
         var mic = await Permission.microphone.status;
@@ -233,9 +234,30 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           log('Camera permission granted');
         }
       } else {
-        log(
-          'Web platform: browser will handle media permissions via getUserMedia',
-        );
+        // On web, explicitly trigger getUserMedia so the browser prompts for
+        // BOTH mic and camera (if video call). This avoids cases where only
+        // the mic prompt appears and the camera track never initializes.
+        try {
+          await requestWebMediaPermissions(
+            video: e.isVideoCall,
+            keepAlive: const Duration(seconds: 3),
+          );
+          log('Web: media permissions granted');
+        } catch (err) {
+          log('Web: media permission request failed: $err');
+          emit(
+            CallError(
+              AppError(
+                message: 'Camera/microphone permission required',
+                type: ErrorType.permission,
+                userAction:
+                    'Please allow camera and microphone access in the browser.',
+                isRetryable: false,
+              ),
+            ),
+          );
+          return;
+        }
       }
 
       emit(CallConnecting(e.channelId));
@@ -541,45 +563,41 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           'channel=${e.channelId}, isVideo=${e.isVideoCall}',
         );
 
-        try {
-          engine
-              .joinChannel(
-                token: token,
-                channelId: e.channelId,
-                uid: e.localUid,
-                options: ChannelMediaOptions(
-                  clientRoleType: ClientRoleType.clientRoleBroadcaster,
-                  publishCameraTrack: e.isVideoCall,
-                  publishMicrophoneTrack: true,
-                  autoSubscribeVideo: e.isVideoCall,
-                  autoSubscribeAudio: true,
-                ),
-              )
-              .then((_) {
-                log('Web: joinChannel Future completed successfully');
-              })
-              .catchError((err) {
-                log('Web: joinChannel async error: $err');
-                // Dispatch error event so the UI can react instead of
-                // staying stuck on "Connecting..." forever.
-                add(_AgoraError('Failed to join call: $err'));
-              });
-          log('Web: joinChannel dispatched (fire-and-forget)');
-        } catch (syncErr) {
-          // Catch synchronous errors from the JS interop bridge
-          log('Web: joinChannel SYNC error: $syncErr');
-          emit(
-            CallError(
-              AppError(
-                message: 'Failed to join call: $syncErr',
-                type: ErrorType.unknown,
-                userAction: 'Please try again.',
-                isRetryable: true,
-              ),
-            ),
-          );
-          return;
-        }
+        // runZonedGuarded absorbs any zone-level errors that Agora's Iris
+        // Web SDK raises internally (WebRTC / getUserMedia exceptions that
+        // bubble out of the JS interop bridge).  Without this the VS Code
+        // FlutterWeb debugger pauses on those caught-but-re-thrown errors.
+        runZonedGuarded(
+          () {
+            engine
+                .joinChannel(
+                  token: token,
+                  channelId: e.channelId,
+                  uid: e.localUid,
+                  options: ChannelMediaOptions(
+                    clientRoleType: ClientRoleType.clientRoleBroadcaster,
+                    publishCameraTrack: e.isVideoCall,
+                    publishMicrophoneTrack: true,
+                    autoSubscribeVideo: e.isVideoCall,
+                    autoSubscribeAudio: true,
+                  ),
+                )
+                .then((_) {
+                  log('Web: joinChannel Future completed successfully');
+                })
+                .catchError((err) {
+                  log('Web: joinChannel async error: $err');
+                  // Dispatch error event so the UI can react instead of
+                  // staying stuck on "Connecting..." forever.
+                  add(_AgoraError('Failed to join call: $err'));
+                });
+            log('Web: joinChannel dispatched (fire-and-forget)');
+          },
+          (err, stack) {
+            // Zone-level catch — non-fatal internal Agora/WebRTC errors.
+            log('Web: joinChannel zone error (non-fatal, ignored): $err');
+          },
+        );
       } else {
         await _engine!
             .joinChannel(
@@ -655,10 +673,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           await _engine?.stopPreview();
           await _engine?.disableVideo();
         } else {
-          // On web these APIs can hang; fire-and-forget
-          _engine?.stopPreview().catchError((err) {
-            log('Web: stopPreview error (ignored): $err');
-          });
+          // On web, skip stopPreview — we never called startPreview.
+          // The browser manages the camera track via WebRTC.
           _engine?.disableVideo().catchError((err) {
             log('Web: disableVideo error (ignored): $err');
           });
@@ -748,22 +764,29 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     _videoEnabled = !_videoEnabled;
     try {
+      // On web, when re-enabling video, explicitly recreate the camera
+      // track via enableLocalVideo(true) BEFORE emitting the new state.
+      // muteLocalVideoStream only controls publishing to remote peers;
+      // enableLocalVideo is what makes the camera track bindable for
+      // local preview (setupLocalVideo / AgoraVideoView on the UI side).
+      if (kIsWeb && _videoEnabled) {
+        await _engine?.enableLocalVideo(true).catchError((err) {
+          log('Web: enableLocalVideo on re-enable (ignored): $err');
+        });
+      }
       await _engine?.muteLocalVideoStream(!_videoEnabled);
-      // On web, skip startPreview/stopPreview — the browser manages
-      // the camera track through the WebRTC connection. Calling these
-      // on web can conflict with the active track and kill the camera.
-      if (!kIsWeb) {
-        try {
-          if (_videoEnabled) {
-            await _engine?.startPreview();
-          } else {
-            await _engine?.stopPreview();
-          }
-        } catch (previewErr) {
-          log(
-            'Warning: preview toggle not supported on this platform: $previewErr',
-          );
+      // startPreview / stopPreview: renders the camera track into the
+      // local HTML element (web) or SurfaceView (mobile).
+      try {
+        if (_videoEnabled) {
+          await _engine?.startPreview();
+        } else {
+          await _engine?.stopPreview();
         }
+      } catch (previewErr) {
+        log(
+          'Warning: preview toggle not supported on this platform: $previewErr',
+        );
       }
     } catch (err) {
       log('Warning: Could not toggle video: $err');
@@ -824,10 +847,14 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   }
 
   void _onRemoteUserLeft(_RemoteUserLeft e, Emitter<CallState> emit) {
+    // Only auto-end the call if the departing user was actually tracked
+    // (i.e. had previously joined). Spurious onUserOffline events for UIDs
+    // that never joined (e.g. fired before onUserJoined after the 5-second
+    // fallback) must not terminate the call.
+    final wasTracked = _remoteUids.contains(e.uid);
     _remoteUids.remove(e.uid);
 
-    // If no more remote users, the other side has ended the call - end for us too
-    if (_remoteUids.isEmpty && state is CallOngoing) {
+    if (wasTracked && _remoteUids.isEmpty && state is CallOngoing) {
       log('Remote user left and no more participants - ending call');
       add(EndCall(isRemote: true));
       return;
@@ -844,13 +871,15 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
-  void _onFallbackToOngoing(_FallbackToOngoing e, Emitter<CallState> emit) {
+  Future<void> _onFallbackToOngoing(
+    _FallbackToOngoing e,
+    Emitter<CallState> emit,
+  ) async {
     log('Fallback handler: Transitioning to CallOngoing state');
 
-    // On web, if the join-success callback didn't fire but we're still
-    // in the channel, run the post-join setup so video/audio work.
+    // Same as _onJoinChannelSuccess: await camera setup before showing UI.
     if (kIsWeb && _engine != null) {
-      _webPostJoinSetup();
+      await _webPostJoinSetup();
     }
 
     emit(
@@ -871,16 +900,20 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     );
   }
 
-  void _onJoinChannelSuccess(_JoinChannelSuccess e, Emitter<CallState> emit) {
+  Future<void> _onJoinChannelSuccess(
+    _JoinChannelSuccess e,
+    Emitter<CallState> emit,
+  ) async {
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
     _timer?.cancel();
 
-    // ===== WEB: Initialise audio/video NOW (after browser permission) =====
-    // On web, ALL SDK calls that touch camera/mic are deferred to here.
-    // joinChannel with publishCameraTrack/Mic triggered getUserMedia
-    // and the browser has now granted permission, so these will succeed.
+    // ===== WEB: Initialise audio/video and WAIT before showing UI =====
+    // Awaiting here ensures the camera track exists before emit(CallOngoing)
+    // so AgoraVideoView(uid:0) finds a live track in setupLocalVideo → no
+    // black screen. Without the await the track is created after the view
+    // mounts, making the preview black until the user toggles camera.
     if (kIsWeb && _engine != null) {
-      _webPostJoinSetup();
+      await _webPostJoinSetup();
     }
 
     emit(
@@ -899,11 +932,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     log('CallOngoing state emitted successfully');
   }
 
-  /// Web-only: called from _onJoinChannelSuccess after browser granted
-  /// camera/mic permission.  Every SDK call is fire-and-forget with
-  /// .catchError() so errors stay in the Future chain and NEVER throw
-  /// — neither in user code nor in the VS Code debugger.
-  void _webPostJoinSetup() {
+  /// Web-only: awaited by _onJoinChannelSuccess / _onFallbackToOngoing BEFORE
+  /// emitting CallOngoing.  By awaiting [enableLocalVideo] the camera track is
+  /// guaranteed to exist when AgoraVideoView(uid:0) mounts and calls
+  /// setupLocalVideo — that is the only way to avoid a black local preview.
+  Future<void> _webPostJoinSetup() async {
     if (_webPostJoinDone) {
       log('Web post-join: already done, skipping duplicate');
       return;
@@ -912,33 +945,37 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (engine == null) return;
     _webPostJoinDone = true;
 
-    // 1. enableVideo — sets the internal Iris SDK flag so
-    //    setupLocalVideo (from AgoraVideoView) actually renders.
-    engine.enableVideo().catchError((err) {
+    // 1. enableVideo — sets the internal Iris SDK flag.
+    await engine.enableVideo().catchError((err) {
       log('Web post-join: enableVideo error (ignored): $err');
     });
 
     // 2. enableAudio — initialises the audio module.
-    engine.enableAudio().catchError((err) {
+    await engine.enableAudio().catchError((err) {
       log('Web post-join: enableAudio error (ignored): $err');
     });
 
     if (_isVideoCall) {
-      // 3. enableLocalVideo — creates the camera track on the Iris
-      //    Web SDK.  Without this, only track-mic is published.
-      engine.enableLocalVideo(true).catchError((err) {
+      // 3. enableLocalVideo — creates the camera track in the Iris Web SDK.
+      //    MUST be awaited so the track exists before AgoraVideoView mounts.
+      await engine.enableLocalVideo(true).catchError((err) {
         log('Web post-join: enableLocalVideo error (ignored): $err');
       });
-
-      // 4. startPreview — binds the camera track to the local
-      //    <video> element inside AgoraVideoView.
-      engine.startPreview().catchError((err) {
+      // 4. muteLocalVideoStream(false) — signals Agora to bind the new track
+      //    to any HTML element that setupLocalVideo already registered.
+      await engine.muteLocalVideoStream(false).catchError((err) {
+        log('Web post-join: muteLocalVideoStream error (ignored): $err');
+      });
+      // 5. startPreview — tells the SDK to render the camera track into
+      //    the local HTML element. Without this the track is captured &
+      //    published to remote peers but NOT rendered in the local view.
+      await engine.startPreview().catchError((err) {
         log('Web post-join: startPreview error (ignored): $err');
       });
     }
 
-    // 5. updateChannelMediaOptions — re-affirm video/audio
-    //    subscription and camera publishing after the above calls.
+    // 6. updateChannelMediaOptions — re-affirm video/audio options.
+    //    Fire-and-forget; non-critical for immediate rendering.
     engine
         .updateChannelMediaOptions(
           ChannelMediaOptions(
@@ -953,7 +990,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           log('Web post-join: updateChannelMediaOptions error (ignored): $err');
         });
 
-    log('Web post-join: all SDK calls dispatched');
+    log('Web post-join: camera track ready — CallOngoing will now be emitted');
   }
 
   void _onAgoraError(_AgoraError e, Emitter<CallState> emit) {

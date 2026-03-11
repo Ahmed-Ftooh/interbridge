@@ -215,6 +215,9 @@ class ErrorHandlingHelper {
 /// Global error handler for uncaught exceptions
 class GlobalErrorHandler {
   static void initialize() {
+    // Keep a reference to the original handler so we can chain it.
+    final originalOnError = FlutterError.onError;
+
     // Handle Flutter framework errors
     FlutterError.onError = (FlutterErrorDetails details) {
       log('Flutter Error: ${details.exception}');
@@ -222,6 +225,9 @@ class GlobalErrorHandler {
         details.exception,
         context: 'FlutterFramework',
       );
+      // Always call the default handler so ErrorWidget displays and the
+      // first-frame signal is not suppressed by a silent error swallow.
+      (originalOnError ?? FlutterError.presentError)(details);
     };
 
     // Handle async errors

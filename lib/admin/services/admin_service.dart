@@ -89,6 +89,17 @@ class AdminService {
         .eq('user_id', userId);
   }
 
+  /// Send a verification-approved email to the interpreter.
+  Future<void> sendVerificationEmail({
+    required String to,
+    required String interpreterName,
+  }) async {
+    await _client.functions.invoke(
+      'send-verification-email',
+      body: {'to': to, 'interpreterName': interpreterName},
+    );
+  }
+
   Future<void> updateGovernmentIdStatus(
     String governmentIdId, {
     required String status,

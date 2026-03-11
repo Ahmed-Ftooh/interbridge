@@ -119,7 +119,22 @@ class _SplashViewState extends State<SplashView> {
     AppInitializer.markInitialAuthHandled();
 
     try {
-      await PendingRegistrationService().finalizePendingRegistration();
+      final success =
+          await PendingRegistrationService().finalizePendingRegistration();
+
+      // Surface org-creation errors so the user knows what went wrong.
+      if (!success) {
+        final regError = PendingRegistrationService().lastError;
+        if (regError != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(regError),
+              backgroundColor: Colors.red[700],
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
+      }
     } catch (e) {
       log('SplashView: Error finalizing pending registration: $e');
     }

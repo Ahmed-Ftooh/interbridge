@@ -258,7 +258,7 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(7, 9),
+          _buildStepIndicator(5, 9),
           const SizedBox(height: 28),
 
           if (_permissionDenied) ...[

@@ -51,7 +51,18 @@ class _ConfirmEmailPendingViewState extends State<ConfirmEmailPendingView> {
 
         try {
           // Finalize any pending registration data (interpreter profile, etc.)
-          await PendingRegistrationService().finalizePendingRegistration();
+          final success =
+              await PendingRegistrationService().finalizePendingRegistration();
+          if (!success) {
+            final regError = PendingRegistrationService().lastError;
+            if (regError != null && mounted) {
+              CustomSnackBar.show(
+                context,
+                message: regError,
+                type: SnackBarType.error,
+              );
+            }
+          }
         } catch (e) {
           log('ConfirmEmailPendingView: Error finalizing registration: $e');
         }

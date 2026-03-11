@@ -20,7 +20,7 @@ class _RequesterHomeWebState extends State<RequesterHomeWeb> {
   Language? _selectedFromLanguage;
   Language? _selectedToLanguage;
   bool _isLoadingLanguages = true;
-  String _interpreterType = 'general';
+  final String _interpreterType = 'general';
   String? _selectedMedicalSection;
   String _callType = 'voice';
 

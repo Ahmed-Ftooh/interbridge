@@ -578,7 +578,7 @@ class _InterpreterTranslationViewState
                 },
                 errorBuilder: (context, error, stack) {
                   return const Center(
-                    child: const Icon(
+                    child: Icon(
                       Icons.error_outline,
                       color: Colors.red,
                       size: 40,

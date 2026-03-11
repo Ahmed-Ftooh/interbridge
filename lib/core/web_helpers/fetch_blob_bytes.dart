@@ -2,6 +2,8 @@
 ///
 /// This file is the default (mobile/non-web) stub. It always returns null
 /// because blob URLs only exist in a browser context.
+library;
+
 import 'dart:typed_data';
 
 Future<Uint8List?> fetchBlobBytes(String url) async {

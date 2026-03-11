@@ -1,5 +1,6 @@
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,19 +9,17 @@ import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/data/models/user_profile.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/interpreter_dashboard_view.dart';
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 import 'package:interbridge/presentation/screens/main/profile/bloc/profile_bloc.dart';
-import 'package:interbridge/presentation/screens/main/profile/profile_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/profile_view_web.dart';
 import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_bloc.dart';
-import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_view_web.dart';
-import 'package:interbridge/presentation/screens/main/setting/setting_view.dart';
 import 'package:interbridge/presentation/screens/main/setting/setting_view_web.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/presentation/widgets/web/web_layout_shell.dart';
@@ -119,27 +118,31 @@ class _MainViewWebState extends State<MainViewWeb> {
       final response =
           await Supabase.instance.client
               .from('interpreter_requests')
-              .select('status, accepted_by, accepted_at')
+              .select('status, accepted_by, requester_id, call_type')
               .eq('id', requestId)
               .single();
 
-      if (response['status'] == 'accepted') {
+      final dbStatus = response['status'] as String?;
+      if (dbStatus != 'accepted') {
         log(
-          'Request was accepted while app was in background, updating session...',
+          'Session request $requestId has status $dbStatus — clearing stale session',
         );
-
-        await SessionService.saveSession(
-          requestId: requestId,
-          requesterId: session['requesterId'] as String,
-          interpreterId: response['accepted_by'] as String,
-          currentScreen: 'call',
-        );
+        await SessionService.clearSession();
+        return;
       }
+
+      await SessionService.saveSession(
+        requestId: requestId,
+        requesterId: response['requester_id'] as String,
+        interpreterId: response['accepted_by'] as String,
+        currentScreen: 'call',
+        callData: {'call_type': response['call_type'] ?? 'voice'},
+      );
 
       await _restoreSession();
     } catch (e) {
-      log('Error checking request status: $e');
-      await _restoreSession();
+      log('Error checking request status: $e — clearing stale session');
+      await SessionService.clearSession();
     }
   }
 
@@ -162,23 +165,46 @@ class _MainViewWebState extends State<MainViewWeb> {
         return;
       }
 
-      Widget targetScreen;
+      if (currentScreen == 'call' || currentScreen == 'chat') {
+        if (!mounted) return;
 
-      switch (currentScreen) {
-        case 'call':
-        case 'chat':
-          targetScreen = EnhancedCallScreenWeb(channelId: requestId);
-          break;
-        default:
-          log('Unknown screen type: $currentScreen');
-          return;
-      }
+        final currentUserId =
+            Supabase.instance.client.auth.currentUser?.id ?? '';
+        final hex = currentUserId.replaceAll('-', '');
+        final first8 =
+            hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
+        final localUid = int.tryParse(first8, radix: 16) ?? 1;
 
-      if (mounted) {
+        final callData = session['callData'] as Map<String, dynamic>? ?? {};
+        final isVideoCall = callData['call_type'] == 'video';
+
+        // Dispatch StartCall so Agora re-joins the channel
+        context.read<CallBloc>().add(
+          StartCall(
+            channelId: requestId,
+            localUid: localUid,
+            isVideoCall: isVideoCall,
+          ),
+        );
+
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => targetScreen),
+          MaterialPageRoute(
+            builder:
+                (_) =>
+                    kIsWeb
+                        ? EnhancedCallScreenWeb(
+                          channelId: requestId,
+                          isVideoCall: isVideoCall,
+                        )
+                        : EnhancedCallScreen(
+                          channelId: requestId,
+                          isVideoCall: isVideoCall,
+                        ),
+          ),
           (route) => false,
         );
+      } else {
+        log('Unknown screen type: $currentScreen');
       }
     } catch (e) {
       log('Error restoring session: $e');

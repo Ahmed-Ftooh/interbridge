@@ -19,26 +19,106 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
   String? _selectedCountryCode = '+1';
 
   static const _countryCodes = [
-    ('+1', '🇺🇸 US +1'),
-    ('+44', '🇬🇧 UK +44'),
+    ('+1', '🇺🇸 US/CA +1'),
+    ('+7', '🇷🇺 RU +7'),
     ('+20', '🇪🇬 EG +20'),
-    ('+971', '🇦🇪 UAE +971'),
-    ('+966', '🇸🇦 SA +966'),
+    ('+27', '🇿🇦 ZA +27'),
+    ('+30', '🇬🇷 GR +30'),
+    ('+31', '🇳🇱 NL +31'),
+    ('+32', '🇧🇪 BE +32'),
     ('+33', '🇫🇷 FR +33'),
-    ('+49', '🇩🇪 DE +49'),
     ('+34', '🇪🇸 ES +34'),
+    ('+36', '🇭🇺 HU +36'),
+    ('+39', '🇮🇹 IT +39'),
+    ('+40', '🇷🇴 RO +40'),
+    ('+41', '🇨🇭 CH +41'),
+    ('+43', '🇦🇹 AT +43'),
+    ('+44', '🇬🇧 UK +44'),
+    ('+45', '🇩🇰 DK +45'),
+    ('+46', '🇸🇪 SE +46'),
+    ('+47', '🇳🇴 NO +47'),
+    ('+48', '🇵🇱 PL +48'),
+    ('+49', '🇩🇪 DE +49'),
+    ('+51', '🇵🇪 PE +51'),
+    ('+52', '🇲🇽 MX +52'),
+    ('+53', '🇨🇺 CU +53'),
+    ('+54', '🇦🇷 AR +54'),
     ('+55', '🇧🇷 BR +55'),
-    ('+86', '🇨🇳 CN +86'),
-    ('+91', '🇮🇳 IN +91'),
+    ('+56', '🇨🇱 CL +56'),
+    ('+57', '🇨🇴 CO +57'),
+    ('+58', '🇻🇪 VE +58'),
+    ('+60', '🇲🇾 MY +60'),
+    ('+61', '🇦🇺 AU +61'),
+    ('+62', '🇮🇩 ID +62'),
+    ('+63', '🇵🇭 PH +63'),
+    ('+64', '🇳🇿 NZ +64'),
+    ('+65', '🇸🇬 SG +65'),
+    ('+66', '🇹🇭 TH +66'),
     ('+81', '🇯🇵 JP +81'),
     ('+82', '🇰🇷 KR +82'),
-    ('+7', '🇷🇺 RU +7'),
-    ('+52', '🇲🇽 MX +52'),
+    ('+84', '🇻🇳 VN +84'),
+    ('+86', '🇨🇳 CN +86'),
+    ('+90', '🇹🇷 TR +90'),
+    ('+91', '🇮🇳 IN +91'),
+    ('+92', '🇵🇰 PK +92'),
+    ('+93', '🇦🇫 AF +93'),
+    ('+94', '🇱🇰 LK +94'),
+    ('+95', '🇲🇲 MM +95'),
+    ('+98', '🇮🇷 IR +98'),
+    ('+212', '🇲🇦 MA +212'),
+    ('+213', '🇩🇿 DZ +213'),
+    ('+216', '🇹🇳 TN +216'),
+    ('+218', '🇱🇾 LY +218'),
+    ('+220', '🇬🇲 GM +220'),
+    ('+221', '🇸🇳 SN +221'),
+    ('+233', '🇬🇭 GH +233'),
     ('+234', '🇳🇬 NG +234'),
+    ('+249', '🇸🇩 SD +249'),
+    ('+250', '🇷🇼 RW +250'),
+    ('+251', '🇪🇹 ET +251'),
+    ('+252', '🇸🇴 SO +252'),
+    ('+253', '🇩🇯 DJ +253'),
     ('+254', '🇰🇪 KE +254'),
-    ('+27', '🇿🇦 ZA +27'),
-    ('+61', '🇦🇺 AU +61'),
-    ('+64', '🇳🇿 NZ +64'),
+    ('+255', '🇹🇿 TZ +255'),
+    ('+256', '🇺🇬 UG +256'),
+    ('+260', '🇿🇲 ZM +260'),
+    ('+263', '🇿🇼 ZW +263'),
+    ('+353', '🇮🇪 IE +353'),
+    ('+354', '🇮🇸 IS +354'),
+    ('+358', '🇫🇮 FI +358'),
+    ('+370', '🇱🇹 LT +370'),
+    ('+371', '🇱🇻 LV +371'),
+    ('+372', '🇪🇪 EE +372'),
+    ('+380', '🇺🇦 UA +380'),
+    ('+381', '🇷🇸 RS +381'),
+    ('+385', '🇭🇷 HR +385'),
+    ('+386', '🇸🇮 SI +386'),
+    ('+420', '🇨🇿 CZ +420'),
+    ('+421', '🇸🇰 SK +421'),
+    ('+880', '🇧🇩 BD +880'),
+    ('+960', '🇲🇻 MV +960'),
+    ('+961', '🇱🇧 LB +961'),
+    ('+962', '🇯🇴 JO +962'),
+    ('+963', '🇸🇾 SY +963'),
+    ('+964', '🇮🇶 IQ +964'),
+    ('+965', '🇰🇼 KW +965'),
+    ('+966', '🇸🇦 SA +966'),
+    ('+967', '🇾🇪 YE +967'),
+    ('+968', '🇴🇲 OM +968'),
+    ('+970', '🇵🇸 PS +970'),
+    ('+971', '🇦🇪 AE +971'),
+    ('+972', '🇮🇱 IL +972'),
+    ('+973', '🇧🇭 BH +973'),
+    ('+974', '🇶🇦 QA +974'),
+    ('+975', '🇧🇹 BT +975'),
+    ('+976', '🇲🇳 MN +976'),
+    ('+977', '🇳🇵 NP +977'),
+    ('+992', '🇹🇯 TJ +992'),
+    ('+993', '🇹🇲 TM +993'),
+    ('+994', '🇦🇿 AZ +994'),
+    ('+995', '🇬🇪 GE +995'),
+    ('+996', '🇰🇬 KG +996'),
+    ('+998', '🇺🇿 UZ +998'),
   ];
 
   @override
@@ -82,16 +162,6 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
     ).pushNamed(Routes.governmentIdUploadRoute, arguments: args);
   }
 
-  void _skipPhoneEntry() {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
-    args['phoneVerified'] = false;
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.governmentIdUploadRoute, arguments: args);
-  }
-
   @override
   Widget build(BuildContext context) {
     return AuthWebWrapper(
@@ -100,7 +170,7 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStepIndicator(1, 9),
+          _buildStepIndicator(7, 9),
           const SizedBox(height: 28),
 
           // Info banner
@@ -248,17 +318,6 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
           ),
 
           const SizedBox(height: 16),
-
-          // Skip option
-          Center(
-            child: TextButton(
-              onPressed: _skipPhoneEntry,
-              child: const Text(
-                'Skip for now',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-              ),
-            ),
-          ),
 
           const SizedBox(height: 12),
           Center(

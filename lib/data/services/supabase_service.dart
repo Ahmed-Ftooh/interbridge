@@ -24,7 +24,8 @@ class SupabaseService {
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
-  final SupabaseClient _client = Supabase.instance.client;
+  // Use a getter so construction is safe even before Supabase.initialize() finishes.
+  SupabaseClient get _client => Supabase.instance.client;
 
   /// Public getter for accessing the Supabase client directly
   SupabaseClient get client => _client;
@@ -572,6 +573,8 @@ class SupabaseService {
     String userId,
   ) async {
     final role = (data['role'] as String?) ?? 'requester';
+    // Avoid setting organization_admin role until organization creation succeeds.
+    final roleToPersist = role == 'organization_admin' ? 'requester' : role;
     log(
       'finalizePendingRegistrationData: Starting for userId=$userId, role=$role',
     );
@@ -627,7 +630,7 @@ class SupabaseService {
       // Profile doesn't exist - create it
       final profile = UserProfile(
         id: userId,
-        role: role,
+        role: roleToPersist,
         username: username,
         profileImage: data['profileImage'],
         gender: data['gender'],
@@ -635,7 +638,7 @@ class SupabaseService {
       );
 
       log(
-        'finalizePendingRegistrationData: Creating profile with role=$role, username=$username',
+        'finalizePendingRegistrationData: Creating profile with role=$roleToPersist, username=$username',
       );
 
       try {
@@ -648,7 +651,7 @@ class SupabaseService {
           await _client.from('users_profile').upsert({
             'user_id': userId,
             'username': username,
-            'role': role,
+            'role': roleToPersist,
             'profile_image': data['profileImage'] ?? '',
             'gender': data['gender'] ?? '',
             'country': data['country'],
@@ -669,7 +672,7 @@ class SupabaseService {
             .from('users_profile')
             .update({
               'username': username,
-              'role': role,
+              'role': roleToPersist,
               if (data['profileImage'] != null)
                 'profile_image': data['profileImage'],
               if (data['gender'] != null) 'gender': data['gender'],
@@ -787,6 +790,7 @@ class SupabaseService {
 
       log('finalizePendingRegistrationData: Creating organization for admin');
       await _createOrganizationFromRegistration(data, userId);
+      // Role promotion is now handled atomically inside the RPC.
       return;
     }
 
@@ -975,6 +979,29 @@ class SupabaseService {
       log('Error uploading native voice sample: $e');
     }
 
+    // --- Upload voice prompt verification recordings (3 random-prompt samples) ---
+    final promptRecordingsList = data['voicePromptRecordings'] as List?;
+    if (promptRecordingsList != null && promptRecordingsList.isNotEmpty) {
+      for (final recRaw in promptRecordingsList) {
+        try {
+          final rec = Map<String, dynamic>.from(recRaw as Map);
+          final bytesB64 = rec['bytesBase64'] as String?;
+          if (bytesB64 == null || bytesB64.isEmpty) continue;
+          final bytes = base64Decode(bytesB64);
+          if (bytes.isEmpty) continue;
+          await uploadVoiceSampleFromBytes(
+            bytes,
+            fileName: 'voice_prompt_${rec['prompt_id']}.webm',
+            prompt: rec['prompt_text'] as String?,
+            sentenceType: 'prompt_verification',
+          );
+          log('Voice prompt recording uploaded for prompt ${rec['prompt_id']}');
+        } catch (e) {
+          log('Error uploading voice prompt recording: $e');
+        }
+      }
+    }
+
     // --- Upload training certificate ---
     String? certUrl = data['certificateUrl'] as String?;
     final certPath = data['certificatePath'] as String?;
@@ -1058,6 +1085,50 @@ class SupabaseService {
         }
       } catch (e) {
         log('Error uploading medical certificate: $e');
+      }
+    }
+
+    // --- Upload government ID if provided ---
+    Uint8List? govIdBytes;
+    if (data['governmentIdBytes'] is Uint8List) {
+      govIdBytes = data['governmentIdBytes'] as Uint8List;
+    } else if (data['governmentIdBytesBase64'] is String) {
+      try {
+        govIdBytes = base64Decode(data['governmentIdBytesBase64'] as String);
+      } catch (e) {
+        log('Error decoding government ID base64: $e');
+      }
+    }
+    if (govIdBytes != null && govIdBytes.isNotEmpty) {
+      try {
+        final govFileName =
+            data['governmentIdFileName'] as String? ?? 'government_id.jpg';
+        final govIdType = data['governmentIdType'] as String? ?? 'national_id';
+        await uploadGovernmentId(
+          userId: userId,
+          fileBytes: govIdBytes,
+          fileName: govFileName,
+          idType: govIdType,
+        );
+        log('Government ID uploaded during registration');
+      } catch (e) {
+        log('Error uploading government ID during registration: $e');
+      }
+    }
+
+    // --- Record phone number if provided ---
+    final phoneNumber = data['phoneNumber'] as String?;
+    if (phoneNumber != null && phoneNumber.isNotEmpty) {
+      try {
+        await recordPhoneVerification(
+          userId: userId,
+          phoneNumber: phoneNumber,
+          verified: false,
+          email: data['email'] as String?,
+        );
+        log('Phone number recorded during registration');
+      } catch (e) {
+        log('Error recording phone number during registration: $e');
       }
     }
 
@@ -1715,16 +1786,20 @@ class SupabaseService {
     log('uploadGovernmentId: userId=$userId, fileName=$fileName');
     try {
       final ext = fileName.split('.').last;
-      final path = '$userId/gov_id_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final path =
+          '$userId/gov_id_${DateTime.now().millisecondsSinceEpoch}.$ext';
 
-      await _client.storage.from('government-ids').uploadBinary(
-        path,
-        Uint8List.fromList(fileBytes),
-        fileOptions: const FileOptions(upsert: true),
-      );
+      await _client.storage
+          .from('government-ids')
+          .uploadBinary(
+            path,
+            Uint8List.fromList(fileBytes),
+            fileOptions: const FileOptions(upsert: true),
+          );
 
-      final publicUrl =
-          _client.storage.from('government-ids').getPublicUrl(path);
+      final publicUrl = _client.storage
+          .from('government-ids')
+          .getPublicUrl(path);
 
       // Insert metadata row
       await _client.from('government_ids').insert({
@@ -1732,14 +1807,16 @@ class SupabaseService {
         'file_url': publicUrl,
         'file_name': fileName,
         'status': 'pending',
-        'id_type': idType,
       });
 
       // Update users_profile
-      await _client.from('users_profile').update({
-        'government_id_url': publicUrl,
-        'government_id_status': 'pending',
-      }).eq('id', userId);
+      await _client
+          .from('users_profile')
+          .update({
+            'government_id_url': publicUrl,
+            'government_id_status': 'pending',
+          })
+          .eq('user_id', userId);
 
       log('Government ID uploaded: $publicUrl');
       return publicUrl;
@@ -1760,19 +1837,19 @@ class SupabaseService {
   }) async {
     log('recordPhoneVerification: userId=$userId, phone=$phoneNumber');
     try {
-      await _client.from('phone_verifications').upsert({
+      await _client.from('phone_verifications').insert({
         'user_id': userId,
         'phone_number': phoneNumber,
         'verified': verified,
         if (verified) 'verified_at': DateTime.now().toUtc().toIso8601String(),
         if (email != null) 'email': email,
-      }, onConflict: 'user_id');
+      });
 
       // Also update users_profile
-      await _client.from('users_profile').update({
-        'phone_number': phoneNumber,
-        'phone_verified': verified,
-      }).eq('id', userId);
+      await _client
+          .from('users_profile')
+          .update({'phone_number': phoneNumber, 'phone_verified': verified})
+          .eq('user_id', userId);
 
       log('Phone verification recorded successfully');
     } catch (e) {
@@ -1781,6 +1858,7 @@ class SupabaseService {
   }
 
   /// Creates an organization and adds the user as organization_admin
+  /// Uses an atomic RPC so org + member + role promotion happen in one transaction.
   Future<void> _createOrganizationFromRegistration(
     Map<String, dynamic> data,
     String userId,
@@ -1788,7 +1866,8 @@ class SupabaseService {
     log('_createOrganizationFromRegistration: Starting for userId=$userId');
 
     final orgName = data['organizationName'] as String? ?? '';
-    final orgEmail = data['organizationEmail'] as String? ?? '';
+    final orgEmail =
+        (data['organizationEmail'] as String? ?? '').trim().toLowerCase();
     final orgPhone = data['organizationPhone'] as String?;
     final orgAddress = data['organizationAddress'] as String?;
 
@@ -1804,51 +1883,22 @@ class SupabaseService {
     }
 
     try {
-      // Generate a random invite code
       final inviteCode = _generateInviteCode();
       log(
         '_createOrganizationFromRegistration: Generated invite code: $inviteCode',
       );
 
-      // Create the organization
-      // Note: verification_status and description columns may not exist yet
-      // The organization will be active by default and reviewed by admin later
-      final orgResponse =
-          await _client
-              .from('organizations')
-              .insert({
-                'name': orgName,
-                'email': orgEmail,
-                'phone': orgPhone,
-                'address': orgAddress,
-                'invite_code': inviteCode,
-                'wallet_balance': 0,
-                'rate_per_minute': 1.0,
-                'is_active': true,
-              })
-              .select('id')
-              .single();
-
-      final orgId = orgResponse['id'] as String;
-
-      // Add the user as organization_admin member
-      await _client.from('organization_members').insert({
-        'organization_id': orgId,
-        'user_id': userId,
-        'role': 'organization_admin',
-        'is_active': true,
-        'spending_limit': null,
-        'total_spent': 0,
-      });
-
-      // TODO: Upload verification documents when organization_documents table is created
-      // await _uploadOrganizationDocuments(
-      //   orgId: orgId,
-      //   userId: userId,
-      //   businessLicensePath: businessLicensePath,
-      //   registrationCertificatePath: registrationCertificatePath,
-      //   additionalDocumentPath: additionalDocumentPath,
-      // );
+      // Atomic RPC: creates org, member, and promotes role in one transaction.
+      final orgId = await _client.rpc(
+        'create_organization_with_admin',
+        params: {
+          'p_org_name': orgName,
+          'p_org_email': orgEmail,
+          'p_org_phone': orgPhone,
+          'p_org_address': orgAddress,
+          'p_invite_code': inviteCode,
+        },
+      );
 
       log('Organization created successfully: $orgId');
     } catch (e) {

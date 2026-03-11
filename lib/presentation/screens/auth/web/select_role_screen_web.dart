@@ -46,7 +46,7 @@ class _SelectRoleScreenWebState extends State<SelectRoleScreenWeb> {
             onTap:
                 () => Navigator.of(
                   context,
-                ).pushNamed(Routes.phoneOtpRoute),
+                ).pushNamed(Routes.interpreterTrackSelection),
           ),
           const SizedBox(height: 16),
 

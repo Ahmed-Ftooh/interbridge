@@ -11,7 +11,8 @@ class DocumentTranslationService {
   factory DocumentTranslationService() => _instance;
   DocumentTranslationService._internal();
 
-  final SupabaseClient _client = Supabase.instance.client;
+  // Use a getter so construction is safe even before Supabase.initialize() finishes.
+  SupabaseClient get _client => Supabase.instance.client;
 
   /// Create a new document translation request and send notifications to matching interpreters
   Future<DocumentTranslationRequest> createRequest({

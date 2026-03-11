@@ -2,7 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:developer';
 
 class CallService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  // Use a getter so construction is safe even before Supabase.initialize() finishes.
+  SupabaseClient get _supabase => Supabase.instance.client;
 
   /// Fetch a short-lived Agora token from your Supabase Edge Function.
   /// [role] can be 'publisher' (default) or 'subscriber' (audience/listen-only).
@@ -190,7 +191,7 @@ class CallService {
       final response = await _supabase
           .from('call_sessions')
           .select('*')
-          .eq('user_id', targetUserId)
+          .or('user_id.eq.$targetUserId,remote_user_id.eq.$targetUserId')
           .order('created_at', ascending: false)
           .limit(limit);
 

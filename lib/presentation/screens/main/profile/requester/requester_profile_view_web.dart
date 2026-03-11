@@ -577,7 +577,7 @@ class _RequesterProfileViewWebState extends State<RequesterProfileViewWeb> {
                 onTap: () {
                   Navigator.pop(dialogContext);
                   context.read<RequesterProfileBloc>().add(
-                    PickRequesterProfileImage(ImageSource.gallery),
+                    const PickRequesterProfileImage(ImageSource.gallery),
                   );
                 },
               ),
@@ -587,7 +587,7 @@ class _RequesterProfileViewWebState extends State<RequesterProfileViewWeb> {
                 onTap: () {
                   Navigator.pop(dialogContext);
                   context.read<RequesterProfileBloc>().add(
-                    PickRequesterProfileImage(ImageSource.camera),
+                    const PickRequesterProfileImage(ImageSource.camera),
                   );
                 },
               ),

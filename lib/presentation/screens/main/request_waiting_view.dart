@@ -71,6 +71,11 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
   Timer? _queuePollTimer;
   Timer? _waitCountdownTimer;
 
+  // Guard: only the first accepted-status path (realtime OR poll) fires
+  // StartCall. Prevents double-dispatch that would tear down the Agora engine
+  // mid-join if both code paths race to dispatch StartCall simultaneously.
+  bool _callStarted = false;
+
   /// Build a stable int UID from the authenticated user UUID
   static int _uidFromUuid(String uuid) {
     if (uuid.isNotEmpty) {
@@ -154,8 +159,10 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
             _matchedInterpreterName = result.interpreterName;
           });
           log('Auto-routed: ${result.status} → ${result.interpreterName}');
-          // The edge function already auto-accepted, so the realtime listener
-          // will fire and navigate to the call screen.
+          // The edge function already auto-accepted. The realtime notification
+          // may have fired BEFORE _subscribeToRequest was established (race
+          // condition), so poll immediately to catch missed updates.
+          await _checkRequestStatus();
           break;
 
         case AutoRouteStatus.queued:
@@ -203,6 +210,11 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
               final newRow = payload.newRecord;
               final status = newRow['status']?.toString();
               if (status == 'accepted') {
+                // Guard: if _checkRequestStatus already handled this
+                // transition (e.g. on app resume), skip duplicate dispatch.
+                if (_callStarted) return;
+                _callStarted = true;
+
                 final interpreterId = newRow['accepted_by'].toString();
                 final requesterId = newRow['requester_id'].toString();
 
@@ -419,6 +431,10 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
       final status = response['status']?.toString();
       if (status != 'accepted') return;
+
+      // Guard: realtime callback may have already started the call.
+      if (_callStarted) return;
+      _callStarted = true;
 
       final interpreterId = response['accepted_by']?.toString();
       final requesterId = response['requester_id']?.toString();

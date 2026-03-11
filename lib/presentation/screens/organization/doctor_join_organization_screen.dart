@@ -101,7 +101,8 @@ class _DoctorJoinOrganizationScreenState
         'role': 'doctor_with_invite',
         'organization_id': _validatedInvite!['organization_id'],
         'invite_id': _validatedInvite!['invite_id'],
-        ..._validatedInvite!,
+        'organization_role': _validatedInvite!['role'] ?? 'doctor',
+        'organization': _validatedInvite!['organization'],
       },
     );
   }

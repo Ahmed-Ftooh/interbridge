@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Abstract interface for push notification services
 /// Implemented differently for mobile (OneSignal) and web (browser notifications)

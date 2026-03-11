@@ -3,12 +3,16 @@
     "short_name": "Interbridge",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#0955fa",
+    "background_color": "#FFFFFF",
+    "theme_color": "#FFFFFF",
     "description": "Professional Medical Interpretation Services - Connect with certified interpreters instantly",
     "orientation": "any",
     "prefer_related_applications": false,
-    "categories": ["medical", "communication", "business"],
+    "categories": [
+        "medical",
+        "communication",
+        "business"
+    ],
     "icons": [
         {
             "src": "icons/Icon-192.png",

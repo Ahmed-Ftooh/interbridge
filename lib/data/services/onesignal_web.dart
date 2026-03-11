@@ -1,5 +1,6 @@
 /// Web-specific stub implementations for OneSignal service
 /// Provides no-op implementations for mobile-specific features
+library;
 
 import 'dart:developer';
 

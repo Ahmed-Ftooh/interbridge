@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 /// Modern responsive web layout shell with sidebar navigation
@@ -110,16 +108,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(
-            Icons.notifications_outlined,
-            color: Color(0xFF64748B),
-          ),
-          onPressed: () {},
-        ),
-        const SizedBox(width: 8),
-      ],
+      actions: const [],
     );
   }
 
@@ -612,8 +601,17 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
   }
 
   Widget _buildHeader() {
+    const titles = ['Dashboard', 'Documents', 'Profile', 'Settings'];
+    const subtitles = [
+      'Overview & activity',
+      'Translations & uploads',
+      'Your information',
+      'Preferences',
+    ];
+    final idx = widget.currentIndex.clamp(0, titles.length - 1);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
@@ -622,100 +620,31 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
       ),
       child: Row(
         children: [
-          // Search bar
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: 'Search...',
-                  hintStyle: const TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 14,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    color: Color(0xFF94A3B8),
-                    size: 20,
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF0955FA)),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                titles[idx],
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: -0.3,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 24),
-          // Notifications
-          _buildHeaderButton(
-            Icons.notifications_outlined,
-            badge: 3,
-            onTap: () {},
-          ),
-          const SizedBox(width: 12),
-          // Help
-          _buildHeaderButton(Icons.help_outline_rounded, onTap: () {}),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderButton(IconData icon, {int? badge, VoidCallback? onTap}) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(icon, color: const Color(0xFF64748B), size: 22),
-              if (badge != null && badge > 0)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEF4444),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      badge > 9 ? '9+' : badge.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+              const SizedBox(height: 2),
+              Text(
+                subtitles[idx],
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF94A3B8),
+                  fontWeight: FontWeight.w400,
                 ),
+              ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

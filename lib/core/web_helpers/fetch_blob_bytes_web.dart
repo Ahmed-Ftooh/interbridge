@@ -1,4 +1,6 @@
 /// Fetch bytes from a blob URL — web implementation using dart:html.
+library;
+
 import 'dart:html' as html;
 import 'dart:typed_data';
 

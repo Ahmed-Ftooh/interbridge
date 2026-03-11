@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
@@ -59,6 +60,10 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   int? _cachedRemoteUid;
   RtcEngine? _cachedEngine;
 
+  // If the call screen is opened but StartCall was never dispatched
+  // (e.g. stale session restore), auto-escape to home after this timeout.
+  Timer? _idleEscapeTimer;
+
   VideoViewController _getLocalController(RtcEngine engine) {
     if (_localController == null || _cachedEngine != engine) {
       _cachedEngine = engine;
@@ -95,10 +100,28 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   @override
   void initState() {
     super.initState();
+    // Guard against being stuck on CallIdle (no StartCall dispatched).
+    // If state is still idle after 20 seconds, navigate home.
+    // 20 s gives enough headroom for first-time Android permission dialogs
+    // (mic/camera) which block _onStartCall before emit(CallConnecting).
+    _idleEscapeTimer = Timer(const Duration(seconds: 20), () {
+      if (!mounted) return;
+      final callState = context.read<CallBloc>().state;
+      if (callState is CallIdle) {
+        log(
+          'EnhancedCallScreen: CallIdle after 4s — navigating home (stale restore)',
+        );
+        SessionService.clearSession();
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _idleEscapeTimer?.cancel();
     _localController?.dispose();
     _remoteController?.dispose();
     // End any active patient call when leaving the screen
@@ -326,9 +349,19 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                       IconButton(
                         icon: Icon(Icons.arrow_back, color: ColorManager.white),
                         onPressed: () {
-                          // 6. CHANGED: This just pops the screen.
-                          // The call continues in the background.
-                          Navigator.of(context).maybePop();
+                          final callState = context.read<CallBloc>().state;
+                          if (callState is CallOngoing) {
+                            // Ongoing call: pop to background (PiP-like behaviour).
+                            Navigator.of(context).maybePop();
+                          } else {
+                            // Stuck in Connecting/Idle/Ended: end any Agora setup
+                            // and force-navigate home so the user isn't trapped.
+                            context.read<CallBloc>().add(EndCall());
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              Routes.mainRoute,
+                              (route) => false,
+                            );
+                          }
                         },
                       ),
 
