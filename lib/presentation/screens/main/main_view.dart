@@ -23,6 +23,7 @@ import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -172,10 +173,7 @@ class _MainViewState extends State<MainView> {
         // Compute stable Agora UID from the current authenticated user's UUID
         final currentUserId =
             Supabase.instance.client.auth.currentUser?.id ?? '';
-        final hex = currentUserId.replaceAll('-', '');
-        final first8 =
-            hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-        final localUid = int.tryParse(first8, radix: 16) ?? 1;
+        final localUid = uidFromUuid(currentUserId);
 
         final callData = session['callData'] as Map<String, dynamic>? ?? {};
         final isVideoCall = callData['call_type'] == 'video';

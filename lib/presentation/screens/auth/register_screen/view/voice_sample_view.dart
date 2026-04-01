@@ -7,6 +7,9 @@ import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
+import 'dart:io';
 
 class VoiceSampleScreen extends StatefulWidget {
   const VoiceSampleScreen({super.key});
@@ -19,6 +22,8 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _playerEnglish;
   late final AudioPlayer _playerNative;
+
+  bool _isSaving = false;
 
   // --- English sample state ---
   bool _isRecordingEn = false;
@@ -178,18 +183,84 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
   }
 
   // ─── Navigation ───────────────────────────────────────────────
-  void _continue() {
+  Future<void> _continue() async {
     if (!_canContinue) return;
 
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
-    args['voiceSamplePath'] = _audioPathEn;
-    args['voiceSampleNativePath'] = _audioPathNat;
+    setState(() => _isSaving = true);
+    final userId = Supabase.instance.client.auth.currentUser?.id;
 
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+    try {
+      if (userId == null) throw Exception("User not logged in");
+
+      // Upload English sample
+      final englishPath =
+          '$userId/voice_english_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      if (_audioPathEn != null) {
+        final file = File(_audioPathEn!);
+        await Supabase.instance.client.storage
+            .from('voice_samples')
+            .upload(englishPath, file);
+        final url = Supabase.instance.client.storage
+            .from('voice_samples')
+            .getPublicUrl(englishPath);
+        await Supabase.instance.client.from('voice_samples').insert({
+          'user_id': userId,
+          'url': url,
+          'prompt': 'English introduction',
+          'sentence_type': 'english',
+        });
+      }
+
+      // Upload Native sample
+      final nativePath =
+          '$userId/voice_native_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      if (_audioPathNat != null) {
+        final file = File(_audioPathNat!);
+        await Supabase.instance.client.storage
+            .from('voice_samples')
+            .upload(nativePath, file);
+        final url = Supabase.instance.client.storage
+            .from('voice_samples')
+            .getPublicUrl(nativePath);
+        await Supabase.instance.client.from('voice_samples').insert({
+          'user_id': userId,
+          'url': url,
+          'prompt': 'Native language introduction',
+          'sentence_type': 'native',
+        });
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'voice_sample_uploaded'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        final args =
+            ModalRoute.of(context)?.settings.arguments
+                as Map<String, dynamic>? ??
+            {};
+        // Clean up
+        args.remove('voiceSamplePath');
+        args.remove('voiceSampleNativePath');
+
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to upload voice samples: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   // ─── UI ───────────────────────────────────────────────────────
@@ -247,7 +318,7 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _canContinue ? _continue : null,
+                  onPressed: (_canContinue && !_isSaving) ? _continue : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: ColorManager.primary2,
                     padding: const EdgeInsets.symmetric(vertical: AppSize.s16),
@@ -255,10 +326,20 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
                       borderRadius: BorderRadius.circular(AppSize.s16),
                     ),
                   ),
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
+                  child:
+                      _isSaving
+                          ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Text(
+                            'Continue',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
                 ),
               ),
             ],

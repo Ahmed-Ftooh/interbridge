@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/const/app_const.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
@@ -25,6 +27,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   final SupabaseService _supabaseService = SupabaseService();
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -62,6 +65,84 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen>
     }
   }
 
+  Future<void> _saveAndContinue(
+    SelectLanguageState state,
+    Map<String, dynamic> data,
+  ) async {
+    final selectedNames =
+        state.selectedLanguages.entries
+            .where((entry) => entry.value)
+            .map((entry) => entry.key)
+            .toList();
+
+    if (selectedNames.length < 2) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in to continue.',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final languageIds = LanguageMappingUtility.convertNamesToIds(
+        selectedNames,
+      );
+
+      // Clear old selections
+      await Supabase.instance.client
+          .from('interpreter_languages')
+          .delete()
+          .eq('user_id', userId);
+
+      // Insert new selections
+      if (languageIds.isNotEmpty) {
+        final insertData =
+            languageIds
+                .map((id) => {'user_id': userId, 'language_id': id})
+                .toList();
+
+        await Supabase.instance.client
+            .from('interpreter_languages')
+            .insert(insertData);
+      }
+
+      // Update onboarding status
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'languages_selected'})
+          .eq('user_id', userId);
+
+      data['languages'] = selectedNames;
+      if (!data.containsKey('role')) {
+        data['role'] = 'interpreter';
+      }
+
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.languageFluencyScreen, arguments: data);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to save: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Accept the data map from arguments
@@ -70,30 +151,12 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen>
         {};
     return BlocConsumer<SelectLanguageBloc, SelectLanguageState>(
       listener: (context, state) {
-        if (state.errorMessage != null) {
+        if (state.errorMessage != null && state.isFailure) {
           CustomSnackBar.show(
             context,
             message: state.errorMessage!,
             type: SnackBarType.error,
           );
-        }
-        if (state.isSuccess) {
-          final selected =
-              state.selectedLanguages.entries
-                  .where((entry) => entry.value)
-                  .map((entry) => entry.key)
-                  .toList();
-          // Add selected languages to the data map
-          data['languages'] = selected;
-
-          // Ensure role is preserved
-          if (!data.containsKey('role')) {
-            data['role'] = 'interpreter';
-          }
-
-          Navigator.of(
-            context,
-          ).pushNamed(Routes.languageFluencyScreen, arguments: data);
         }
       },
       builder: (context, state) {
@@ -283,23 +346,50 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen>
               Container(
                 padding: const EdgeInsets.all(AppSize.s16),
                 child: CustomButton(
-                  onTap: () => bloc.add(SubmitLanguages()),
-                  color: ColorManager.primary2,
+                  onTap: () {
+                    final count =
+                        state.selectedLanguages.values.where((v) => v).length;
+                    if (count >= 2 && !_isLoading) {
+                      _saveAndContinue(state, data);
+                    } else if (count < 2) {
+                      CustomSnackBar.show(
+                        context,
+                        message: AppStrings.pleaseSelectAtLeastTwoLanguages,
+                        type: SnackBarType.error,
+                      );
+                    }
+                  },
+                  color:
+                      (state.selectedLanguages.values.where((v) => v).length >=
+                                  2 &&
+                              !_isLoading)
+                          ? ColorManager.primary2
+                          : ColorManager.grey,
                   borderRadius: BorderRadius.circular(AppSize.s16),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.arrow_forward, size: AppSize.s20),
-                      SizedBox(width: AppSize.s8),
-                      Text(
-                        AppStrings.continueText,
-                        style: TextStyle(
-                          fontSize: AppSize.s16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child:
+                      _isLoading
+                          ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: ColorManager.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.arrow_forward, size: AppSize.s20),
+                              SizedBox(width: AppSize.s8),
+                              Text(
+                                AppStrings.continueText,
+                                style: TextStyle(
+                                  fontSize: AppSize.s16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                 ),
               ),
             ],

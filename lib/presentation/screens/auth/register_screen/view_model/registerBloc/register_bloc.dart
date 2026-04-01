@@ -331,41 +331,6 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       return 'Role is required';
     }
 
-    // Validate interpreter-specific data
-    if (event.role == 'interpreter') {
-      if (event.languages.isEmpty) {
-        return AppStrings.pleaseSelectAtLeastOneLanguage;
-      }
-      if (event.skillIds.isEmpty) {
-        return AppStrings.pleaseSelectAtLeastOneSkill;
-      }
-      if (event.specializationIds.isEmpty) {
-        return AppStrings.pleaseSelectAtLeastOneSpecialization;
-      }
-
-      // Validate that all language IDs are valid
-      for (final langId in event.languages) {
-        final languageId = int.tryParse(langId);
-        if (languageId == null || languageId <= 0) {
-          return 'Invalid language ID: $langId';
-        }
-      }
-
-      // Validate that all skill IDs are valid
-      for (final skillId in event.skillIds) {
-        if (skillId <= 0) {
-          return 'Invalid skill ID: $skillId';
-        }
-      }
-
-      // Validate that all specialization IDs are valid
-      for (final specId in event.specializationIds) {
-        if (specId <= 0) {
-          return 'Invalid specialization ID: $specId';
-        }
-      }
-    }
-
     return null; // All validations passed
   }
 

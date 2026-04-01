@@ -55,49 +55,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   String? _selectedCountryFlag;
 
   late String role;
-  late List<String>
-  languages; // Keep as List<String> since bloc expects strings
-  late Map<String, String?> fluency;
-  late List<int> skills;
-  late List<int> specializations;
-  late String? voiceSampleUrl;
-  late String? voicePrompt;
-  late String? certificateUrl;
-  late String? medicalCertificateUrl;
-  // Local paths for deferred upload
-  late String? voiceSamplePath;
-  late String? certificatePath;
-  late String? medicalCertificatePath;
-  // Native-language voice sample
-  late String? voiceSampleNativePath;
-  Uint8List? voiceSampleNativeBytes;
-  String? voiceSampleNativeName;
-  // Web: raw bytes for uploads (blob URLs/paths don't survive page navigation)
-  Uint8List? voiceSampleBytes;
-  String? voiceSampleName;
-  Uint8List? certificateBytes;
-  String? certificateName;
-  Uint8List? medicalCertificateBytes;
-  String? medicalCertificateName;
-  late String? bio;
-  late int? yearsExperience;
-  late String? preferredShift;
-  late List<String> shiftAvailability;
-  late bool? isOnlineNow;
-  late String? employmentType; // 'volunteer' or 'paid'
-
-  // Profile picture
-  Uint8List? _profileImageBytes;
-  String? _profileImageName;
-
-  // Government ID (from web onboarding flow)
-  Uint8List? _governmentIdBytes;
-  String? _governmentIdFileName;
-  String? _governmentIdType;
-
-  // Phone number (from web onboarding flow)
-  String? _phoneNumber;
-
   // Organization data
   late String? organizationName;
   late String? organizationEmail;
@@ -109,159 +66,20 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
   late String? inviteRole;
   late String? inviteId;
 
+  // Profile picture
+  Uint8List? _profileImageBytes;
+  String? _profileImageName;
+
   @override
   void initState() {
     super.initState();
     role = widget.data['role'] ?? 'requester';
-
-    // Safe type conversion for languages with better error handling
-    try {
-      final languagesData = widget.data['languages'];
-      if (languagesData is List) {
-        languages =
-            languagesData
-                .where((e) => e != null && e.toString().isNotEmpty)
-                .map((e) => e.toString())
-                .toList();
-      } else if (languagesData is String) {
-        // Handle case where languages might be passed as a single string
-        languages = [languagesData];
-      } else {
-        languages = [];
-      }
-    } catch (e) {
-      languages = [];
-    }
-
-    // Safe type conversion for fluency with better error handling
-    try {
-      final fluencyData = widget.data['fluency'];
-      if (fluencyData is Map) {
-        fluency = Map<String, String?>.from(fluencyData);
-      } else {
-        fluency = {};
-      }
-    } catch (e) {
-      fluency = {};
-    }
-
-    // Safe type conversion for skills with better error handling
-    try {
-      final skillsData = widget.data['skills'];
-      if (skillsData is List) {
-        skills =
-            skillsData
-                .where((e) => e != null)
-                .map((e) => int.tryParse(e.toString()))
-                .where((e) => e != null && e > 0)
-                .cast<int>()
-                .toList();
-      } else {
-        skills = [];
-      }
-    } catch (e) {
-      skills = [];
-    }
-
-    // Safe type conversion for specializations with better error handling
-    try {
-      final specializationsData = widget.data['specializations'];
-      if (specializationsData is List) {
-        specializations =
-            specializationsData
-                .where((e) => e != null)
-                .map((e) => int.tryParse(e.toString()))
-                .where((e) => e != null && e > 0)
-                .cast<int>()
-                .toList();
-      } else {
-        specializations = [];
-      }
-    } catch (e) {
-      specializations = [];
-    }
-
-    // Initialize voice check data
-    voiceSampleUrl = widget.data['voiceSampleUrl'];
-    voicePrompt = widget.data['voicePrompt'];
-    certificateUrl = widget.data['certificateUrl'];
-    medicalCertificateUrl = widget.data['medicalCertificateUrl'];
-    voiceSamplePath = widget.data['voiceSamplePath'];
-    certificatePath = widget.data['certificatePath'];
-    medicalCertificatePath = widget.data['medicalCertificatePath'];
-    // Native-language voice sample
-    voiceSampleNativePath = widget.data['voiceSampleNativePath'];
-    voiceSampleNativeBytes =
-        widget.data['voiceSampleNativeBytes'] as Uint8List?;
-    voiceSampleNativeName = widget.data['voiceSampleNativeName'] as String?;
-    // Web: get voice sample and certificate bytes if available
-    voiceSampleBytes = widget.data['voiceSampleBytes'] as Uint8List?;
-    voiceSampleName = widget.data['voiceSampleName'] as String?;
-    certificateBytes = widget.data['certificateBytes'] as Uint8List?;
-    certificateName = widget.data['certificateName'] as String?;
-    medicalCertificateBytes =
-        widget.data['medicalCertificateBytes'] as Uint8List?;
-    medicalCertificateName = widget.data['medicalCertificateName'] as String?;
-    bio = widget.data['bio'] as String?;
-    yearsExperience =
-        widget.data['yearsExperience'] is int
-            ? widget.data['yearsExperience'] as int
-            : int.tryParse(widget.data['yearsExperience']?.toString() ?? '');
-    preferredShift = widget.data['preferredShift']?.toString();
-    final dynamic shiftRaw = widget.data['shiftAvailability'];
-    if (shiftRaw is List) {
-      shiftAvailability =
-          shiftRaw.map((e) => e?.toString()).whereType<String>().toList();
-    } else if (shiftRaw is String && shiftRaw.isNotEmpty) {
-      shiftAvailability = [shiftRaw];
-    } else {
-      shiftAvailability = [];
-    }
-    preferredShift ??=
-        shiftAvailability.isNotEmpty ? shiftAvailability.first : null;
-
-    final dynamic onlineRaw =
-        widget.data['isOnlineNow'] ?? widget.data['isOnline'];
-    if (onlineRaw is bool) {
-      isOnlineNow = onlineRaw;
-    } else if (onlineRaw is String) {
-      isOnlineNow = onlineRaw.toLowerCase() == 'true';
-    } else {
-      isOnlineNow = null;
-    }
-
-    // Determine employment type from track selection
-    // interpreterTrack: 'volunteer' or 'paid'
-    // interpreterLevel: 'volunteer' or 'paid'
-    final trackValue =
-        widget.data['interpreterTrack'] ??
-        widget.data['interpreterLevel'] ??
-        widget.data['employmentType'];
-    if (trackValue is String) {
-      final normalized = trackValue.toLowerCase();
-      if (normalized.contains('paid') || normalized.contains('professional')) {
-        employmentType = 'paid';
-      } else {
-        employmentType = 'volunteer';
-      }
-    } else {
-      // Default to volunteer if not specified
-      employmentType = 'volunteer';
-    }
 
     // Organization data
     organizationName = widget.data['organizationName'] as String?;
     organizationEmail = widget.data['organizationEmail'] as String?;
     organizationPhone = widget.data['organizationPhone'] as String?;
     organizationAddress = widget.data['organizationAddress'] as String?;
-
-    // Government ID data (from web onboarding)
-    _governmentIdBytes = widget.data['governmentIdBytes'] as Uint8List?;
-    _governmentIdFileName = widget.data['governmentIdFileName'] as String?;
-    _governmentIdType = widget.data['governmentIdType'] as String?;
-
-    // Phone number (from web onboarding)
-    _phoneNumber = widget.data['phoneNumber'] as String?;
 
     // Doctor invite data (for doctors joining via invite code)
     inviteOrganizationId = widget.data['organization_id'] as String?;
@@ -673,41 +491,6 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                 return;
                               }
 
-                              // Additional validation for interpreters
-                              if (role == 'interpreter') {
-                                if (languages.isEmpty) {
-                                  CustomSnackBar.show(
-                                    context,
-                                    message:
-                                        AppStrings
-                                            .pleaseSelectAtLeastOneLanguage,
-                                    type: SnackBarType.error,
-                                  );
-                                  return;
-                                }
-
-                                if (skills.isEmpty) {
-                                  CustomSnackBar.show(
-                                    context,
-                                    message:
-                                        AppStrings.pleaseSelectAtLeastOneSkill,
-                                    type: SnackBarType.error,
-                                  );
-                                  return;
-                                }
-
-                                if (specializations.isEmpty) {
-                                  CustomSnackBar.show(
-                                    context,
-                                    message:
-                                        AppStrings
-                                            .pleaseSelectAtLeastOneSpecialization,
-                                    type: SnackBarType.error,
-                                  );
-                                  return;
-                                }
-                              }
-
                               // Check if user is requester, interpreter, or organization_admin
                               if (role == 'doctor_with_invite' &&
                                   inviteOrganizationId != null) {
@@ -753,51 +536,39 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     username: _usernameController.text.trim(),
                                     gender: _selectedGender ?? '',
                                     country: _selectedCountry,
-                                    languages: languages,
-                                    fluency: fluency,
-                                    skillIds: skills,
-                                    specializationIds: specializations,
+                                    languages: const [],
+                                    fluency: const {},
+                                    skillIds: const [],
+                                    specializationIds: const [],
                                     role: role,
-                                    voiceSampleUrl: voiceSampleUrl,
-                                    voicePrompt: voicePrompt,
-                                    certificateUrl: certificateUrl,
-                                    medicalCertificateUrl:
-                                        medicalCertificateUrl,
-                                    voiceSamplePath: voiceSamplePath,
-                                    certificatePath: certificatePath,
-                                    medicalCertificatePath:
-                                        medicalCertificatePath,
-                                    voiceSampleNativePath:
-                                        voiceSampleNativePath,
-                                    voiceSampleNativeBytes:
-                                        voiceSampleNativeBytes,
-                                    voiceSampleNativeName:
-                                        voiceSampleNativeName,
-                                    voiceSampleBytes: voiceSampleBytes,
-                                    voiceSampleName: voiceSampleName,
+                                    voiceSampleUrl: null,
+                                    voicePrompt: null,
+                                    certificateUrl: null,
+                                    medicalCertificateUrl: null,
+                                    voiceSamplePath: null,
+                                    certificatePath: null,
+                                    medicalCertificatePath: null,
+                                    voiceSampleNativePath: null,
+                                    voiceSampleNativeBytes: null,
+                                    voiceSampleNativeName: null,
+                                    voiceSampleBytes: null,
+                                    voiceSampleName: null,
                                     profileImageBytes: _profileImageBytes,
                                     profileImageName: _profileImageName,
-                                    governmentIdBytes: _governmentIdBytes,
-                                    governmentIdFileName: _governmentIdFileName,
-                                    governmentIdType: _governmentIdType,
-                                    phoneNumber: _phoneNumber,
-                                    certificateBytes: certificateBytes,
-                                    certificateName: certificateName,
-                                    medicalCertificateBytes:
-                                        medicalCertificateBytes,
-                                    medicalCertificateName:
-                                        medicalCertificateName,
-                                    bio: bio,
-                                    yearsExperience: yearsExperience,
-                                    preferredShift: preferredShift,
-                                    shiftAvailability:
-                                        shiftAvailability.isNotEmpty
-                                            ? shiftAvailability
-                                            : preferredShift != null
-                                            ? [preferredShift!]
-                                            : null,
-                                    isOnlineNow: isOnlineNow,
-                                    employmentType: employmentType,
+                                    governmentIdBytes: null,
+                                    governmentIdFileName: null,
+                                    governmentIdType: null,
+                                    phoneNumber: null,
+                                    certificateBytes: null,
+                                    certificateName: null,
+                                    medicalCertificateBytes: null,
+                                    medicalCertificateName: null,
+                                    bio: null,
+                                    yearsExperience: null,
+                                    preferredShift: null,
+                                    shiftAvailability: null,
+                                    isOnlineNow: null,
+                                    employmentType: 'volunteer',
                                   ),
                                 );
                               }

@@ -46,6 +46,18 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
     return null;
   }
 
+  Set<int> _getAllSkillIds(ProfileLoaded state) {
+    if (!state.isInterpreter) return {};
+    final skillIds = <int>{};
+    for (final skill in state.interpreterSkills) {
+      skillIds.add(skill.skillId);
+    }
+    for (final langSkills in state.languageSkillMap.values) {
+      skillIds.addAll(langSkills);
+    }
+    return skillIds;
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<ProfileBloc, ProfileState>(
@@ -138,7 +150,7 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
 
                 // Skills Card (for interpreters)
                 if (state.isInterpreter &&
-                    state.interpreterSkills.isNotEmpty) ...[
+                    _getAllSkillIds(state).isNotEmpty) ...[
                   _buildSkillsCard(state),
                   const SizedBox(height: 24),
                 ],
@@ -353,7 +365,7 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
                 child: _buildStatItem(
                   icon: Icons.psychology,
                   label: 'Skills',
-                  value: state.interpreterSkills.length.toString(),
+                  value: _getAllSkillIds(state).length.toString(),
                   color: const Color(0xFF22C55E),
                 ),
               ),
@@ -534,9 +546,9 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
             spacing: 8,
             runSpacing: 8,
             children:
-                state.interpreterSkills.map((interpreterSkill) {
+                _getAllSkillIds(state).map((skillId) {
                   final skill = state.availableSkills.firstWhere(
-                    (s) => s.id == interpreterSkill.skillId,
+                    (s) => s.id == skillId,
                     orElse:
                         () =>
                             state.availableSkills.isNotEmpty
@@ -656,7 +668,7 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedGender,
+                      initialValue: _selectedGender,
                       decoration: const InputDecoration(
                         labelText: 'Gender',
                         border: OutlineInputBorder(),

@@ -21,10 +21,16 @@ class WebAudioHandle {
 /// retry automatically on the next user interaction (click/touchstart).
 WebAudioHandle? createLoopingAudio(String assetPath) {
   try {
-    // Rewrite Flutter asset path → web-served URL:
-    //   "assets/audio/Call_Ring.mp3"  →  "assets/assets/audio/Call_Ring.mp3"
-    final webPath =
-        assetPath.startsWith('assets/') ? 'assets/$assetPath' : assetPath;
+    // Rewrite Flutter asset path → web-served URL
+    // e.g. "assets/audio/Call_Ring.mp3"  →  "/assets/assets/audio/Call_Ring.mp3"
+    // Prepend the base href so it correctly resolves when navigating on sub-routes.
+    final String baseHref =
+        html.document.querySelector('base')?.getAttribute('href') ?? '/';
+    final String resolvedBase =
+        baseHref.endsWith('/') ? baseHref : '$baseHref/';
+    final String webPath =
+        resolvedBase +
+        (assetPath.startsWith('assets/') ? 'assets/$assetPath' : assetPath);
 
     final el = html.AudioElement(webPath);
     el.loop = true;

@@ -68,7 +68,7 @@ class CallKitService {
           supportsHolding: false,
           supportsGrouping: false,
           supportsUngrouping: false,
-          ringtonePath: 'Call_Ring',
+          ringtonePath: 'call_ring',
         ),
       ),
     );

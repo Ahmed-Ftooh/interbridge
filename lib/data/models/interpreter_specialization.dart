@@ -9,10 +9,9 @@ class InterpreterSpecialization {
 
   factory InterpreterSpecialization.fromJson(Map<String, dynamic> json) =>
       InterpreterSpecialization(
-        userId: json['user_id'],
-        specializationId: json['specialization_id'],
+        userId: json['user_id']?.toString() ?? '',
+        specializationId: (json['specialization_id'] as num?)?.toInt() ?? 0,
       );
-
   Map<String, dynamic> toJson() => {
     'user_id': userId,
     'specialization_id': specializationId,

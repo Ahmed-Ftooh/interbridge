@@ -1222,7 +1222,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<int>(
-                          value: selectedMonth,
+                          initialValue: selectedMonth,
                           decoration: const InputDecoration(
                             labelText: 'Month',
                             border: OutlineInputBorder(),
@@ -1247,7 +1247,7 @@ class _OrganizationDashboardViewState extends State<OrganizationDashboardView>
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<int>(
-                          value: selectedYear,
+                          initialValue: selectedYear,
                           decoration: const InputDecoration(
                             labelText: 'Year',
                             border: OutlineInputBorder(),

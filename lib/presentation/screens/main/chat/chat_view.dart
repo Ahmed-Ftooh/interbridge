@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
@@ -50,10 +51,6 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
   String? _handledInviteMessageId;
   String? _handledCallEndedMessageId;
   // Timer removed - no longer polling, real-time subscription handles all messages
-
-  int _uidFromUuid(String uuid) {
-    return uuid.hashCode.abs();
-  }
 
   @override
   void initState() {
@@ -128,7 +125,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                           context.read<CallBloc>().add(
                             StartCall(
                               channelId: widget.requestId,
-                              localUid: _uidFromUuid(myId),
+                              localUid: uidFromUuid(myId),
                               isVideoCall: false,
                             ),
                           );
@@ -174,7 +171,7 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                           context.read<CallBloc>().add(
                             StartCall(
                               channelId: widget.requestId,
-                              localUid: _uidFromUuid(myId),
+                              localUid: uidFromUuid(myId),
                               isVideoCall: true,
                             ),
                           );
@@ -406,7 +403,11 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                     if (state.messages.isNotEmpty) {
                       final last = state.messages.last;
                       final lastId = last['id']?.toString();
-                      final isInvite = last['content'] == '__CALL_INVITE__';
+                      final lastContent = last['content']?.toString() ?? '';
+                      final isVoiceInvite = lastContent == '__CALL_INVITE__';
+                      final isVideoInvite =
+                          lastContent == '__VIDEO_CALL_INVITE__';
+                      final isInvite = isVoiceInvite || isVideoInvite;
                       final isCallEnded = last['content'] == '__CALL_ENDED__';
                       final isFromMe = last['sender_id'] == myId;
 
@@ -417,10 +418,12 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                         _handledInviteMessageId = lastId;
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (!mounted || myId == null) return;
+                          final isVideoCallInvite = isVideoInvite;
                           context.read<CallBloc>().add(
                             StartCall(
                               channelId: widget.requestId,
-                              localUid: _uidFromUuid(myId),
+                              localUid: uidFromUuid(myId),
+                              isVideoCall: isVideoCallInvite,
                             ),
                           );
                           Navigator.pushAndRemoveUntil(
@@ -431,9 +434,11 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                                       kIsWeb
                                           ? EnhancedCallScreenWeb(
                                             channelId: widget.requestId,
+                                            isVideoCall: isVideoCallInvite,
                                           )
                                           : EnhancedCallScreen(
                                             channelId: widget.requestId,
+                                            isVideoCall: isVideoCallInvite,
                                           ),
                             ),
                             (route) => false,
@@ -490,7 +495,8 @@ class _ChatViewState extends State<ChatView> with WidgetsBindingObserver {
                           final content = message['content'] as String?;
                           final senderId = message['sender_id'] as String?;
 
-                          if (content == '__CALL_INVITE__' &&
+                          if ((content == '__CALL_INVITE__' ||
+                                  content == '__VIDEO_CALL_INVITE__') &&
                               senderId == myId) {
                             return false;
                           }
@@ -1349,18 +1355,29 @@ class _ChatBubbleState extends State<_ChatBubble> {
         );
       // --- END OF FIX ---
 
+      case '__VIDEO_CALL_INVITE__':
       case '__CALL_INVITE__':
+        final isVideoInvite = content == '__VIDEO_CALL_INVITE__';
         return Card(
           color: Colors.green.shade100,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                const Icon(Icons.call, color: Colors.green),
+                Icon(
+                  isVideoInvite ? Icons.videocam : Icons.call,
+                  color: Colors.green,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    widget.isMe ? 'You started a call' : 'Incoming call...',
+                    widget.isMe
+                        ? (isVideoInvite
+                            ? 'You started a video call'
+                            : 'You started a call')
+                        : (isVideoInvite
+                            ? 'Incoming video call...'
+                            : 'Incoming call...'),
                     style: const TextStyle(color: Colors.black),
                   ),
                 ),

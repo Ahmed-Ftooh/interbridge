@@ -27,4 +27,4 @@ class SearchLanguageChanged extends SelectLanguageEvent {
   List<Object?> get props => [query];
 }
 
-class SubmitLanguages extends SelectLanguageEvent {} 
+class SubmitLanguages extends SelectLanguageEvent {}

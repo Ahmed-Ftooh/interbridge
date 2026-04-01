@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:interbridge/presentation/resources/assets_manager.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -23,47 +24,69 @@ class _InterpreterQuizHubWebScreenState
     extends State<InterpreterQuizHubWebScreen> {
   bool _isLoading = true;
   String _employmentType = 'volunteer';
-  Set<String> _attemptedQuizzes = {};
+  Set<String> _attemptedMedicalQuizzes = {};
   bool _hasAttemptedGeneralQuiz = false;
 
   final List<Map<String, dynamic>> _medicalSections = [
-    {'id': 'neurology', 'title': 'Neurology', 'icon': FontAwesomeIcons.brain},
+    {
+      'id': 'neurology',
+      'title': 'Neurology',
+      'icon': FontAwesomeIcons.brain,
+      'color': Colors.purple,
+    },
     {
       'id': 'cardiology',
-      'title': 'Cardiology',
+      'title': 'Cardiovascular',
       'icon': FontAwesomeIcons.heartPulse,
+      'color': Colors.red,
     },
     {
       'id': 'emergency',
-      'title': 'Emergency Medicine',
+      'title': 'Emergency',
       'icon': FontAwesomeIcons.truckMedical,
+      'color': Colors.blue,
     },
-    {'id': 'oncology', 'title': 'Oncology', 'icon': FontAwesomeIcons.ribbon},
+    {
+      'id': 'oncology',
+      'title': 'Oncology',
+      'icon': FontAwesomeIcons.ribbon,
+      'color': Colors.pink,
+    },
     {
       'id': 'respiratory',
       'title': 'Respiratory',
       'icon': FontAwesomeIcons.lungs,
+      'color': Colors.cyan,
     },
     {
       'id': 'gastrointestinal',
       'title': 'Gastrointestinal',
       'icon': FontAwesomeIcons.disease,
+      'color': Colors.brown,
     },
     {
       'id': 'endocrinology',
       'title': 'Endocrinology',
       'icon': FontAwesomeIcons.vial,
+      'color': Colors.teal,
     },
-    {'id': 'renal', 'title': 'Renal', 'icon': FontAwesomeIcons.droplet},
+    {
+      'id': 'renal',
+      'title': 'Renal',
+      'icon': FontAwesomeIcons.droplet,
+      'color': Colors.lightBlue,
+    },
     {
       'id': 'ob_gyn',
       'title': 'OB/GYN',
       'icon': FontAwesomeIcons.personBreastfeeding,
+      'color': Colors.pinkAccent,
     },
     {
       'id': 'dermatology',
       'title': 'Dermatology',
       'icon': FontAwesomeIcons.handDots,
+      'color': Colors.orangeAccent,
     },
   ];
 
@@ -72,12 +95,12 @@ class _InterpreterQuizHubWebScreenState
   @override
   void initState() {
     super.initState();
-    _quickBadgeCheck().then((_) {
+    _quickAttemptCheck().then((_) {
       if (mounted) _loadData();
     });
   }
 
-  Future<void> _quickBadgeCheck() async {
+  Future<void> _quickAttemptCheck() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) return;
@@ -89,34 +112,45 @@ class _InterpreterQuizHubWebScreenState
               .select('employment_type')
               .eq('user_id', userId)
               .maybeSingle();
-      final badgesData = await client
-          .from('interpreter_badges')
-          .select('badge')
+      final attemptsData = await client
+          .from('quiz_attempts')
+          .select('quiz_type, medical_section')
           .eq('user_id', userId);
 
       if (!mounted) return;
 
       final employmentType = profileData?['employment_type'] ?? 'volunteer';
-      final badges =
-          (badgesData as List)
-              .map((b) => b['badge']?.toString() ?? '')
-              .where((b) => b.isNotEmpty)
-              .toSet();
+      bool hasGeneralAttempt = false;
+      final attemptedMedical = <String>{};
+      for (final attempt in (attemptsData as List)) {
+        final quizType = attempt['quiz_type']?.toString();
+        final section = attempt['medical_section']?.toString();
+        if (quizType == 'general') {
+          hasGeneralAttempt = true;
+        } else if (quizType == 'medical' && section != null) {
+          attemptedMedical.add(section);
+        }
+      }
 
-      final hasGeneral = badges.contains('general');
-      final medicalCount = badges.where((b) => b != 'general').length;
       final bool isExperienced = employmentType == 'paid';
       final bool allComplete =
-          isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+          isExperienced
+              ? (hasGeneralAttempt && attemptedMedical.length >= 10)
+              : hasGeneralAttempt;
 
       if (allComplete && mounted) {
+        await client
+            .from('interpreter_details')
+            .update({'onboarding_status': 'under_review'})
+            .eq('user_id', userId);
         await instance<AppPreferences>().setQuizOnboardingDone();
+        if (!mounted) return;
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       }
     } catch (e) {
-      debugPrint('Quick badge check failed: $e');
+      debugPrint('Quick attempt check failed: $e');
     }
   }
 
@@ -152,12 +186,12 @@ class _InterpreterQuizHubWebScreenState
 
         setState(() {
           _employmentType = profileData?['employment_type'] ?? 'volunteer';
-          _attemptedQuizzes = attemptedQuizzes;
+          _attemptedMedicalQuizzes = attemptedQuizzes;
           _hasAttemptedGeneralQuiz = attemptedGeneral;
           _isLoading = false;
         });
 
-        _checkAndNavigateIfComplete();
+        await _checkAndNavigateIfComplete();
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -165,20 +199,27 @@ class _InterpreterQuizHubWebScreenState
     }
   }
 
-  void _checkAndNavigateIfComplete() {
+  Future<void> _checkAndNavigateIfComplete() async {
     final bool isExperienced = _employmentType == 'paid';
     bool allQuizzesAttempted;
 
     if (isExperienced) {
       allQuizzesAttempted =
           _hasAttemptedGeneralQuiz &&
-          _attemptedQuizzes.length >= _totalMedicalQuizzes;
+          _attemptedMedicalQuizzes.length >= _totalMedicalQuizzes;
     } else {
       allQuizzesAttempted = _hasAttemptedGeneralQuiz;
     }
 
     if (allQuizzesAttempted) {
-      instance<AppPreferences>().setQuizOnboardingDone();
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        await Supabase.instance.client
+            .from('interpreter_details')
+            .update({'onboarding_status': 'under_review'})
+            .eq('user_id', userId);
+      }
+      await instance<AppPreferences>().setQuizOnboardingDone();
       if (!mounted) return;
       Navigator.of(
         context,
@@ -213,10 +254,10 @@ class _InterpreterQuizHubWebScreenState
     }
 
     final int remainingMedical =
-        _totalMedicalQuizzes - _attemptedQuizzes.length;
+        _totalMedicalQuizzes - _attemptedMedicalQuizzes.length;
 
     if (!_hasAttemptedGeneralQuiz && remainingMedical == _totalMedicalQuizzes) {
-      return 'Complete the general quiz and all $_totalMedicalQuizzes medical specialization quizzes to qualify.';
+      return 'To ensure the highest standards of medical accuracy, please complete the mandatory General Interpreter Quiz and the 10 core medical specialization modules to unlock your full profile.';
     } else if (!_hasAttemptedGeneralQuiz) {
       return 'Complete the general quiz and $remainingMedical more medical quiz${remainingMedical > 1 ? 'zes' : ''} to qualify.';
     } else if (remainingMedical > 0) {
@@ -261,46 +302,67 @@ class _InterpreterQuizHubWebScreenState
               // General Quiz
               if (!_hasAttemptedGeneralQuiz) ...[
                 _buildSectionTitle(
-                  'General Quiz',
-                  'Required for all interpreters',
+                  'Professional Standards & Medical Assessment',
+                  'Mandatory for all interpreters',
                 ),
                 const SizedBox(height: 12),
                 _buildQuizCard(
-                  title: 'General Interpreter Quiz',
-                  subtitle: '25 seconds per question  •  85% to pass',
+                  title: 'Start Assessment',
                   icon: Icons.school,
+                  iconColor: Colors.blue,
+                  isLocked: false,
                   onTap: () => _takeQuiz('general'),
                 ),
               ],
 
               // Medical Quizzes
               if (isExperienced &&
-                  _attemptedQuizzes.length < _totalMedicalQuizzes) ...[
+                  _attemptedMedicalQuizzes.length < _totalMedicalQuizzes) ...[
                 const SizedBox(height: 32),
                 _buildSectionTitle(
-                  'Medical Specializations',
-                  'Complete all $_totalMedicalQuizzes quizzes (${_attemptedQuizzes.length}/$_totalMedicalQuizzes done)',
+                  'Advanced Clinical Specializations',
+                  'Advanced Medical Interpreter Certification Modules | ${_attemptedMedicalQuizzes.length}/$_totalMedicalQuizzes completed',
                 ),
                 const SizedBox(height: 12),
-                ..._medicalSections
-                    .where(
-                      (section) => !_attemptedQuizzes.contains(section['id']),
-                    )
-                    .map((section) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildQuizCard(
-                          title: section['title'] as String,
-                          subtitle: '30 seconds per question  •  85% to pass',
-                          icon: section['icon'] as IconData,
-                          onTap:
-                              () => _takeQuiz(
-                                'medical',
-                                medicalSection: section['id'] as String,
-                              ),
-                        ),
-                      );
-                    }),
+                ...(() {
+                  final remainingSections =
+                      _medicalSections
+                          .where(
+                            (section) =>
+                                !_attemptedMedicalQuizzes.contains(
+                                  section['id'],
+                                ),
+                          )
+                          .toList();
+
+                  return remainingSections.asMap().entries.map((entry) {
+                    final int idx = entry.key;
+                    final section = entry.value;
+
+                    // If General Quiz is not done, everything here is locked.
+                    // Otherwise, only the very first remaining medical section is unlocked.
+                    final bool isLocked = !_hasAttemptedGeneralQuiz || idx > 0;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildQuizCard(
+                        title: section['title'] as String,
+                        icon: section['icon'] as IconData,
+                        iconColor:
+                            section['color'] as Color? ??
+                            const Color(0xFF3B82F6),
+                        isLocked: isLocked,
+                        onTap:
+                            isLocked
+                                ? null
+                                : () => _takeQuiz(
+                                  'medical',
+                                  medicalSection: section['id'] as String,
+                                ),
+                      ),
+                    );
+                  });
+                })(),
               ],
 
               const SizedBox(height: 24),
@@ -319,13 +381,16 @@ class _InterpreterQuizHubWebScreenState
         Container(
           width: 36,
           height: 36,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
-            ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              ImageAssets.appIcon,
+              width: 36,
+              height: 36,
+              fit: BoxFit.cover,
+            ),
           ),
-          child: const Icon(Icons.translate, color: Colors.white, size: 20),
         ),
         const SizedBox(width: 10),
         const Text(
@@ -367,7 +432,7 @@ class _InterpreterQuizHubWebScreenState
           ),
           const SizedBox(height: 20),
           const Text(
-            'Qualification Quizzes',
+            'Professional Accreditation',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -398,7 +463,7 @@ class _InterpreterQuizHubWebScreenState
       totalRequired = 1 + _totalMedicalQuizzes;
       completed =
           (_hasAttemptedGeneralQuiz ? 1 : 0) +
-          _attemptedQuizzes.length.clamp(0, _totalMedicalQuizzes);
+          _attemptedMedicalQuizzes.length.clamp(0, _totalMedicalQuizzes);
     } else {
       totalRequired = 1;
       completed = _hasAttemptedGeneralQuiz ? 1 : 0;
@@ -419,7 +484,7 @@ class _InterpreterQuizHubWebScreenState
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Progress',
+                'Completion Status',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -440,13 +505,10 @@ class _InterpreterQuizHubWebScreenState
                 ),
                 child: Text(
                   '$completed / $totalRequired completed',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color:
-                        progress >= 1
-                            ? const Color(0xFF059669)
-                            : const Color(0xFFD97706),
+                    color: Color(0xFF059669),
                   ),
                 ),
               ),
@@ -494,19 +556,24 @@ class _InterpreterQuizHubWebScreenState
 
   Widget _buildQuizCard({
     required String title,
-    required String subtitle,
     required IconData icon,
+    required Color iconColor,
+    required bool isLocked,
     VoidCallback? onTap,
   }) {
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor:
+          isLocked ? SystemMouseCursors.forbidden : SystemMouseCursors.click,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color:
+                isLocked
+                    ? const Color(0xFFF1F5F9).withValues(alpha: 0.5)
+                    : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
@@ -516,11 +583,18 @@ class _InterpreterQuizHubWebScreenState
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                  color:
+                      isLocked
+                          ? const Color(0xFFE2E8F0)
+                          : iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
-                  child: FaIcon(icon, color: const Color(0xFF3B82F6), size: 26),
+                  child: FaIcon(
+                    icon,
+                    color: isLocked ? const Color(0xFF94A3B8) : iconColor,
+                    size: 26,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -530,24 +604,76 @@ class _InterpreterQuizHubWebScreenState
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172A),
+                        color:
+                            isLocked
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
-                      subtitle,
-                      style: const TextStyle(
+                      isLocked ? 'Status (Locked 🔒)' : 'Status (Available ⭐)',
+                      style: TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                        color:
+                            isLocked
+                                ? const Color(0xFF64748B)
+                                : const Color(0xFF059669),
                       ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color:
+                              isLocked
+                                  ? const Color(0xFFCBD5E1)
+                                  : const Color(0xFF64748B),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Estimated: 15 mins',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color:
+                                isLocked
+                                    ? const Color(0xFFCBD5E1)
+                                    : const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.flag_outlined,
+                          size: 14,
+                          color:
+                              isLocked
+                                  ? const Color(0xFFCBD5E1)
+                                  : const Color(0xFFE11D48),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Target: 85%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color:
+                                isLocked
+                                    ? const Color(0xFFCBD5E1)
+                                    : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+              if (!isLocked)
+                const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
             ],
           ),
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
@@ -20,6 +21,7 @@ class LanguageFluencyWebScreen extends StatefulWidget {
 
 class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
   bool _initialized = false;
+  bool _isSaving = false;
 
   static const _fluencyLevels = [
     {
@@ -100,8 +102,8 @@ class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
             type: SnackBarType.error,
           );
         }
-        if (state.isComplete) {
-          _onComplete(state, data);
+        if (state.isComplete && !_isSaving) {
+          _saveAndComplete(state, data);
         }
       },
       builder: (context, state) {
@@ -458,48 +460,115 @@ class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
     );
   }
 
-  void _onComplete(LanguageFluencyState state, Map<String, dynamic> data) {
-    final Map<String, String?> fluencyWithIds = {};
-    for (final languageName in state.selectedLanguages) {
-      final languageId = LanguageMappingUtility.getLanguageId(languageName);
-      if (languageId != 0 && state.fluencyMap.containsKey(languageName)) {
-        fluencyWithIds[languageId.toString()] = state.fluencyMap[languageName];
+  int _getFluencyId(String level) {
+    switch (level) {
+      case 'Beginner':
+        return 1;
+      case 'Intermediate':
+        return 3;
+      case 'Upper Intermediate':
+        return 4;
+      case 'Native Or Fluent':
+        return 7;
+      default:
+        return 1;
+    }
+  }
+
+  Future<void> _saveAndComplete(
+    LanguageFluencyState state,
+    Map<String, dynamic> data,
+  ) async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final List<Map<String, dynamic>> skillsInserts = [];
+
+      // Clear skills to prevent duplicates, but we update languages
+      await Supabase.instance.client
+          .from('interpreter_language_skills')
+          .delete()
+          .eq('user_id', userId);
+
+      for (final languageName in state.selectedLanguages) {
+        final languageId = LanguageMappingUtility.getLanguageId(languageName);
+        if (languageId == 0) continue;
+
+        // Update fluency level
+        final fluencyName = state.fluencyMap[languageName];
+        if (fluencyName != null) {
+          final fluencyId = _getFluencyId(fluencyName);
+          await Supabase.instance.client
+              .from('interpreter_languages')
+              .update({'fluency_id': fluencyId})
+              .eq('user_id', userId)
+              .eq('language_id', languageId);
+        }
+
+        // Gather skills
+        if (state.skillsMap.containsKey(languageName)) {
+          for (final skillName in state.skillsMap[languageName]!) {
+            final skill = _skills.firstWhere(
+              (s) => s['name'] == skillName,
+              orElse: () => {'id': 0},
+            );
+            final skillId = skill['id'] as int;
+            if (skillId != 0) {
+              skillsInserts.add({
+                'user_id': userId,
+                'language_id': languageId,
+                'skill_id': skillId,
+              });
+            }
+          }
+        }
+      }
+
+      if (skillsInserts.isNotEmpty) {
+        await Supabase.instance.client
+            .from('interpreter_language_skills')
+            .insert(skillsInserts);
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'fluency_selected'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        final originalArgs =
+            ModalRoute.of(context)?.settings.arguments
+                as Map<String, dynamic>? ??
+            {};
+        final nextArgs = {
+          ...originalArgs,
+          ...data,
+        }; // Kept for backwards compatibility
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.interpreterFieldScreen, arguments: nextArgs);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to save details: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
       }
     }
-    data['fluency'] = fluencyWithIds;
-
-    final List<int> skillIds = [];
-    final Set<String> allSelectedSkills = {};
-    for (final skillsSet in state.skillsMap.values) {
-      allSelectedSkills.addAll(skillsSet);
-    }
-    for (final skillName in allSelectedSkills) {
-      final skill = _skills.firstWhere(
-        (s) => s['name'] == skillName,
-        orElse: () => {'id': 0},
-      );
-      if (skill['id'] != 0) {
-        skillIds.add(skill['id'] as int);
-      }
-    }
-
-    final List<int> languageIds = [];
-    for (final languageName in state.selectedLanguages) {
-      final languageId = LanguageMappingUtility.getLanguageId(languageName);
-      if (languageId != 0) {
-        languageIds.add(languageId);
-      }
-    }
-
-    data['skills'] = skillIds;
-    data['languages'] = languageIds;
-
-    final originalArgs =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
-    final nextArgs = {...originalArgs, ...data};
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.interpreterFieldScreen, arguments: nextArgs);
   }
 }

@@ -4,3 +4,7 @@ Future<void> requestWebMediaPermissions({
 }) async {
   // No-op on non-web platforms.
 }
+
+void stopWebMediaTracks() {
+  // No-op
+}

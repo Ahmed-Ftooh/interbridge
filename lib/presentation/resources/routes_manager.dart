@@ -66,7 +66,6 @@ import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
     if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 import 'package:interbridge/presentation/screens/auth/web/phone_otp_web.dart';
 import 'package:interbridge/presentation/screens/auth/web/government_id_upload_web.dart';
-import 'package:interbridge/presentation/screens/auth/web/voice_prompt_web.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -110,7 +109,6 @@ class Routes {
       "/doctorRegisterWithInvite";
   static const String phoneOtpRoute = "/phoneOtp";
   static const String governmentIdUploadRoute = "/governmentIdUpload";
-  static const String voicePromptRoute = "/voicePrompt";
 }
 
 class RouteGenerator {
@@ -437,17 +435,6 @@ class RouteGenerator {
           builder: (_) => const GovernmentIdUploadWebScreen(),
           settings: RouteSettings(arguments: settings.arguments),
         );
-      case Routes.voicePromptRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const VoicePromptWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const VoicePromptWebScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
       default:
         log('RouteGenerator: Unmatched route - ${settings.name}');
         log('RouteGenerator: Stack trace: ${StackTrace.current}');
@@ -616,6 +603,136 @@ class _AuthCallbackLoadingScreenState
     }
   }
 
+  Map<String, dynamic> _buildInterpreterResumeArgs(String employmentType) {
+    final isPaid = employmentType == 'paid';
+    return {
+      'role': 'interpreter',
+      'track': employmentType,
+      'interpreterTrack': employmentType,
+      'interpreterLevel': employmentType,
+      'requiresMedicalDocs': isPaid,
+    };
+  }
+
+  Future<bool> _resumeInterpreterOnboarding({
+    required SupabaseClient client,
+    required String userId,
+    required String onboardingStatus,
+    required String employmentType,
+    required bool isVerified,
+  }) async {
+    if (isVerified || onboardingStatus == 'under_review') {
+      if (!mounted) return true;
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      return true;
+    }
+
+    final resumeArgs = _buildInterpreterResumeArgs(employmentType);
+
+    switch (onboardingStatus) {
+      case 'not_started':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterTrackSelection,
+          (route) => false,
+        );
+        return true;
+      case 'track_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.selectLanguage,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'languages_selected':
+        try {
+          final rows = await client
+              .from('interpreter_languages')
+              .select('language_id')
+              .eq('user_id', userId);
+          final languageIds =
+              (rows as List)
+                  .map((row) => row['language_id'])
+                  .whereType<num>()
+                  .map((id) => id.toInt())
+                  .toList();
+          if (languageIds.isNotEmpty) {
+            resumeArgs['languages'] = languageIds;
+          }
+        } catch (_) {
+          // Fall back to language selection if data hydration fails.
+        }
+
+        if (!mounted) return true;
+        if ((resumeArgs['languages'] as List?)?.isNotEmpty == true) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.languageFluencyScreen,
+            (route) => false,
+            arguments: resumeArgs,
+          );
+        } else {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.selectLanguage,
+            (route) => false,
+            arguments: resumeArgs,
+          );
+        }
+        return true;
+      case 'fluency_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterFieldScreen,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'specialization_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.voiceSampleRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'voice_sample_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.phoneOtpRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'phone_entered':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.governmentIdUploadRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'government_id_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.certificateUploadRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'document_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterQuizHubRoute,
+          (route) => false,
+        );
+        return true;
+      default:
+        return false;
+    }
+  }
+
   Future<void> _navigateBasedOnRole(String userId) async {
     try {
       final supabaseService = SupabaseService();
@@ -640,67 +757,88 @@ class _AuthCallbackLoadingScreenState
           (route) => false,
         );
       } else if (profile.role == 'interpreter') {
-        // Only check quizzes on first login — skip if already completed once
         final appPrefs = instance<AppPreferences>();
-        if (appPrefs.isQuizOnboardingDone()) {
+        // For interpreters, check if they still need to complete quizzes
+        try {
+          final client = Supabase.instance.client;
+          final profileFuture =
+              client
+                  .from('users_profile')
+                  .select('employment_type')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+          final detailsFuture =
+              client
+                  .from('interpreter_details')
+                  .select('onboarding_status, is_verified')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+          final badgesFuture = client
+              .from('interpreter_badges')
+              .select('badge')
+              .eq('user_id', userId);
+
+          final results = await Future.wait<dynamic>([
+            profileFuture,
+            detailsFuture,
+            badgesFuture,
+          ]);
+
+          final profileData = results[0] as Map<String, dynamic>?;
+          final detailsData = results[1] as Map<String, dynamic>?;
+          final badgesData = results[2] as List<dynamic>;
+
+          final employmentType =
+              profileData?['employment_type'] as String? ?? 'volunteer';
+          final onboardingStatus =
+              detailsData?['onboarding_status'] as String? ?? 'not_started';
+          final isVerified = detailsData?['is_verified'] == true;
+
+          final resumed = await _resumeInterpreterOnboarding(
+            client: client,
+            userId: userId,
+            onboardingStatus: onboardingStatus,
+            employmentType: employmentType,
+            isVerified: isVerified,
+          );
+          if (resumed) return;
+
+          final badges =
+              badgesData
+                  .map((b) => b['badge']?.toString() ?? '')
+                  .where((b) => b.isNotEmpty)
+                  .toSet();
+
+          final hasGeneral = badges.contains('general');
+          final medicalCount = badges.where((b) => b != 'general').length;
+          final bool isExperienced = employmentType == 'paid';
+          final bool allComplete =
+              isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+
           if (!mounted) return;
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-        } else {
-          // For interpreters, check if they still need to complete quizzes
-          try {
-            final client = Supabase.instance.client;
-            final profileData =
-                await client
-                    .from('users_profile')
-                    .select('employment_type')
-                    .eq('user_id', userId)
-                    .maybeSingle();
 
-            final badgesData = await client
-                .from('interpreter_badges')
-                .select('badge')
-                .eq('user_id', userId);
-
-            final employmentType =
-                profileData?['employment_type'] ?? 'volunteer';
-            final badges =
-                (badgesData as List)
-                    .map((b) => b['badge']?.toString() ?? '')
-                    .where((b) => b.isNotEmpty)
-                    .toSet();
-
-            final hasGeneral = badges.contains('general');
-            final medicalCount = badges.where((b) => b != 'general').length;
-            final bool isExperienced = employmentType == 'paid';
-            final bool allComplete =
-                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
-
+          if (allComplete) {
+            await appPrefs.setQuizOnboardingDone();
             if (!mounted) return;
-
-            if (allComplete) {
-              await appPrefs.setQuizOnboardingDone();
-              Navigator.of(
-                context,
-              ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-            } else {
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                Routes.interpreterQuizHubRoute,
-                (route) => false,
-              );
-            }
-          } catch (e) {
-            log(
-              '_AuthCallbackLoadingScreen: Error checking interpreter quiz status: $e',
-            );
-            if (!mounted) return;
-            // Fallback to quiz hub for new interpreters
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+          } else {
             Navigator.of(context).pushNamedAndRemoveUntil(
               Routes.interpreterQuizHubRoute,
               (route) => false,
             );
           }
+        } catch (e) {
+          log(
+            '_AuthCallbackLoadingScreen: Error checking interpreter quiz status: $e',
+          );
+          if (!mounted) return;
+          // Fallback to quiz hub for new interpreters
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterQuizHubRoute,
+            (route) => false,
+          );
         }
       } else {
         Navigator.of(

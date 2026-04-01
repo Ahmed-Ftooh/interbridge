@@ -154,20 +154,59 @@ class InterpreterJobService {
         throw Exception('User must be authenticated');
       }
 
-      final updated =
-          await _client
-              .from('interpreter_requests')
-              .update({
-                'status': 'accepted',
-                'accepted_by': user.id,
-                'accepted_at': DateTime.now().toIso8601String(),
-              })
-              .eq('id', requestId)
-              .eq('status', 'pending')
-              .select()
-              .maybeSingle();
+      Map<String, dynamic>? updated;
+      final rpcStopwatch = Stopwatch()..start();
+
+      // Prefer atomic RPC to avoid race conditions when multiple interpreters
+      // attempt acceptance at nearly the same time.
+      try {
+        final rpcResponse = await _client.rpc(
+          'accept_interpreter_request',
+          params: {'p_request_id': requestId},
+        );
+
+        if (rpcResponse is Map<String, dynamic>) {
+          updated = rpcResponse;
+        } else if (rpcResponse is Map) {
+          updated = Map<String, dynamic>.from(rpcResponse);
+        }
+        if (updated != null) {
+          log(
+            '[ACCEPT:RPC:SUCCESS] request=$requestId interpreter=${user.id} latency=${rpcStopwatch.elapsedMilliseconds}ms',
+          );
+        }
+      } catch (rpcError) {
+        log('[ACCEPT:RPC:UNAVAILABLE] request=$requestId error=$rpcError');
+      }
+      rpcStopwatch.stop();
+
+      // Backward-compatible fallback for environments where migration has not
+      // been applied yet.
+      if (updated == null) {
+        final fallbackStopwatch = Stopwatch()..start();
+        updated =
+            await _client
+                .from('interpreter_requests')
+                .update({
+                  'status': 'accepted',
+                  'accepted_by': user.id,
+                  'accepted_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', requestId)
+                .eq('status', 'pending')
+                .select()
+                .maybeSingle();
+        fallbackStopwatch.stop();
+
+        if (updated != null) {
+          log(
+            '[ACCEPT:FALLBACK:SUCCESS] request=$requestId interpreter=${user.id} latency=${fallbackStopwatch.elapsedMilliseconds}ms',
+          );
+        }
+      }
 
       if (updated == null) {
+        log('[ACCEPT:RACE_LOST] request=$requestId interpreter=${user.id}');
         throw Exception(
           'This request was already accepted by another interpreter',
         );
@@ -248,11 +287,33 @@ class InterpreterJobService {
 
         log('DEBUG: Sending notification: $notificationData');
 
-        // Pass Map directly - Supabase SDK handles JSON serialization
-        await _client.functions.invoke(
-          'send-notification',
-          body: notificationData,
-        );
+        const maxAttempts = 3;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            log(
+              '[NOTIFY:SEND] request=$requestId requester=$requesterId attempt=$attempt/$maxAttempts',
+            );
+            await _client.functions.invoke(
+              'send-notification',
+              body: notificationData,
+            );
+            log(
+              '[NOTIFY:SUCCESS] request=$requestId requester=$requesterId attempt=$attempt',
+            );
+            break;
+          } catch (notifyError) {
+            log(
+              '[NOTIFY:FAILED] request=$requestId requester=$requesterId attempt=$attempt error=$notifyError',
+            );
+            if (attempt == maxAttempts) {
+              log(
+                '[NOTIFY:GAVE_UP] request=$requestId requester=$requesterId after $maxAttempts attempts',
+              );
+              break;
+            }
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+          }
+        }
       } else {
         log('No OneSignal player IDs found for requester $requesterId');
       }

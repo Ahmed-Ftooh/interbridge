@@ -443,6 +443,45 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     }
 
     if (callState is CallOngoing) {
+      if (callState.remoteUids.isEmpty) {
+        log('_buildCallInterface - Waiting for remote participant');
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: ColorManager.primary.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: CircularProgressIndicator(
+                  color: ColorManager.primary,
+                  strokeWidth: 3,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Waiting for other participant...',
+                style: TextStyle(
+                  color: ColorManager.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Connected. We will start as soon as they join.',
+                style: TextStyle(
+                  color: ColorManager.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
       log(
         '_buildCallInterface - Showing call interface (isVideoCall: ${callState.isVideoCall})',
       );

@@ -15,6 +15,7 @@ import 'package:interbridge/data/services/interpreter_request_service.dart';
 import 'package:interbridge/data/services/auto_routing_service.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/session_service.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'dart:developer';
 
 class RequestWaitingView extends StatefulWidget {
@@ -70,22 +71,12 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
   int _estimatedWaitSeconds = 0;
   Timer? _queuePollTimer;
   Timer? _waitCountdownTimer;
+  Timer? _statusSyncTimer;
 
   // Guard: only the first accepted-status path (realtime OR poll) fires
   // StartCall. Prevents double-dispatch that would tear down the Agora engine
   // mid-join if both code paths race to dispatch StartCall simultaneously.
   bool _callStarted = false;
-
-  /// Build a stable int UID from the authenticated user UUID
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
-  }
 
   @override
   void initState() {
@@ -149,6 +140,9 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
       // Subscribe to realtime updates (catches auto-accept from edge function)
       _subscribeToRequest(result.requestId);
+      // Immediate reconciliation for accept events that may happen during
+      // realtime channel bootstrap.
+      Future.delayed(const Duration(milliseconds: 50), _checkRequestStatus);
 
       // Handle routing result
       switch (result.status) {
@@ -195,6 +189,15 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
   /// Subscribe to realtime updates for a request
   void _subscribeToRequest(String requestId) {
+    if (_channel != null) {
+      try {
+        _client.removeChannel(_channel!);
+      } catch (_) {
+        _channel?.unsubscribe();
+      }
+      _channel = null;
+    }
+
     _channel =
         _client.channel('rq_$requestId')
           ..onPostgresChanges(
@@ -214,6 +217,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
                 // transition (e.g. on app resume), skip duplicate dispatch.
                 if (_callStarted) return;
                 _callStarted = true;
+                _stopStatusSync();
 
                 final interpreterId = newRow['accepted_by'].toString();
                 final requesterId = newRow['requester_id'].toString();
@@ -227,7 +231,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
                 if (mounted) {
                   final isVideoCall = widget.callType == 'video';
-                  final myUid = _uidFromUuid(requesterId);
+                  final myUid = uidFromUuid(requesterId);
                   context.read<CallBloc>().add(
                     StartCall(
                       channelId: requestId,
@@ -257,6 +261,34 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
             },
           )
           ..subscribe();
+
+    log('Requester realtime subscription started for request: $requestId');
+
+    _startStatusSync();
+  }
+
+  /// Poll request status as a safety net when realtime updates are delayed/missed.
+  void _startStatusSync() {
+    _statusSyncTimer?.cancel();
+
+    // Quick initial reconciliation right after subscription setup.
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!mounted || _callStarted) return;
+      _checkRequestStatus();
+    });
+
+    _statusSyncTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!mounted || _callStarted) {
+        timer.cancel();
+        return;
+      }
+      _checkRequestStatus();
+    });
+  }
+
+  void _stopStatusSync() {
+    _statusSyncTimer?.cancel();
+    _statusSyncTimer = null;
   }
 
   /// Poll queue status every 10 seconds
@@ -352,6 +384,9 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
       // 2) Subscribe to updates for this request
       _subscribeToRequest(request.id);
+      // Immediate reconciliation for accept events that may happen during
+      // realtime channel bootstrap.
+      Future.delayed(const Duration(milliseconds: 50), _checkRequestStatus);
 
       // Start tier escalation timer for specialist requests
       if (widget.interpreterType == 'specialist') {
@@ -408,6 +443,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
     _tierEscalationTimer?.cancel();
     _queuePollTimer?.cancel();
     _waitCountdownTimer?.cancel();
+    _statusSyncTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (_channel != null) {
       _client.removeChannel(_channel!);
@@ -435,6 +471,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
       // Guard: realtime callback may have already started the call.
       if (_callStarted) return;
       _callStarted = true;
+      _stopStatusSync();
 
       final interpreterId = response['accepted_by']?.toString();
       final requesterId = response['requester_id']?.toString();
@@ -451,7 +488,7 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
 
       // Navigate to call screen and start the call
       final isVideoCall = widget.callType == 'video';
-      final myUid = _uidFromUuid(requesterId);
+      final myUid = uidFromUuid(requesterId);
 
       // Start the call via CallBloc
       context.read<CallBloc>().add(

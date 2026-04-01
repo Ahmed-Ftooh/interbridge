@@ -130,6 +130,18 @@ class ErrorHandler {
       );
     }
 
+    if ((errorString.contains('agorartcexception(-4') ||
+            errorString.contains('not supported in this platform')) &&
+        (context == 'StartCall' || context == 'FetchToken')) {
+      return AppError(
+        message: 'This browser operation is not supported for call setup',
+        type: ErrorType.unknown,
+        technicalDetails: error.toString(),
+        userAction: 'Refresh the page and retry the call.',
+        isRetryable: true,
+      );
+    }
+
     if (errorString.contains('permission') || errorString.contains('denied')) {
       return AppError(
         message: 'Permission denied',

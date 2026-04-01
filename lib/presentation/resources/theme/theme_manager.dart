@@ -11,7 +11,7 @@ ThemeData getApplicationTheme() {
 
     // ripple effect color
     // cardview theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: ColorManager.backgroundCard,
       shadowColor: ColorManager.primary2.withValues(alpha: 0.1),
       elevation: AppSize.s4,

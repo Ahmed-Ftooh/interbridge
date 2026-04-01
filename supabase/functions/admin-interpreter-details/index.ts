@@ -128,15 +128,22 @@ Deno.serve(async (req) => {
         rows.map(async (row: any) => {
           let signedUrl: string | null = null;
           if (row.url) {
-            // Extract bucket and path from the stored URL
-            // Format: .../object/sign/voice_samples/voice_samples/{user_id}/file?token=...
-            // or .../object/public/voice_samples/voice_samples/{user_id}/file
-            const pathMatch = row.url.match(/\/(?:object\/(?:sign|public)\/)?(voice_samples)\/(voice_samples\/.+?)(?:\?|$)/);
+            // Extract object path from either public or signed storage URL.
+            // Works for both:
+            // .../storage/v1/object/public/voice_samples/{path}
+            // .../storage/v1/object/sign/voice_samples/{path}?token=...
+            // and older variants without /storage/v1 prefix.
+            const pathMatch = row.url.match(
+              /(?:\/storage\/v1)?\/object\/(?:sign|public)\/voice_samples\/(.+?)(?:\?|$)/
+            );
             if (pathMatch) {
-              const bucket = pathMatch[1];
-              const objectPath = pathMatch[2];
-              const { data: sd } = await svc.storage.from(bucket).createSignedUrl(objectPath, 3600);
-              signedUrl = sd?.signedUrl ?? null;
+              const objectPath = pathMatch[1];
+              const { data: sd } = await svc.storage
+                .from("voice_samples")
+                .createSignedUrl(objectPath, 3600);
+              signedUrl = sd?.signedUrl ?? row.url ?? null;
+            } else {
+              signedUrl = row.url;
             }
           }
           return {
@@ -227,8 +234,8 @@ async function serviceClient() {
 async function ensureSignedUrl(storedUrl: string | null | undefined): Promise<string | null> {
   if (!storedUrl) return null;
   try {
-    // Expected signed format: /object/sign/<bucket>/<path>?token=...
-    const match = storedUrl.match(/\/object\/sign\/(.*?)\/(.*?)(\?|$)/);
+    // Handle both signed and public storage URLs.
+    const match = storedUrl.match(/(?:\/storage\/v1)?\/object\/(?:sign|public)\/(.*?)\/(.*?)(\?|$)/);
     if (!match) return storedUrl; // fallback to stored url
     const bucket = match[1];
     const objectPath = match[2];

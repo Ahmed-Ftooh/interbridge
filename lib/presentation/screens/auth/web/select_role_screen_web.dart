@@ -44,9 +44,10 @@ class _SelectRoleScreenWebState extends State<SelectRoleScreenWeb> {
             title: 'I am an Interpreter',
             subtitle: 'Offer your interpretation services',
             onTap:
-                () => Navigator.of(
-                  context,
-                ).pushNamed(Routes.interpreterTrackSelection),
+                () => Navigator.of(context).pushNamed(
+                  Routes.registerRoute,
+                  arguments: {'role': 'interpreter'},
+                ),
           ),
           const SizedBox(height: 16),
 

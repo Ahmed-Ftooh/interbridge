@@ -360,8 +360,6 @@ class _MedicalQuizScreenState extends State<MedicalQuizScreen> {
       ],
     );
   }
-
-
 }
 
 class _MedicalQuizQuestion {

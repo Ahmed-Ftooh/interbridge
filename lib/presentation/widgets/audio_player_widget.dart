@@ -10,8 +10,8 @@ class AudioPlayerWidget extends StatefulWidget {
   final bool isInline; // Add parameter to control display mode
 
   const AudioPlayerWidget({
-    super.key, 
-    required this.url, 
+    super.key,
+    required this.url,
     this.fileName,
     this.isInline = true, // Default to inline display
   });

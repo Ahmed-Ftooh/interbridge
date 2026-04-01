@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/error_handler.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -32,37 +33,73 @@ class _CertificateUploadScreenState extends State<CertificateUploadScreen> {
     super.dispose();
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     final Map<String, dynamic> args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
 
     final isPaid = _isPaidTrack(args);
-    if (_trainingCertificatePath == null) return;
+    if (_trainingCertificateFile == null) return;
+    
+    final userId = Supabase.instance.client.auth.currentUser?.id;
 
-    args['certificatePath'] = _trainingCertificatePath;
-    if (isPaid && _medicalCertificatePath != null) {
-      args['medicalCertificatePath'] = _medicalCertificatePath;
-    }
-    final bio = _bioController.text.trim();
-    if (bio.isNotEmpty) {
-      args['bio'] = bio;
-    }
-    final years = int.tryParse(_yearsController.text.trim());
-    if (years != null) {
-      args['yearsExperience'] = years;
-    }
+    try {
+      if (userId == null) throw Exception("User not logged in");
 
-    // Skip quiz during registration - go directly to register
-    // Quiz will be shown on home screen after account creation
-    if (isPaid) {
-      // Paid track: go to register
-      Navigator.of(context).pushNamed(Routes.registerRoute, arguments: args);
-    } else {
-      // Volunteer track: show success screen then register
-      Navigator.of(
-        context,
-      ).pushNamed(Routes.volunteerSuccessRoute, arguments: args);
+      // Upload Training Certificate
+      final trainingPath = '$userId/training_${DateTime.now().millisecondsSinceEpoch}_${_trainingCertificateFile!.path.split('/').last}';
+      
+      await Supabase.instance.client.storage.from('interpreter_certificates').upload(trainingPath, _trainingCertificateFile!);
+      
+      final trainingUrl = Supabase.instance.client.storage.from('interpreter_certificates').getPublicUrl(trainingPath);
+
+      await Supabase.instance.client.from('interpreter_certificates').insert({
+        'user_id': userId,
+        'file_url': trainingUrl,
+        'file_name': _trainingCertificateFile!.path.split('/').last,
+        'certificate_type': 'training',
+      });
+
+      // Upload Medical Certificate
+      if (isPaid && _medicalCertificateFile != null) {
+        final medicalPath = '$userId/medical_${DateTime.now().millisecondsSinceEpoch}_${_medicalCertificateFile!.path.split('/').last}';
+        await Supabase.instance.client.storage.from('interpreter_certificates').upload(medicalPath, _medicalCertificateFile!);
+        final medicalUrl = Supabase.instance.client.storage.from('interpreter_certificates').getPublicUrl(medicalPath);
+
+        await Supabase.instance.client.from('interpreter_certificates').insert({
+          'user_id': userId,
+          'file_url': medicalUrl,
+          'file_name': _medicalCertificateFile!.path.split('/').last,
+          'certificate_type': 'medical',
+        });
+      }
+
+      final bio = _bioController.text.trim();
+      final years = int.tryParse(_yearsController.text.trim());
+
+      final updateData = <String, dynamic>{
+        'onboarding_status': 'under_review', // Final step!
+      };
+      
+      if (bio.isNotEmpty) updateData['bio'] = bio;
+      if (years != null) updateData['years_experience'] = years;
+
+      await Supabase.instance.client.from('interpreter_details').update(updateData).eq('user_id', userId);
+
+      if (mounted) {
+        if (isPaid) {
+          Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        } else {
+          Navigator.of(
+            context,
+          ).pushNamed(Routes.volunteerSuccessRoute, arguments: args);
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = ErrorHandler.handleError(e, context: 'CertificateUpload');
+      });
     }
   }
 

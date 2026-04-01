@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/presentation/resources/assets_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 
 /// Modern responsive web layout shell with sidebar navigation
@@ -89,13 +90,16 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0955FA), Color(0xFF6366F1)],
-              ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                ImageAssets.appIcon,
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+              ),
             ),
-            child: const Icon(Icons.translate, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           const Text(
@@ -244,22 +248,16 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0955FA), Color(0xFF6366F1)],
-              ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0955FA).withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              child: Image.asset(
+                ImageAssets.appIcon,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+              ),
             ),
-            child: const Icon(Icons.translate, color: Colors.white, size: 24),
           ),
           if (!collapsed) ...[
             const SizedBox(width: 14),
@@ -277,7 +275,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                     ),
                   ),
                   Text(
-                    'Medical Interpretation',
+                    'Interbridge Platform',
                     style: TextStyle(
                       fontSize: 11,
                       color: Color(0xFF94A3B8),
@@ -317,7 +315,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: EdgeInsets.symmetric(
-              horizontal: collapsed ? 16 : 16,
+              horizontal: collapsed ? 0 : 16,
               vertical: 14,
             ),
             decoration: BoxDecoration(
@@ -405,7 +403,10 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
 
   Widget _buildUserSection(bool collapsed) {
     return Container(
-      margin: const EdgeInsets.all(12),
+      margin: EdgeInsets.symmetric(
+        horizontal: collapsed ? 8 : 12,
+        vertical: 12,
+      ),
       padding: EdgeInsets.all(collapsed ? 8 : 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/incoming_call_service.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -32,17 +33,6 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView>
 
   // Incoming call service for ringing interpreters
   final IncomingCallService _incomingCallService = IncomingCallService();
-
-  /// Build a stable int UID from the authenticated user UUID
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
-  }
 
   void _safeAddToJobsBloc(InterpreterJobEvent event) {
     if (!mounted) return;
@@ -314,7 +304,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView>
                     if (state is InterpreterJobAccepted) {
                       final request = state.request;
                       final isVideoCall = request.callType == 'video';
-                      final myUid = _uidFromUuid(request.acceptedBy!);
+                      final myUid = uidFromUuid(request.acceptedBy!);
 
                       // Start the call via CallBloc
                       context.read<CallBloc>().add(
@@ -835,7 +825,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView>
             child: Switch(
               value: _isOnline,
               onChanged: _toggleOnlineStatus,
-              activeColor: Colors.white,
+              activeThumbColor: Colors.white,
               activeTrackColor: Colors.white.withOpacity(0.4),
               inactiveThumbColor: Colors.white,
               inactiveTrackColor: Colors.white.withOpacity(0.3),

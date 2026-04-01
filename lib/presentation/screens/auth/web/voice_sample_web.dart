@@ -5,7 +5,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:record/record.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:interbridge/core/web_helpers/fetch_blob_bytes.dart'
     if (dart.library.html) 'package:interbridge/core/web_helpers/fetch_blob_bytes_web.dart'
@@ -24,6 +26,8 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _playerEnglish;
   late final AudioPlayer _playerNative;
+
+  bool _isSaving = false;
 
   bool _hasPermission = false;
   bool _permissionDenied = false;
@@ -219,27 +223,80 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   }
 
   // ─── Navigation ───────────────────────────────────────────────
-  void _continue() {
+  Future<void> _continue() async {
     if (!_canContinue) return;
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
 
-    // English sample
-    args['voiceSamplePath'] = _audioPathEn;
-    if (_audioBytesEn != null) {
-      args['voiceSampleBytes'] = _audioBytesEn;
-      args['voiceSampleName'] = 'voice_english.webm';
+    setState(() => _isSaving = true);
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    try {
+      if (userId == null) throw Exception("User not logged in");
+
+      // Upload English sample
+      final englishPath =
+          '$userId/voice_english_${DateTime.now().millisecondsSinceEpoch}.webm';
+      if (_audioBytesEn != null) {
+        await Supabase.instance.client.storage
+            .from('voice_samples')
+            .uploadBinary(englishPath, _audioBytesEn!);
+        final url = Supabase.instance.client.storage
+            .from('voice_samples')
+            .getPublicUrl(englishPath);
+        await Supabase.instance.client.from('voice_samples').insert({
+          'user_id': userId,
+          'url': url,
+          'prompt': 'English introduction',
+          'sentence_type': 'english',
+        });
+      }
+
+      // Upload Native sample
+      final nativePath =
+          '$userId/voice_native_${DateTime.now().millisecondsSinceEpoch}.webm';
+      if (_audioBytesNat != null) {
+        await Supabase.instance.client.storage
+            .from('voice_samples')
+            .uploadBinary(nativePath, _audioBytesNat!);
+        final url = Supabase.instance.client.storage
+            .from('voice_samples')
+            .getPublicUrl(nativePath);
+        await Supabase.instance.client.from('voice_samples').insert({
+          'user_id': userId,
+          'url': url,
+          'prompt': 'Native language introduction',
+          'sentence_type': 'native',
+        });
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'voice_sample_uploaded'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        final args =
+            ModalRoute.of(context)?.settings.arguments
+                as Map<String, dynamic>? ??
+            {};
+        // no longer need to pass bytes or blobs
+        args.remove('voiceSampleBytes');
+        args.remove('voiceSampleNativeBytes');
+
+        Navigator.of(context).pushNamed(Routes.phoneOtpRoute, arguments: args);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to upload voice samples: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
-
-    // Native-language sample
-    args['voiceSampleNativePath'] = _audioPathNat;
-    if (_audioBytesNat != null) {
-      args['voiceSampleNativeBytes'] = _audioBytesNat;
-      args['voiceSampleNativeName'] = 'voice_native.webm';
-    }
-
-    Navigator.of(context).pushNamed(Routes.voicePromptRoute, arguments: args);
   }
 
   String _formatDuration(int seconds) {

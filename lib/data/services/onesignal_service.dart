@@ -36,13 +36,13 @@ class OneSignalService {
   /// [appId] - Your OneSignal App ID from the dashboard
   Future<void> initialize(String appId) async {
     if (_isInitialized) {
-      debugPrint('⚠ OneSignal already initialized');
+      // Telemetry hidden
       return;
     }
 
     // Skip native push notification setup on web
     if (kIsWeb) {
-      debugPrint('📱 Web platform detected - using web notifications');
+      // Telemetry hidden
       _isInitialized = true;
       // On web, we'll use Supabase realtime for incoming calls
       // and browser notifications for alerts
@@ -63,14 +63,14 @@ class OneSignalService {
       final permission = await impl.OneSignal.Notifications.requestPermission(
         true,
       );
-      debugPrint('🔔 OneSignal notification permission: $permission');
+      // Telemetry hidden
 
       // Set up notification handlers
       _setupNotificationHandlers();
 
       // Get player ID (subscription ID) - may not be available immediately
       _playerId = impl.OneSignal.User.pushSubscription.id;
-      debugPrint('📌 OneSignal Player ID (initial): $_playerId');
+      // Telemetry hidden
       debugPrint(
         '📌 OneSignal Token: ${impl.OneSignal.User.pushSubscription.token}',
       );
@@ -80,14 +80,14 @@ class OneSignalService {
 
       // If player ID not available immediately, listen for changes
       impl.OneSignal.User.pushSubscription.addObserver((state) {
-        debugPrint('🔄 OneSignal push subscription changed');
-        debugPrint('   - ID: ${state.current.id}');
-        debugPrint('   - Token: ${state.current.token}');
-        debugPrint('   - Opted In: ${state.current.optedIn}');
+        // Telemetry hidden
+        // Telemetry hidden
+        // Telemetry hidden
+        // Telemetry hidden
 
         if (state.current.id != null && state.current.id != _playerId) {
           _playerId = state.current.id;
-          debugPrint('📌 New OneSignal Player ID: $_playerId');
+          // Telemetry hidden
           _registerPlayerId(_playerId!);
         }
       });
@@ -97,7 +97,7 @@ class OneSignalService {
         await _registerPlayerId(_playerId!);
       } else {
         // Player ID not available yet, try again after a delay
-        debugPrint('⏳ OneSignal Player ID not available yet, will retry...');
+        // Telemetry hidden
         _retryGetPlayerId();
       }
 
@@ -114,12 +114,12 @@ class OneSignalService {
           final user = _client.auth.currentUser;
           if (user != null) {
             impl.OneSignal.login(user.id);
-            debugPrint('🔗 OneSignal external user ID set: ${user.id}');
+            // Telemetry hidden
           }
         } else if (event == AuthChangeEvent.signedOut) {
           // Logout from OneSignal when user signs out
           impl.OneSignal.logout();
-          debugPrint('👋 OneSignal user logged out');
+          // Telemetry hidden
         }
       });
 
@@ -127,13 +127,13 @@ class OneSignalService {
       final currentUser = _client.auth.currentUser;
       if (currentUser != null) {
         impl.OneSignal.login(currentUser.id);
-        debugPrint('🔗 OneSignal external user ID set: ${currentUser.id}');
+        // Telemetry hidden
       }
 
       _isInitialized = true;
-      debugPrint('✅ OneSignal initialized');
+      // Telemetry hidden
     } catch (e) {
-      debugPrint('❌ Error initializing OneSignal: $e');
+      // Telemetry hidden
     }
   }
 
@@ -143,16 +143,16 @@ class OneSignalService {
     impl.OneSignal.Notifications.addForegroundWillDisplayListener((
       event,
     ) async {
-      debugPrint('📩 OneSignal foreground notification received');
-      debugPrint('   - Title: ${event.notification.title}');
-      debugPrint('   - Body: ${event.notification.body}');
-      debugPrint('   - Data: ${event.notification.additionalData}');
+      // Telemetry hidden
+      // Telemetry hidden
+      // Telemetry hidden
+      // Telemetry hidden
 
       final data = event.notification.additionalData ?? {};
 
       // Check for incoming call
       if (data['type'] == 'INCOMING_CALL' || data['type'] == 'incoming_call') {
-        debugPrint('📞 Incoming call notification received in foreground');
+        // Telemetry hidden
         // Don't display the notification banner, show CallKit instead
         event.preventDefault();
 
@@ -192,20 +192,20 @@ class OneSignalService {
 
     // Notification clicked/opened - user tapped on notification
     impl.OneSignal.Notifications.addClickListener((event) async {
-      debugPrint('📲 OneSignal notification clicked');
-      debugPrint('   - Title: ${event.notification.title}');
-      debugPrint('   - Data: ${event.notification.additionalData}');
+      // Telemetry hidden
+      // Telemetry hidden
+      // Telemetry hidden
 
       final data = event.notification.additionalData ?? {};
 
       // Check for incoming call
       if (data['type'] == 'INCOMING_CALL' || data['type'] == 'incoming_call') {
-        debugPrint('📞 Incoming call notification tapped');
+        // Telemetry hidden
 
         // Check if CallKit is already showing an active call
         final hasActiveCalls = await impl.hasActiveCallKitCalls();
         if (hasActiveCalls) {
-          debugPrint('📞 CallKit already has active calls, skipping');
+          // Telemetry hidden
           return;
         }
 
@@ -219,7 +219,7 @@ class OneSignalService {
 
     // Permission state changed
     impl.OneSignal.Notifications.addPermissionObserver((permission) {
-      debugPrint('🔔 OneSignal permission changed: $permission');
+      // Telemetry hidden
     });
   }
 
@@ -227,7 +227,7 @@ class OneSignalService {
   Future<void> _showIncomingCall(Map<String, dynamic> data) async {
     // Prevent concurrent calls
     if (_isShowingIncomingCall) {
-      debugPrint('📞 Already processing an incoming call, skipping');
+      // Telemetry hidden
       return;
     }
 
@@ -250,7 +250,7 @@ class OneSignalService {
 
       // Check if we already have this call showing
       if (_activeIncomingCallId == requestId && requestId != null) {
-        debugPrint('📞 Incoming call already showing for request: $requestId');
+        // Telemetry hidden
         _isShowingIncomingCall = false;
         return;
       }
@@ -270,7 +270,7 @@ class OneSignalService {
       // Check if CallKit already has active calls
       final hasActiveCalls = await impl.hasActiveCallKitCalls();
       if (hasActiveCalls) {
-        debugPrint('📞 CallKit already has active calls');
+        // Telemetry hidden
         _isShowingIncomingCall = false;
         return;
       }
@@ -278,7 +278,7 @@ class OneSignalService {
       // Track the active call
       _activeIncomingCallId = requestId;
       _lastIncomingCallTime = DateTime.now();
-      debugPrint('📞 Showing incoming call for request: $requestId');
+      // Telemetry hidden
 
       await impl.CallKitService().showIncomingCall(
         callerName: callerName,
@@ -290,7 +290,7 @@ class OneSignalService {
         medicalSection: medicalSection,
       );
     } catch (e) {
-      debugPrint('Error showing incoming call: $e');
+      // Telemetry hidden
       _activeIncomingCallId = null;
     } finally {
       _isShowingIncomingCall = false;
@@ -299,7 +299,7 @@ class OneSignalService {
 
   /// Clear the active incoming call (call when call ends or is declined)
   void clearActiveIncomingCall() {
-    debugPrint('📞 Clearing active incoming call: $_activeIncomingCallId');
+    // Telemetry hidden
     _activeIncomingCallId = null;
   }
 
@@ -318,7 +318,7 @@ class OneSignalService {
 
       return response?['is_online'] == true;
     } catch (e) {
-      debugPrint('Error checking interpreter online status: $e');
+      // Telemetry hidden
       return false;
     }
   }
@@ -339,7 +339,7 @@ class OneSignalService {
 
   /// On local notification tap
   void _onNotificationTapped(impl.NotificationResponse response) {
-    debugPrint('📲 Local notification tapped: ${response.payload}');
+    // Telemetry hidden
   }
 
   /// Retry getting player ID with exponential backoff
@@ -359,10 +359,10 @@ class OneSignalService {
     await Future.delayed(delay);
 
     _playerId = impl.OneSignal.User.pushSubscription.id;
-    debugPrint('📌 OneSignal Player ID (retry $attempt): $_playerId');
+    // Telemetry hidden
 
     if (_playerId != null) {
-      debugPrint('✅ Got OneSignal Player ID on retry $attempt: $_playerId');
+      // Telemetry hidden
       await _registerPlayerId(_playerId!);
     } else {
       // Try again
@@ -375,11 +375,11 @@ class OneSignalService {
     try {
       final user = _client.auth.currentUser;
       if (user == null) {
-        debugPrint('⚠ User not authenticated, skipping player ID registration');
+        // Telemetry hidden
         return;
       }
 
-      debugPrint('🔄 Registering player ID: $playerId for user: ${user.id}');
+      // Telemetry hidden
 
       // Clean up old player IDs for this user first
       await _cleanupOldUserPlayerIds(user.id);
@@ -390,9 +390,9 @@ class OneSignalService {
         'created_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id,player_id');
 
-      debugPrint('✅ OneSignal player ID registered in Supabase');
+      // Telemetry hidden
     } catch (e) {
-      debugPrint('❌ Error registering player ID: $e');
+      // Telemetry hidden
     }
   }
 
@@ -419,7 +419,7 @@ class OneSignalService {
         );
       }
     } catch (e) {
-      debugPrint('❌ Error cleaning up old player IDs: $e');
+      // Telemetry hidden
     }
   }
 
@@ -438,27 +438,27 @@ class OneSignalService {
       // Logout from OneSignal
       impl.OneSignal.logout();
 
-      debugPrint('🗑 Player ID removed from Supabase');
+      // Telemetry hidden
     } catch (e) {
-      debugPrint('❌ Error unregistering player ID: $e');
+      // Telemetry hidden
     }
   }
 
   /// Manually refresh and register player ID
   /// Call this after login to ensure player ID is registered
   Future<void> refreshPlayerId() async {
-    debugPrint('🔄 Manually refreshing OneSignal Player ID...');
+    // Telemetry hidden
     _playerId = impl.OneSignal.User.pushSubscription.id;
-    debugPrint('📌 Current Player ID: $_playerId');
+    // Telemetry hidden
     debugPrint(
       '📌 Current Token: ${impl.OneSignal.User.pushSubscription.token}',
     );
-    debugPrint('📌 Opted In: ${impl.OneSignal.User.pushSubscription.optedIn}');
+    // Telemetry hidden
 
     if (_playerId != null) {
       await _registerPlayerId(_playerId!);
     } else {
-      debugPrint('⚠ Player ID still null, starting retry...');
+      // Telemetry hidden
       await _retryGetPlayerId();
     }
   }

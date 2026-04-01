@@ -9,6 +9,7 @@ import 'package:interbridge/presentation/widgets/custom_button.dart';
 import '../view_model/selectFieldBloc/select_field_bloc.dart';
 import '../view_model/selectFieldBloc/select_field_event.dart';
 import '../view_model/selectFieldBloc/select_field_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InterpreterFieldScreen extends StatefulWidget {
   const InterpreterFieldScreen({super.key});
@@ -22,6 +23,81 @@ class _InterpreterFieldScreenState extends State<InterpreterFieldScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   final TextEditingController _customFieldController = TextEditingController();
+  bool _isSaving = false;
+
+  Future<void> _saveAndContinue(
+    SelectFieldState state,
+    Map<String, dynamic> data,
+  ) async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final List<int> specializationIds = [];
+      for (final fieldName in state.selectedFields) {
+        final field = fieldData.firstWhere(
+          (f) => f['title'] == fieldName,
+          orElse: () => {'id': 0},
+        );
+        if (field['id'] != 0) {
+          specializationIds.add(field['id'] as int);
+        }
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_specializations')
+          .delete()
+          .eq('user_id', userId);
+
+      if (specializationIds.isNotEmpty) {
+        final inserts =
+            specializationIds
+                .map((id) => {'user_id': userId, 'specialization_id': id})
+                .toList();
+        await Supabase.instance.client
+            .from('interpreter_specializations')
+            .insert(inserts);
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'specialization_selected'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        final originalArgs =
+            ModalRoute.of(context)?.settings.arguments
+                as Map<String, dynamic>? ??
+            {};
+        final nextArgs = {...originalArgs, ...data};
+        if (!nextArgs.containsKey('role')) nextArgs['role'] = 'interpreter';
+
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.voiceSampleRoute, arguments: nextArgs);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to save specializations: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
 
   final List<Map<String, dynamic>> fieldData = [
     {
@@ -83,46 +159,12 @@ class _InterpreterFieldScreenState extends State<InterpreterFieldScreen>
             type: SnackBarType.error,
           );
         }
-        if (state.isSuccess) {
-          // Get the data from the current route arguments
+        if (state.isSuccess && !_isSaving) {
           final Map<String, dynamic> data =
               ModalRoute.of(context)?.settings.arguments
                   as Map<String, dynamic>? ??
               {};
-
-          // Convert field names to IDs
-          final List<int> specializationIds = [];
-          for (final fieldName in state.selectedFields) {
-            final field = fieldData.firstWhere(
-              (field) => field['title'] == fieldName,
-              orElse: () => {'id': 0},
-            );
-            if (field['id'] != 0) {
-              specializationIds.add(field['id'] as int);
-            }
-          }
-
-          // Add the selected fields to the data
-          data['specializations'] = specializationIds;
-
-          // Ensure role is preserved
-          if (!data.containsKey('role')) {
-            data['role'] = 'interpreter';
-          }
-
-          // Merge with original arguments to preserve track info
-          final originalArgs =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, dynamic>? ??
-              {};
-          final nextArgs = {...originalArgs, ...data};
-
-          // Next step: Voice sample
-          Navigator.pushNamed(
-            context,
-            Routes.voiceSampleRoute,
-            arguments: nextArgs,
-          );
+          _saveAndContinue(state, data);
         }
       },
       builder: (context, state) {

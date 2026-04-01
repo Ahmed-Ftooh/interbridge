@@ -527,7 +527,7 @@ class _RequesterProfileViewState extends State<RequesterProfileView> {
                   ),
                   const SizedBox(height: AppSize.s16),
                   DropdownButtonFormField<String>(
-                    value: _selectedGender,
+                    initialValue: _selectedGender,
                     decoration: const InputDecoration(
                       labelText: 'Gender',
                       border: OutlineInputBorder(),

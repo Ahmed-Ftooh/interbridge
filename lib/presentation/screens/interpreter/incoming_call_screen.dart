@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -63,7 +64,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
   Future<void> _playRingtone() async {
     try {
       // Set source first, then play
-      await _audioPlayer.setSourceAsset('audio/Call_Ring.mp3');
+      await _audioPlayer.setSourceAsset('audio/call_ring.mpeg');
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.resume();
       log('Ringtone started playing');
@@ -71,7 +72,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
       log('Error playing ringtone: $e');
       // Try alternative approach
       try {
-        await _audioPlayer.play(AssetSource('audio/Call_Ring.mp3'));
+        await _audioPlayer.play(AssetSource('audio/call_ring.mpeg'));
         log('Ringtone playing with fallback method');
       } catch (e2) {
         log('Error playing ringtone (fallback): $e2');
@@ -97,7 +98,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
         Supabase.instance.client
             .channel('incoming_call_${widget.request.id}')
             .onPostgresChanges(
-              event: PostgresChangeEvent.update,
+              event: PostgresChangeEvent.all,
               schema: 'public',
               table: 'interpreter_requests',
               filter: PostgresChangeFilter(
@@ -106,8 +107,21 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                 value: widget.request.id,
               ),
               callback: (payload) async {
+                log('Mobile: Request event type: ${payload.eventType}');
+
+                if (payload.eventType == PostgresChangeEvent.delete) {
+                  log('Mobile: Request was deleted (cancelled)');
+                  if (mounted && !_isAccepting) {
+                    await _stopRingtone();
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  }
+                  return;
+                }
+
                 final newStatus = payload.newRecord['status']?.toString();
-                log('Request status changed to: $newStatus');
+                log('Mobile: Request status changed to: $newStatus');
 
                 if (newStatus == 'accepted' || newStatus == 'cancelled') {
                   // Someone else accepted or request was cancelled
@@ -149,17 +163,6 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     _timeoutTimer?.cancel();
     _statusChannel?.unsubscribe();
     super.dispose();
-  }
-
-  /// Build a stable int UID from the authenticated user UUID
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
   }
 
   Future<void> _acceptCall() async {
@@ -204,7 +207,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
 
       // Navigate to call screen
       final isVideoCall = widget.request.callType == 'video';
-      final myUid = _uidFromUuid(currentUserId);
+      final myUid = uidFromUuid(currentUserId);
 
       // Start the call via CallBloc
       context.read<CallBloc>().add(

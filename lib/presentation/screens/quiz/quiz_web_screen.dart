@@ -32,7 +32,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
   final _supabase = SupabaseService();
   static const _passScore = 85;
   static const _medicalBadgeScore = 85;
-  static const _generalTimePerQuestion = 25;
+  static const _generalTimePerQuestion = 30;
   static const _medicalTimePerQuestion = 30;
   static const _retryCooldownDays = 30;
 
@@ -99,11 +99,22 @@ class _QuizWebScreenState extends State<QuizWebScreen>
 
   // ── Retry cooldown check ──
   Future<void> _checkRetryCooldown() async {
+    // Required onboarding quizzes must be retakable immediately so users
+    // can continue registration after a failed attempt.
+    if (widget.isRequired) {
+      _loadQuestions();
+      return;
+    }
+
     try {
       final user = _supabase.getCurrentUser();
       if (user != null) {
         final attempts = await _supabase.getQuizAttempts(user.id);
-        // Find the latest attempt for this quiz type + section
+        // Attempts are ordered DESC by taken_at, so the first match is the latest.
+        // We only enforce a cooldown if:
+        //   1. The latest attempt for this quiz/section FAILED
+        //   2. That attempt was taken within the last 30 days
+        // If the latest attempt passed, or it's outside the window, allow retaking.
         for (final attempt in attempts) {
           if (attempt['quiz_type'] == widget.quizType) {
             final bool sectionMatch =
@@ -111,6 +122,10 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                     ? attempt['medical_section'] == null
                     : attempt['medical_section'] == widget.medicalSection;
             if (sectionMatch) {
+              // If the latest attempt was PASSED, no cooldown — break immediately
+              if (attempt['passed'] == true) {
+                break;
+              }
               final takenAt = DateTime.tryParse(
                 attempt['taken_at']?.toString() ?? '',
               );
@@ -118,8 +133,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                 final cooldownEnd = takenAt.add(
                   const Duration(days: _retryCooldownDays),
                 );
-                if (DateTime.now().toUtc().isBefore(cooldownEnd) &&
-                    attempt['passed'] != true) {
+                if (DateTime.now().toUtc().isBefore(cooldownEnd)) {
                   if (!mounted) return;
                   setState(() {
                     _retryCooldown = true;
@@ -135,7 +149,11 @@ class _QuizWebScreenState extends State<QuizWebScreen>
         }
       }
     } catch (e) {
-      debugPrint('Error checking retry cooldown: $e');
+      // If the cooldown check itself fails (network error etc.), proceed to
+      // load questions anyway so the user is not stuck with a blank/loading screen.
+      debugPrint(
+        'Error checking retry cooldown (proceeding to load questions): $e',
+      );
     }
     _loadQuestions();
   }
@@ -290,14 +308,11 @@ class _QuizWebScreenState extends State<QuizWebScreen>
 
       if (mounted) setState(() => _cameraActive = true);
     } catch (e) {
-      debugPrint('Camera access denied or unavailable: $e');
-      // Camera is optional — quiz continues without it, but we flag it
-      if (mounted) {
-        _showAntiCheatWarning(
-          'Camera access denied',
-          'Your quiz session will be flagged because camera monitoring could not start.',
-        );
-      }
+      // Camera is optional — it may be unavailable on HTTP (non-HTTPS) hosting
+      // or when the user denies permission. We do NOT flag or warn for this
+      // because many valid deployment environments (e.g. cPanel HTTP) block
+      // camera access by default. The quiz proceeds normally without camera.
+      debugPrint('Camera not available (this is OK on HTTP hosting): $e');
     }
   }
 
@@ -426,6 +441,8 @@ class _QuizWebScreenState extends State<QuizWebScreen>
   }
 
   Future<void> _finishQuiz() async {
+    if (_quizCompleted) return;
+
     _timer?.cancel();
     _removeAntiCheatListeners();
     _stopCamera();
@@ -446,12 +463,12 @@ class _QuizWebScreenState extends State<QuizWebScreen>
             ? score >= _medicalBadgeScore
             : score >= _passScore;
 
-    // Determine if flagged (any suspicious activity or camera denied)
+    // Determine if flagged (only actual suspicious activity counts;
+    // camera being unavailable is NOT a flag — it's normal on HTTP hosting)
     final isFlagged =
         _tabSwitchCount > 2 ||
         _copyPasteAttempts > 3 ||
-        _screenshotAttempts > 0 ||
-        !_cameraActive;
+        _screenshotAttempts > 0;
 
     setState(() {
       _quizCompleted = true;
@@ -522,6 +539,9 @@ class _QuizWebScreenState extends State<QuizWebScreen>
   }
 
   void _submitAnswer(int displayIndex) {
+    if (_quizCompleted) return;
+    if (_selectedAnswers.containsKey(_currentQuestionIndex)) return;
+
     // Map the displayed option index back to the original option index
     final shuffle = _optionShuffle[_currentQuestionIndex];
     final originalIndex =
@@ -537,7 +557,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
     final threshold = isMedical ? _medicalBadgeScore : _passScore;
     final passed = _finalScore! >= threshold;
 
-    Navigator.of(context).pop({
+    Navigator.of(context).pop(<String, dynamic>{
       'passed': passed,
       'score': _finalScore,
       'quizType': widget.quizType,
@@ -592,11 +612,11 @@ class _QuizWebScreenState extends State<QuizWebScreen>
         widget.medicalSection?.replaceAll('_', ' ').toUpperCase() ?? '';
     final title =
         widget.quizType == 'general'
-            ? 'General Interpreter Quiz'
+            ? 'Professional Standards & Medical Assessment'
             : 'Medical Quiz — $sectionName';
 
     return PopScope(
-      canPop: !_quizStarted || _quizCompleted,
+      canPop: !_quizStarted,
       onPopInvokedWithResult: (didPop, result) async {
         if (!didPop && _quizStarted && !_quizCompleted) {
           final shouldPop = await _confirmExit();
@@ -613,14 +633,14 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
-                    vertical: 32,
+                    vertical: 16,
                   ),
                   child: Column(
                     children: [
                       // Top bar
                       Row(
                         children: [
-                          if (!_quizStarted || _quizCompleted)
+                          if (!_quizCompleted)
                             IconButton(
                               icon: const Icon(
                                 Icons.arrow_back_ios_new,
@@ -628,7 +648,8 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                                 color: Color(0xFF64748B),
                               ),
                               onPressed: () async {
-                                if (_quizStarted && !_quizCompleted) {
+                                if (_quizCompleted) return;
+                                if (_quizStarted) {
                                   final shouldPop = await _confirmExit();
                                   if (shouldPop && mounted) {
                                     Navigator.of(context).pop();
@@ -786,18 +807,34 @@ class _QuizWebScreenState extends State<QuizWebScreen>
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              _tabSwitchCount > 0 || _copyPasteAttempts > 0
-                  ? 'Integrity warnings: ${_tabSwitchCount + _copyPasteAttempts + _screenshotAttempts}'
-                  : 'Proctored session active',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color:
-                    _tabSwitchCount > 0 || _copyPasteAttempts > 0
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF16A34A),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _tabSwitchCount > 0 || _copyPasteAttempts > 0
+                      ? 'Integrity warnings: ${_tabSwitchCount + _copyPasteAttempts + _screenshotAttempts}'
+                      : 'Proctored session active',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color:
+                        _tabSwitchCount > 0 || _copyPasteAttempts > 0
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF16A34A),
+                  ),
+                ),
+                Text(
+                  'Please ensure you are in a quiet, well-lit environment before starting.',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color:
+                        _tabSwitchCount > 0 || _copyPasteAttempts > 0
+                            ? const Color(0xFFDC2626).withValues(alpha: 0.8)
+                            : const Color(0xFF16A34A).withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
             ),
           ),
           Container(
@@ -805,22 +842,20 @@ class _QuizWebScreenState extends State<QuizWebScreen>
             height: 8,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
+              // Camera being off is neutral — not a flag on HTTP hosting
               color:
                   _cameraActive
                       ? const Color(0xFF22C55E)
-                      : const Color(0xFFEF4444),
+                      : const Color(0xFF94A3B8),
             ),
           ),
           const SizedBox(width: 4),
           Text(
             _cameraActive ? 'Camera On' : 'No Camera',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
-              color:
-                  _cameraActive
-                      ? const Color(0xFF64748B)
-                      : const Color(0xFFDC2626),
-              fontWeight: _cameraActive ? FontWeight.normal : FontWeight.w600,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.normal,
             ),
           ),
         ],
@@ -1015,6 +1050,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                             style: const TextStyle(
                               fontSize: 13,
                               color: Color(0xFF475569),
+                              fontWeight: FontWeight.bold,
                               height: 1.4,
                             ),
                           ),
@@ -1130,25 +1166,25 @@ class _QuizWebScreenState extends State<QuizWebScreen>
             minHeight: 6,
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 16),
 
         // Question text — wrapped in SelectionArea(child: ...) prevention
         Text(
           question.questionText,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Color(0xFF0F172A),
-            height: 1.4,
+            height: 1.3,
           ),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 16),
 
         // Options
         Expanded(
           child: ListView.separated(
             itemCount: displayOptions.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 14),
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final optionLabel = ['A', 'B', 'C', 'D'][index];
               final isSelected = selectedDisplayIdx == index;
@@ -1160,7 +1196,10 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                   borderRadius: BorderRadius.circular(14),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     decoration: BoxDecoration(
                       color:
                           isSelected

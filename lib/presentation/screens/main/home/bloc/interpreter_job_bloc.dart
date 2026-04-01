@@ -2,6 +2,7 @@ import 'dart:async'; // Add this
 import 'dart:developer';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
+import 'package:interbridge/data/services/incoming_call_service.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // Add this
 
@@ -51,6 +52,7 @@ class InterpreterJobError extends InterpreterJobState {
 class InterpreterJobBloc
     extends Bloc<InterpreterJobEvent, InterpreterJobState> {
   final InterpreterJobService _jobService = InterpreterJobService();
+  final IncomingCallService _incomingCallService = IncomingCallService();
   RealtimeChannel? _subscription;
 
   InterpreterJobBloc() : super(InterpreterJobInitial()) {
@@ -94,6 +96,7 @@ class InterpreterJobBloc
       final jobs = await _jobService.getAvailableJobs();
 
       emit(InterpreterJobLoaded(jobs: jobs, totalJobs: jobs.length));
+      unawaited(_incomingCallService.syncFromAvailableJobs(jobs));
     } catch (e) {
       emit(InterpreterJobError(e.toString()));
     }
@@ -144,6 +147,7 @@ class InterpreterJobBloc
       log('Refreshed jobs: ${jobs.length} found');
 
       emit(InterpreterJobLoaded(jobs: jobs, totalJobs: jobs.length));
+      unawaited(_incomingCallService.syncFromAvailableJobs(jobs));
     } catch (e) {
       log('Error refreshing jobs: $e');
       emit(InterpreterJobError(e.toString()));

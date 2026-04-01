@@ -23,6 +23,7 @@ class IncomingCallService {
   bool _isShowingIncomingCall = false;
   List<String>? _interpreterLanguageIds;
   String _employmentType = 'volunteer';
+  Timer? _periodicResyncTimer;
 
   /// Start listening for incoming calls for the interpreter.
   /// Set [skipOnlineCheck] to true when the caller has already ensured
@@ -62,6 +63,15 @@ class IncomingCallService {
     _isListening = true;
     _shownRequestIds.clear();
 
+    // Build a short race-window watermark so we can catch requests created
+    // while the realtime channel is still becoming active.
+    final startupWatermark = DateTime.now().toUtc().subtract(
+      const Duration(seconds: 5),
+    );
+
+    // First, load current pending requests.
+    await _checkExistingPendingRequests(limit: 10);
+
     // Subscribe to new interpreter requests
     _subscription =
         Supabase.instance.client
@@ -79,8 +89,20 @@ class IncomingCallService {
 
     log('IncomingCallService: Started listening for incoming calls');
 
-    // Also check for any existing pending requests
-    await _checkExistingPendingRequests();
+    // Then run a bounded catch-up query to close the startup race window.
+    await Future.delayed(const Duration(milliseconds: 250));
+    await _checkExistingPendingRequests(
+      createdAfter: startupWatermark,
+      limit: 10,
+    );
+
+    _periodicResyncTimer?.cancel();
+    _periodicResyncTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (!_isListening || _isShowingIncomingCall) {
+        return;
+      }
+      _checkExistingPendingRequests(limit: 5);
+    });
   }
 
   /// Stop listening for incoming calls
@@ -100,6 +122,8 @@ class IncomingCallService {
     }
     _isListening = false;
     _isShowingIncomingCall = false;
+    _periodicResyncTimer?.cancel();
+    _periodicResyncTimer = null;
     _shownRequestIds.clear();
     _declinedRequestIds.clear();
     log('IncomingCallService: Stopped listening');
@@ -160,7 +184,10 @@ class IncomingCallService {
     }
   }
 
-  Future<void> _checkExistingPendingRequests() async {
+  Future<void> _checkExistingPendingRequests({
+    DateTime? createdAfter,
+    int limit = 10,
+  }) async {
     if (_interpreterLanguageIds == null || _interpreterLanguageIds!.isEmpty) {
       return;
     }
@@ -200,20 +227,20 @@ class IncomingCallService {
         query = query.eq('interpreter_type', 'general');
       }
 
+      if (createdAfter != null) {
+        query = query.gte('created_at', createdAfter.toIso8601String());
+      }
+
       final response = await query
           .order('created_at', ascending: false)
-          .limit(1); // Only get most recent pending request
+          .limit(limit);
 
-      if (response.isNotEmpty) {
-        final request = InterpreterRequest.fromJson(response.first);
+      for (final row in response) {
+        await _handleNewRequest(row);
 
-        // Skip if already shown or declined
-        if (!_shownRequestIds.contains(request.id) &&
-            !_declinedRequestIds.contains(request.id)) {
-          log(
-            'IncomingCallService: Found existing pending request: ${request.id}',
-          );
-          await _showIncomingCallScreen(request);
+        // Show only one incoming screen at a time.
+        if (_isShowingIncomingCall) {
+          break;
         }
       }
     } catch (e) {
@@ -360,6 +387,30 @@ class IncomingCallService {
   /// Mark a request as declined (so it won't show again)
   void markDeclined(String requestId) {
     _declinedRequestIds.add(requestId);
+  }
+
+  /// Feed manually refreshed jobs into the same incoming call pipeline so
+  /// refresh cannot surface cards without triggering incoming call behavior.
+  Future<void> syncFromAvailableJobs(List<InterpreterRequest> jobs) async {
+    if (!_isListening || _isShowingIncomingCall || jobs.isEmpty) {
+      return;
+    }
+
+    for (final request in jobs) {
+      if (request.status != 'pending') {
+        continue;
+      }
+      if (_shownRequestIds.contains(request.id) ||
+          _declinedRequestIds.contains(request.id)) {
+        continue;
+      }
+
+      log(
+        'IncomingCallService: Syncing refreshed request into incoming flow: ${request.id}',
+      );
+      await _showIncomingCallScreen(request);
+      break;
+    }
   }
 
   bool get isListening => _isListening;

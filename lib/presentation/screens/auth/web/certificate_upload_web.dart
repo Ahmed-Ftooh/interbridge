@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Professional web certificate upload screen for interpreter onboarding
 class CertificateUploadWebScreen extends StatefulWidget {
@@ -19,7 +21,7 @@ class _CertificateUploadWebScreenState
   PlatformFile? _medicalCertificate;
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _yearsController = TextEditingController();
-
+  bool _isSaving = false;
   @override
   void dispose() {
     _bioController.dispose();
@@ -48,7 +50,7 @@ class _CertificateUploadWebScreenState
     }
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
@@ -56,43 +58,89 @@ class _CertificateUploadWebScreenState
 
     if (_trainingCertificate == null) return;
 
-    // On web, store the file name/path; bytes are available via PlatformFile.bytes
-    // On web, .path throws an exception, so use .name directly
-    if (kIsWeb) {
-      args['certificatePath'] = _trainingCertificate!.name;
+    setState(() => _isSaving = true);
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    try {
+      if (userId == null) throw Exception("User not logged in");
+
+      // Upload Training Certificate
       if (_trainingCertificate!.bytes != null) {
-        args['certificateBytes'] = _trainingCertificate!.bytes;
-        args['certificateName'] = _trainingCertificate!.name;
+        final path =
+            '$userId/training_${DateTime.now().millisecondsSinceEpoch}_${_trainingCertificate!.name}';
+        await Supabase.instance.client.storage
+            .from('interpreter_certificates')
+            .uploadBinary(path, _trainingCertificate!.bytes!);
+        final url = Supabase.instance.client.storage
+            .from('interpreter_certificates')
+            .getPublicUrl(path);
+
+        await Supabase.instance.client.from('interpreter_certificates').insert({
+          'user_id': userId,
+          'url': url,
+          'storage_path': path,
+          'file_name': _trainingCertificate!.name,
+          'file_size': _trainingCertificate!.size,
+          'certificate_type': 'training',
+        });
       }
-    } else {
-      args['certificatePath'] =
-          _trainingCertificate!.path ?? _trainingCertificate!.name;
-    }
 
-    if (isPaid && _medicalCertificate != null) {
-      if (kIsWeb) {
-        args['medicalCertificatePath'] = _medicalCertificate!.name;
-        if (_medicalCertificate!.bytes != null) {
-          args['medicalCertificateBytes'] = _medicalCertificate!.bytes;
-          args['medicalCertificateName'] = _medicalCertificate!.name;
-        }
-      } else {
-        args['medicalCertificatePath'] =
-            _medicalCertificate!.path ?? _medicalCertificate!.name;
+      // Upload Medical Certificate
+      if (isPaid &&
+          _medicalCertificate != null &&
+          _medicalCertificate!.bytes != null) {
+        final path =
+            '$userId/medical_${DateTime.now().millisecondsSinceEpoch}_${_medicalCertificate!.name}';
+        await Supabase.instance.client.storage
+            .from('interpreter_certificates')
+            .uploadBinary(path, _medicalCertificate!.bytes!);
+        final url = Supabase.instance.client.storage
+            .from('interpreter_certificates')
+            .getPublicUrl(path);
+
+        await Supabase.instance.client.from('interpreter_certificates').insert({
+          'user_id': userId,
+          'url': url,
+          'storage_path': path,
+          'file_name': _medicalCertificate!.name,
+          'file_size': _medicalCertificate!.size,
+          'certificate_type': 'medical',
+        });
       }
-    }
 
-    final bio = _bioController.text.trim();
-    if (bio.isNotEmpty) args['bio'] = bio;
-    final years = int.tryParse(_yearsController.text.trim());
-    if (years != null) args['yearsExperience'] = years;
+      final bio = _bioController.text.trim();
+      final years = int.tryParse(_yearsController.text.trim());
 
-    if (isPaid) {
-      Navigator.of(context).pushNamed(Routes.registerRoute, arguments: args);
-    } else {
-      Navigator.of(
-        context,
-      ).pushNamed(Routes.volunteerSuccessRoute, arguments: args);
+      final updateData = <String, dynamic>{
+        // Certificates are submitted; quiz completion is still required.
+        'onboarding_status': 'document_uploaded',
+      };
+      if (bio.isNotEmpty) updateData['bio'] = bio;
+      if (years != null) updateData['years_experience'] = years;
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update(updateData)
+          .eq('user_id', userId);
+
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterQuizHubRoute,
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to upload certificates: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -199,7 +247,7 @@ class _CertificateUploadWebScreenState
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: _canContinue(isPaid) ? _continue : null,
+              onPressed: _canContinue(isPaid) && !_isSaving ? _continue : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0F172A),
                 foregroundColor: Colors.white,
@@ -210,13 +258,22 @@ class _CertificateUploadWebScreenState
                 disabledBackgroundColor: const Color(0xFFE2E8F0),
                 disabledForegroundColor: const Color(0xFF94A3B8),
               ),
-              child: Text(
-                isPaid ? 'Continue to registration' : 'Continue',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: _isSaving 
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      isPaid ? 'Continue to registration' : 'Continue',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 12),

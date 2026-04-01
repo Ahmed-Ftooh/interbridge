@@ -11,9 +11,9 @@ class InterpreterLanguage {
 
   factory InterpreterLanguage.fromJson(Map<String, dynamic> json) =>
       InterpreterLanguage(
-        userId: json['user_id'],
-        languageId: json['language_id'],
-        fluencyId: json['fluency_id'],
+        userId: json['user_id']?.toString() ?? '',
+        languageId: (json['language_id'] as num?)?.toInt() ?? 0,
+        fluencyId: (json['fluency_id'] as num?)?.toInt() ?? 1,
       );
 
   Map<String, dynamic> toJson() => {

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
@@ -20,7 +21,7 @@ class _GovernmentIdUploadWebScreenState
   Uint8List? _idBytes;
   String? _fileName;
   String _selectedIdType = 'national_id';
-  final bool _isUploading = false;
+  bool _isSaving = false;
 
   static const _idTypes = [
     ('national_id', 'National ID'),
@@ -69,18 +70,58 @@ class _GovernmentIdUploadWebScreenState
     });
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     if (_idBytes == null) return;
+
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
-    args['governmentIdBytes'] = _idBytes;
-    args['governmentIdFileName'] = _fileName;
-    args['governmentIdType'] = _selectedIdType;
 
-    Navigator.of(
-      context,
-    ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final path =
+          '$userId/gov_id_${DateTime.now().millisecondsSinceEpoch}_$_fileName';
+
+      await Supabase.instance.client.storage
+          .from('government-ids')
+          .uploadBinary(path, _idBytes!);
+
+      final url = Supabase.instance.client.storage
+          .from('government-ids')
+          .getPublicUrl(path);
+
+      await Supabase.instance.client.from('government_ids').insert({
+        'user_id': userId,
+        'file_url': url,
+        'file_name': _fileName,
+        'status': 'pending',
+      });
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'government_id_uploaded'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.certificateUploadRoute, arguments: args);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to upload ID: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   @override
@@ -123,8 +164,13 @@ class _GovernmentIdUploadWebScreenState
                 items:
                     _idTypes
                         .map(
-                          (t) =>
-                              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                          (t) => DropdownMenuItem(
+                            value: t.$1,
+                            child: Text(
+                              t.$2,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
                         )
                         .toList(),
                 onChanged: (v) {
@@ -214,7 +260,7 @@ class _GovernmentIdUploadWebScreenState
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: _idBytes != null && !_isUploading ? _continue : null,
+              onPressed: _idBytes != null && !_isSaving ? _continue : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0F172A),
                 foregroundColor: Colors.white,
@@ -226,7 +272,7 @@ class _GovernmentIdUploadWebScreenState
                 disabledForegroundColor: const Color(0xFF94A3B8),
               ),
               child:
-                  _isUploading
+                  _isSaving
                       ? const SizedBox(
                         width: 24,
                         height: 24,
@@ -254,7 +300,17 @@ class _GovernmentIdUploadWebScreenState
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF64748B),
               ),
-              child: const Text('Back'),
+              child:
+                  _isSaving
+                      ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                      : const Text('Back'),
             ),
           ),
         ],

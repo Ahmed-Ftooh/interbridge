@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DraggableCallWidget extends StatefulWidget {
   final String channelId;
   final Function(Duration) onCallEnded;
+  final bool isVideoCall;
 
   const DraggableCallWidget({
     super.key,
     required this.channelId,
     required this.onCallEnded,
+    this.isVideoCall = false,
   });
 
   @override
@@ -27,22 +30,16 @@ class _DraggableCallWidgetState extends State<DraggableCallWidget> {
   void initState() {
     super.initState();
     // Build a stable int UID from the authenticated user UUID
-    final myUid = _uidFromUuid(
+    final myUid = uidFromUuid(
       Supabase.instance.client.auth.currentUser?.id ?? '',
     );
     context.read<CallBloc>().add(
-      StartCall(channelId: widget.channelId, localUid: myUid),
+      StartCall(
+        channelId: widget.channelId,
+        localUid: myUid,
+        isVideoCall: widget.isVideoCall,
+      ),
     );
-  }
-
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
   }
 
   String _formatDuration(Duration d) {

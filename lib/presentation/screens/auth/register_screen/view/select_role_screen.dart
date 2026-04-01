@@ -185,10 +185,10 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                             color: Colors.transparent,
                             child: InkWell(
                               onTap: () {
-                                // Revert to original onboarding flow
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(Routes.interpreterTrackSelection);
+                                Navigator.of(context).pushNamed(
+                                  Routes.registerRoute,
+                                  arguments: {'role': 'interpreter'},
+                                );
                               },
                               borderRadius: BorderRadius.circular(AppSize.s20),
                               child: Padding(

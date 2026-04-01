@@ -85,6 +85,9 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void _startQuiz() {
+    // Required onboarding quizzes must be retakable immediately so users
+    // can continue registration after a failed attempt.
+    // Mobile screen already allows direct retake by design.
     setState(() {
       _quizStarted = true;
       _currentQuestionIndex = 0;
@@ -126,6 +129,8 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _finishQuiz() async {
+    if (_quizCompleted) return;
+
     _timer?.cancel();
 
     int correctCount = 0;
@@ -209,6 +214,9 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void _submitAnswer(int optionIndex) {
+    if (_quizCompleted) return;
+    if (_selectedAnswers.containsKey(_currentQuestionIndex)) return;
+
     setState(() => _selectedAnswers[_currentQuestionIndex] = optionIndex);
     Future.delayed(const Duration(milliseconds: 300), () => _nextQuestion());
   }
@@ -218,7 +226,7 @@ class _QuizScreenState extends State<QuizScreen> {
     final threshold = isMedical ? _medicalBadgeScore : _passScore;
     final passed = _finalScore! >= threshold;
 
-    Navigator.of(context).pop({
+    Navigator.of(context).pop(<String, dynamic>{
       'passed': passed,
       'score': _finalScore,
       'quizType': widget.quizType,
@@ -268,7 +276,7 @@ class _QuizScreenState extends State<QuizScreen> {
             : 'Medical Quiz - $sectionName';
 
     return PopScope(
-      canPop: !_quizStarted || _quizCompleted,
+      canPop: !_quizStarted,
       onPopInvokedWithResult: (didPop, result) async {
         if (!didPop && _quizStarted && !_quizCompleted) {
           final shouldPop = await _confirmExit();
@@ -285,7 +293,8 @@ class _QuizScreenState extends State<QuizScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 20),
             onPressed: () async {
-              if (_quizStarted && !_quizCompleted) {
+              if (_quizCompleted) return;
+              if (_quizStarted) {
                 final shouldPop = await _confirmExit();
                 if (shouldPop && mounted) {
                   Navigator.of(context).pop();

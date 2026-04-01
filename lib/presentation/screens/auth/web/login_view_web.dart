@@ -124,9 +124,141 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     super.dispose();
   }
 
+  Map<String, dynamic> _buildInterpreterResumeArgs(String employmentType) {
+    final isPaid = employmentType == 'paid';
+    return {
+      'role': 'interpreter',
+      'track': employmentType,
+      'interpreterTrack': employmentType,
+      'interpreterLevel': employmentType,
+      'requiresMedicalDocs': isPaid,
+    };
+  }
+
+  Future<bool> _resumeInterpreterOnboarding({
+    required SupabaseClient client,
+    required String userId,
+    required String onboardingStatus,
+    required String employmentType,
+    required bool isVerified,
+  }) async {
+    if (isVerified || onboardingStatus == 'under_review') {
+      if (!mounted) return true;
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      return true;
+    }
+
+    final resumeArgs = _buildInterpreterResumeArgs(employmentType);
+
+    switch (onboardingStatus) {
+      case 'not_started':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterTrackSelection,
+          (route) => false,
+        );
+        return true;
+      case 'track_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.selectLanguage,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'languages_selected':
+        try {
+          final rows = await client
+              .from('interpreter_languages')
+              .select('language_id')
+              .eq('user_id', userId);
+          final languageIds =
+              (rows as List)
+                  .map((row) => row['language_id'])
+                  .whereType<num>()
+                  .map((id) => id.toInt())
+                  .toList();
+          if (languageIds.isNotEmpty) {
+            resumeArgs['languages'] = languageIds;
+          }
+        } catch (_) {
+          // If we fail to hydrate languages, fallback route still lets user continue.
+        }
+
+        if (!mounted) return true;
+        if ((resumeArgs['languages'] as List?)?.isNotEmpty == true) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.languageFluencyScreen,
+            (route) => false,
+            arguments: resumeArgs,
+          );
+        } else {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.selectLanguage,
+            (route) => false,
+            arguments: resumeArgs,
+          );
+        }
+        return true;
+      case 'fluency_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterFieldScreen,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'specialization_selected':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.voiceSampleRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'voice_sample_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.phoneOtpRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'phone_entered':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.governmentIdUploadRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'government_id_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.certificateUploadRoute,
+          (route) => false,
+          arguments: resumeArgs,
+        );
+        return true;
+      case 'document_uploaded':
+        if (!mounted) return true;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterQuizHubRoute,
+          (route) => false,
+        );
+        return true;
+      default:
+        return false;
+    }
+  }
+
   Future<void> _navigateBasedOnRole(String userId) async {
     try {
-      final profile = await _supabaseService.getUserProfile(userId);
+      final profile = await _supabaseService
+          .getUserProfile(userId)
+          .timeout(const Duration(seconds: 5));
       if (!mounted) return;
 
       if (profile?.role == 'organization_admin') {
@@ -135,63 +267,94 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
-        // Only check quizzes on first login — skip if already completed once
         final appPrefs = instance<AppPreferences>();
-        if (appPrefs.isQuizOnboardingDone()) {
+        // Check interpreter badge completion and onboarding status before navigating.
+        try {
+          final client = Supabase.instance.client;
+
+          final Future<Map<String, dynamic>?> profileFuture =
+              client
+                  .from('users_profile')
+                  .select('employment_type')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+
+          final Future<Map<String, dynamic>?> detailsFuture =
+              client
+                  .from('interpreter_details')
+                  .select('onboarding_status, is_verified')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+
+          final Future<List<Map<String, dynamic>>> badgesFuture = client
+              .from('interpreter_badges')
+              .select('badge')
+              .eq('user_id', userId);
+
+          final results = await Future.wait<dynamic>([
+            profileFuture,
+            badgesFuture,
+            detailsFuture,
+          ]).timeout(const Duration(seconds: 5));
+
+          final profileData = results[0] as Map<String, dynamic>?;
+          final badgesData = results[1] as List<Map<String, dynamic>>;
+          final detailsData = results[2] as Map<String, dynamic>?;
+
+          final employmentType = profileData?['employment_type'] ?? 'volunteer';
+
+          final onboardingStatus =
+              detailsData?['onboarding_status'] as String? ?? 'not_started';
+          final isVerified = detailsData?['is_verified'] == true;
+
+          final resumed = await _resumeInterpreterOnboarding(
+            client: client,
+            userId: userId,
+            onboardingStatus: onboardingStatus,
+            employmentType: employmentType,
+            isVerified: isVerified,
+          );
+          if (resumed) return;
+
+          final badges =
+              badgesData
+                  .map((b) => b['badge']?.toString() ?? '')
+                  .where((b) => b.isNotEmpty)
+                  .toSet();
+
+          final hasGeneral = badges.contains('general');
+          final medicalCount = badges.where((b) => b != 'general').length;
+          final bool isExperienced = employmentType == 'paid';
+          final bool allComplete =
+              isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+
           if (!mounted) return;
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-        } else {
-          // Check interpreter quiz badge completion before navigating
-          try {
-            final client = Supabase.instance.client;
-            final profileData =
-                await client
-                    .from('users_profile')
-                    .select('employment_type')
-                    .eq('user_id', userId)
-                    .maybeSingle();
 
-            final badgesData = await client
-                .from('interpreter_badges')
-                .select('badge')
+          if (allComplete) {
+            await appPrefs.setQuizOnboardingDone();
+            // Update onboarding status to under_review since quizzes are done
+            await client
+                .from('interpreter_details')
+                .update({'onboarding_status': 'under_review'})
                 .eq('user_id', userId);
-
-            final employmentType =
-                profileData?['employment_type'] ?? 'volunteer';
-            final badges =
-                (badgesData as List)
-                    .map((b) => b['badge']?.toString() ?? '')
-                    .where((b) => b.isNotEmpty)
-                    .toSet();
-
-            final hasGeneral = badges.contains('general');
-            final medicalCount = badges.where((b) => b != 'general').length;
-            final bool isExperienced = employmentType == 'paid';
-            final bool allComplete =
-                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
-
-            if (!mounted) return;
-
-            if (allComplete) {
-              await appPrefs.setQuizOnboardingDone();
-              Navigator.of(
-                context,
-              ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
-            } else {
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                Routes.interpreterQuizHubRoute,
-                (route) => false,
-              );
-            }
-          } catch (e) {
-            log('Error checking interpreter badges: $e');
             if (!mounted) return;
             Navigator.of(
               context,
             ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+          } else {
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.interpreterQuizHubRoute,
+              (route) => false,
+            );
           }
+        } catch (e) {
+          log('Error checking interpreter badges: $e');
+          if (!mounted) return;
+          // If checks fail/timeout, prefer quiz route for onboarding users.
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterQuizHubRoute,
+            (route) => false,
+          );
         }
       } else {
         Navigator.of(
@@ -245,8 +408,8 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   @override
   Widget build(BuildContext context) {
     return AuthWebWrapper(
-      title: 'Welcome back',
-      subtitle: 'Sign in to your interpreter account to get started',
+      title: 'Interpreter Login',
+      subtitle: 'Sign in to access your interpreter dashboard',
       child: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (!mounted) return;
@@ -272,7 +435,8 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
               setState(() => _isFinalizing = true);
               try {
                 await PendingRegistrationService()
-                    .finalizePendingRegistration();
+                    .finalizePendingRegistration()
+                    .timeout(const Duration(seconds: 5));
                 await _appPreferences.setLoginViewed();
 
                 if (!kIsWeb) {
@@ -393,7 +557,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                             'Remember me',
                             style: TextStyle(
                               fontSize: 13,
-                              color: Color(0xFF64748B),
+                              color: Colors.white70,
                             ),
                           ),
                         ],
@@ -412,7 +576,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                         child: const Text(
                           'Forgot password?',
                           style: TextStyle(
-                            color: Color(0xFF3B82F6),
+                            color: Color(0xFF60A5FA),
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
                           ),
@@ -431,14 +595,14 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                               ? null
                               : () => bloc.add(LoginSubmitted()),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A),
+                        backgroundColor: const Color(0xFF3B82F6),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                         elevation: 0,
                         disabledBackgroundColor: const Color(
-                          0xFF0F172A,
+                          0xFF3B82F6,
                         ).withValues(alpha: 0.5),
                       ),
                       child:
@@ -475,20 +639,26 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                   // Divider
                   Row(
                     children: [
-                      const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+                      Expanded(
+                        child: Divider(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
                           'New to InterBridge?',
                           style: TextStyle(
-                            color: const Color(
-                              0xFF64748B,
-                            ).withValues(alpha: 0.8),
+                            color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 13,
                           ),
                         ),
                       ),
-                      const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+                      Expanded(
+                        child: Divider(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 28),
@@ -498,19 +668,21 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                     height: 48,
                     child: OutlinedButton(
                       onPressed:
-                          () => Navigator.of(
-                            context,
-                          ).pushNamed(Routes.interpreterTrackSelection),
+                            () => Navigator.of(context).pushNamed(
+                              Routes.selectRole,
+                            ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F172A),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                         elevation: 0,
                       ),
                       child: const Text(
-                        'Create an interpreter account',
+                        'Apply to Join The Interpreter Network',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -533,7 +705,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       style: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w500,
-        color: Color(0xFF374151),
+        color: Colors.white,
       ),
     );
   }
@@ -551,9 +723,9 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
       ),
       child: TextField(
         controller: controller,
@@ -562,13 +734,16 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         obscureText: obscureText,
         onChanged: onChanged,
         onSubmitted: onSubmitted,
-        style: const TextStyle(fontSize: 15, color: Color(0xFF0F172A)),
+        style: const TextStyle(fontSize: 15, color: Colors.black),
         decoration: InputDecoration(
           hintText: hintText,
-          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+          hintStyle: TextStyle(
+            color: Colors.black.withValues(alpha: 0.5),
+            fontSize: 14,
+          ),
           prefixIcon: Icon(
             prefixIcon,
-            color: const Color(0xFF94A3B8),
+            color: Colors.black.withValues(alpha: 0.5),
             size: 20,
           ),
           suffixIcon: suffixIcon,

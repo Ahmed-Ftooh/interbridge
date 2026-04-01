@@ -2,6 +2,8 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/core/uid_utils.dart';
+import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
@@ -23,6 +25,8 @@ class InterpreterHomeWeb extends StatefulWidget {
 
 class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     with WidgetsBindingObserver {
+  String? _firstLanguageName;
+  String? _secondLanguageName;
   bool isProcessingJob = false;
   String? processingJobId;
   bool _isVerified = false;
@@ -35,19 +39,11 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
   bool _isLoadingProfile = true;
   String? _employmentType;
   bool _isOnline = false;
+  String _interpreterName = '';
+  String _interpreterIdStr = '';
 
   final CallService _callService = CallService();
   final IncomingCallService _incomingCallService = IncomingCallService();
-
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
-  }
 
   void _safeAddToJobsBloc(InterpreterJobEvent event) {
     if (!mounted) return;
@@ -153,10 +149,43 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
       final profileData =
           await Supabase.instance.client
               .from('users_profile')
-              .select('employment_type')
+              .select('employment_type, username')
               .eq('user_id', userId)
               .maybeSingle();
 
+      // Fetch interpreter languages and language catalog
+      final interpreterLanguages = await Supabase.instance.client
+          .from('interpreter_languages')
+          .select('language_id')
+          .eq('user_id', userId);
+      final languageCatalog = await Supabase.instance.client
+          .from('languages')
+          .select('id, name');
+
+      String? firstLanguageName;
+      String? secondLanguageName;
+      if (interpreterLanguages is List && interpreterLanguages.isNotEmpty) {
+        // First language
+        final firstLangId = interpreterLanguages[0]['language_id'];
+        final firstMatch = (languageCatalog as List?)?.firstWhere(
+          (l) => l['id'] == firstLangId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (firstMatch != null && firstMatch.isNotEmpty) {
+          firstLanguageName = firstMatch['name'];
+        }
+        // Second language (if available)
+        if (interpreterLanguages.length > 1) {
+          final secondLangId = interpreterLanguages[1]['language_id'];
+          final secondMatch = (languageCatalog as List?)?.firstWhere(
+            (l) => l['id'] == secondLangId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (secondMatch != null && secondMatch.isNotEmpty) {
+            secondLanguageName = secondMatch['name'];
+          }
+        }
+      }
       final sessionsCount = await Supabase.instance.client
           .from('interpreter_requests')
           .count(CountOption.exact)
@@ -196,7 +225,13 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           _totalFeedback = feedbackStats['total_feedback'] as int? ?? 0;
           _recentCalls = recentCalls;
           _employmentType = profileData?['employment_type'] ?? 'volunteer';
+          _interpreterName = profileData?['username'] ?? 'Interpreter';
+          final fullIdStr = uidFromUuid(userId).toString();
+          _interpreterIdStr =
+              fullIdStr.length > 5 ? fullIdStr.substring(0, 5) : fullIdStr;
           _isLoadingProfile = false;
+          _firstLanguageName = firstLanguageName;
+          _secondLanguageName = secondLanguageName;
         });
       }
     } catch (e) {
@@ -245,7 +280,17 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           const SizedBox(height: 24),
 
           // Main content
-          if (isWide)
+          // Only show jobs and call features for verified, non-suspended interpreters
+          if (_isLoadingProfile)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_isSuspended)
+            _buildSuspendedView()
+          else if (!_isVerified)
+            _buildPendingVerificationWebView()
+          else if (isWide)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -253,6 +298,8 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                   flex: 2,
                   child: Column(
                     children: [
+                      _buildScriptCard(),
+                      const SizedBox(height: 24),
                       _buildJobsSection(),
                       const SizedBox(height: 24),
                       _buildRecentCallsSection(),
@@ -263,12 +310,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                 Expanded(
                   flex: 1,
                   child: Column(
-                    children: [
-                      _buildStatsCard(),
-                      const SizedBox(height: 24),
-                      _buildOnlineStatusCard(),
-                      const SizedBox(height: 24),
-                    ],
+                    children: [_buildStatsCard(), const SizedBox(height: 24)],
                   ),
                 ),
               ],
@@ -276,9 +318,9 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           else
             Column(
               children: [
-                _buildOnlineStatusCard(),
-                const SizedBox(height: 24),
                 _buildStatsCard(),
+                const SizedBox(height: 24),
+                _buildScriptCard(),
                 const SizedBox(height: 24),
                 _buildJobsSection(),
                 const SizedBox(height: 24),
@@ -317,10 +359,10 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0955FA), Color(0xFF6366F1)],
+          colors: [ColorManager.primaryLight, ColorManager.primary],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
@@ -332,48 +374,74 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // NEW: Name and Premium Welcome Text
+                Text(
+                  'Welcome back, ${_interpreterName.split(" ").first}! 👋',
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // NEW: Show Interpreter ID clearly for doctors to copy
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    Text(
+                      'Ready to bridge the gap? You have completed $_totalSessions sessions.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white.withValues(alpha: 0.9),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Built-in ID Badge
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                        horizontal: 16,
+                        vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color:
-                            _isOnline
-                                ? const Color(0xFF22C55E).withValues(alpha: 0.2)
-                                : Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color:
-                                  _isOnline
-                                      ? const Color(0xFF22C55E)
-                                      : Colors.white,
-                              shape: BoxShape.circle,
-                            ),
+                          const Icon(
+                            Icons.badge_outlined,
+                            color: Colors.white,
+                            size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _isOnline ? 'Online' : 'Offline',
+                            'Interpreter ID: ',
                             style: TextStyle(
-                              color:
-                                  _isOnline
-                                      ? const Color(0xFF22C55E)
-                                      : Colors.white,
-                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            _interpreterIdStr,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
                             ),
                           ),
                         ],
@@ -381,38 +449,91 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Ready to Help 🎯',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'You have completed $_totalSessions interpretation sessions. Keep up the great work!',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    height: 1.5,
-                  ),
-                ),
               ],
             ),
           ),
+
           const SizedBox(width: 32),
+
+          // NEW: The integrated Online/Offline Switch Area
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(
-              Icons.headset_mic_rounded,
-              size: 64,
               color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color:
+                            _isOnline
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFF94A3B8),
+                        shape: BoxShape.circle,
+                        boxShadow:
+                            _isOnline
+                                ? [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF22C55E,
+                                    ).withValues(alpha: 0.4),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  ),
+                                ]
+                                : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isOnline ? 'ONLINE' : 'OFFLINE',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                        color:
+                            _isOnline
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: 60,
+                  height: 36,
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child: Switch(
+                      value: _isOnline,
+                      onChanged:
+                          _isVerified && !_isSuspended
+                              ? _toggleOnlineStatus
+                              : null,
+                      activeThumbColor: Colors.white,
+                      activeTrackColor: const Color(0xFF22C55E),
+                      inactiveThumbColor: Colors.white,
+                      inactiveTrackColor: const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -472,9 +593,9 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     );
   }
 
-  Widget _buildOnlineStatusCard() {
+  Widget _buildPendingVerificationWebView() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 40),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -487,101 +608,115 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Availability',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      _isOnline
-                          ? const Color(0xFF22C55E).withValues(alpha: 0.1)
-                          : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color:
-                            _isOnline
-                                ? const Color(0xFF22C55E)
-                                : const Color(0xFF94A3B8),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isOnline ? 'Online' : 'Offline',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color:
-                            _isOnline
-                                ? const Color(0xFF22C55E)
-                                : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _isOnline
-                ? 'You are currently available to receive interpretation requests.'
-                : 'Toggle the switch to start receiving requests.',
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF64748B),
-              height: 1.5,
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.verified_user_outlined,
+              size: 64,
+              color: Colors.orange.shade400,
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Accept Requests',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color:
-                        _isVerified && !_isSuspended
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFF94A3B8),
-                  ),
-                ),
+          const SizedBox(height: 32),
+          const Text(
+            'Account Pending Verification',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Your interpreter profile is currently under review by our team.\nYou will be able to accept jobs and receive calls once verified.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              color: Color(0xFF64748B),
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 32),
+          OutlinedButton.icon(
+            onPressed: _loadInterpreterProfile,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Check Status'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              foregroundColor: const Color(0xFF0955FA),
+              side: const BorderSide(color: Color(0xFF0955FA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              Transform.scale(
-                scale: 1.1,
-                child: Switch(
-                  value: _isOnline,
-                  onChanged:
-                      _isVerified && !_isSuspended ? _toggleOnlineStatus : null,
-                  activeColor: const Color(0xFF22C55E),
-                  inactiveThumbColor: const Color(0xFF94A3B8),
-                  inactiveTrackColor: const Color(0xFFE2E8F0),
-                ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuspendedView() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.block, size: 64, color: Colors.red),
+          ),
+          const SizedBox(height: 32),
+          const Text(
+            'Account Suspended',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Your interpreter account has been suspended.\nPlease contact support for more information.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              color: Color(0xFF64748B),
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 32),
+          OutlinedButton.icon(
+            onPressed: _loadInterpreterProfile,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Check Status'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              foregroundColor: const Color(0xFFEF4444),
+              side: const BorderSide(color: Color(0xFFEF4444)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1019,7 +1154,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
 
       // Fire StartCall on CallBloc BEFORE navigating
       final isVideoCall = job.callType == 'video';
-      final myUid = _uidFromUuid(userId);
+      final myUid = uidFromUuid(userId);
 
       context.read<CallBloc>().add(
         StartCall(channelId: job.id, localUid: myUid, isVideoCall: isVideoCall),
@@ -1301,6 +1436,119 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                   ),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScriptCard() {
+    final firstLanguage = _firstLanguageName ?? 'interpreter';
+    final secondLanguage = _secondLanguageName ?? firstLanguage;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.format_quote_rounded,
+                  color: Color(0xFF3B82F6),
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Text(
+                'Interpreter Introduction Script',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _buildScriptSection(
+            title: 'Welcome the Doctor',
+            content:
+                'Hello, my name is $_interpreterName the $firstLanguage interpreter, My ID $_interpreterIdStr.\n'
+                'Please speak in short segments for the highest accuracy. I’m ready when you are.',
+            icon: Icons.medical_services_rounded,
+            color: const Color(0xFF0955FA),
+          ),
+          const SizedBox(height: 20),
+          _buildScriptSection(
+            title: 'Greeting the Patient (in $firstLanguage)',
+            content:
+                'Hello, I\'m your $firstLanguage interpreter, everything you say will be interpreted accurately and will be confidential. Thank you.',
+            icon: Icons.person_rounded,
+            color: const Color(0xFF22C55E),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScriptSection({
+    required String title,
+    required String content,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            content,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF334155),
+              height: 1.5,
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
       ),

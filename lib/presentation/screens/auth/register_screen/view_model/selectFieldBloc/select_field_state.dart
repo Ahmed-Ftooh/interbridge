@@ -49,4 +49,4 @@ class SelectFieldState extends Equatable {
     isFailure,
     errorMessage,
   ];
-} 
+}

@@ -49,4 +49,4 @@ class SelectLanguageState extends Equatable {
     isFailure,
     errorMessage,
   ];
-} 
+}

@@ -27,4 +27,4 @@ class CustomFieldChanged extends SelectFieldEvent {
   List<Object?> get props => [value];
 }
 
-class SubmitFields extends SelectFieldEvent {} 
+class SubmitFields extends SelectFieldEvent {}

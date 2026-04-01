@@ -31,3 +31,6 @@
     public static *** v(...);
     public static *** i(...);
 }
+
+# Fix for R8 missing AutoValue$CopyAnnotations
+-dontwarn com.google.auto.value.AutoValue$CopyAnnotations

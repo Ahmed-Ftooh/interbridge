@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -57,6 +58,8 @@ class _EnhancedCallScreenWebBody extends StatefulWidget {
 
 class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     with SingleTickerProviderStateMixin {
+  static const String _kRuntimeMarker = 'WEB_CALL_VIEW_MARKER_20260329_A';
+
   // ─── Twilio third-party call ──────────────────────────────────
   final TwilioCallService _twilioService = TwilioCallService();
   String? _patientCallSid;
@@ -78,6 +81,156 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   // window, then mount it fresh so it finds the live track.
   bool _webVideoReady = false;
   Timer? _webVideoReadyTimer;
+  bool? _lastVideoEnabled;
+
+  // ─── Web: force remote AgoraVideoView to rebind after remote joins ──
+  // The Iris Web SDK may not immediately bind the remote video track.
+  // We schedule controller resets after short delays to force rebinding.
+  Timer? _webRemoteVideoRetryTimer;
+  int _remoteViewEpoch = 0;
+  final Set<int> _remoteRetryScheduledUids = {};
+  final Set<int> _remoteDecodeHandledUids = {};
+  final Map<int, DateTime> _remoteFirstSeenAt = {};
+  final Set<int> _forcedRenderableRemoteUids = {};
+  Timer? _remoteRenderableWatchdogTimer;
+
+  static const Duration _kForceRenderableDelay = Duration(seconds: 5);
+
+  void _runRemoteRebindAttempt(int attempt, String reason) {
+    if (!mounted) return;
+
+    final currentState = context.read<CallBloc>().state;
+    if (currentState is! CallOngoing || currentState.remoteUids.isEmpty) {
+      return;
+    }
+
+    final engine = context.read<CallBloc>().engine;
+    if (engine != null) {
+      for (final uid in currentState.remoteUids) {
+        engine.muteRemoteVideoStream(uid: uid, mute: false).catchError((err) {
+          log(
+            'Web: remote rebind attempt $attempt video unmute failed '
+            '(reason=$reason, uid=$uid): $err',
+          );
+        });
+        engine.muteRemoteAudioStream(uid: uid, mute: false).catchError((err) {
+          log(
+            'Web: remote rebind attempt $attempt audio unmute failed '
+            '(reason=$reason, uid=$uid): $err',
+          );
+        });
+      }
+    }
+
+    // Let the Agora engine handle track resizing natively.
+    // Do NOT destroy the video controller/HTML element, as it breaks the Z-index!
+    log(
+      'Web: remote rebind attempt $attempt (reason=$reason). Keeping controller stable.',
+    );
+  }
+
+  void _scheduleRemoteRebindSequence(String reason) {
+    _webRemoteVideoRetryTimer?.cancel();
+
+    // Short-first retries recover common web track-bind races quickly
+    // while keeping bounded retries for slower remote publishes.
+    final delays = <int>[250, 900, 2200];
+    var index = 0;
+
+    void scheduleNext(int delayMs) {
+      _webRemoteVideoRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+        if (!mounted) return;
+        _runRemoteRebindAttempt(index + 1, reason);
+
+        if (index < delays.length - 1) {
+          final current = delays[index];
+          index += 1;
+          final next = delays[index];
+          scheduleNext(next - current);
+        }
+      });
+    }
+
+    scheduleNext(delays.first);
+  }
+
+  bool _hasRenderableRemote(CallOngoing state) {
+    return state.remoteUids
+            .intersection(state.remoteVideoReadyUids)
+            .isNotEmpty ||
+        state.remoteUids.any(_forcedRenderableRemoteUids.contains);
+  }
+
+  void _cancelRemoteRenderableWatchdog() {
+    _remoteRenderableWatchdogTimer?.cancel();
+    _remoteRenderableWatchdogTimer = null;
+  }
+
+  void _refreshRemoteRenderableWatchdog(CallOngoing state) {
+    _remoteFirstSeenAt.removeWhere((uid, _) => !state.remoteUids.contains(uid));
+    _forcedRenderableRemoteUids.removeWhere(
+      (uid) => !state.remoteUids.contains(uid),
+    );
+
+    if (state.remoteUids.isEmpty || _hasRenderableRemote(state)) {
+      _cancelRemoteRenderableWatchdog();
+      return;
+    }
+
+    final now = DateTime.now();
+    for (final uid in state.remoteUids) {
+      _remoteFirstSeenAt.putIfAbsent(uid, () => now);
+    }
+
+    _remoteRenderableWatchdogTimer ??= Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!mounted) return;
+
+        final currentState = context.read<CallBloc>().state;
+        if (currentState is! CallOngoing || !currentState.isVideoCall) {
+          _cancelRemoteRenderableWatchdog();
+          return;
+        }
+
+        _remoteFirstSeenAt.removeWhere(
+          (uid, _) => !currentState.remoteUids.contains(uid),
+        );
+        _forcedRenderableRemoteUids.removeWhere(
+          (uid) => !currentState.remoteUids.contains(uid),
+        );
+
+        if (currentState.remoteUids.isEmpty ||
+            _hasRenderableRemote(currentState)) {
+          _cancelRemoteRenderableWatchdog();
+          return;
+        }
+
+        final tickNow = DateTime.now();
+        final forcedNow = <int>[];
+        for (final uid in currentState.remoteUids) {
+          final seenAt = _remoteFirstSeenAt.putIfAbsent(uid, () => tickNow);
+          final waitingLong =
+              tickNow.difference(seenAt) >= _kForceRenderableDelay;
+          if (waitingLong && !_forcedRenderableRemoteUids.contains(uid)) {
+            _forcedRenderableRemoteUids.add(uid);
+            forcedNow.add(uid);
+          }
+        }
+
+        if (forcedNow.isNotEmpty) {
+          log(
+            'Web watchdog: forcing remote render for uids=${forcedNow.join(',')} after ${_kForceRenderableDelay.inMilliseconds}ms',
+          );
+          _runRemoteRebindAttempt(
+            99,
+            'watchdog_force_render_${forcedNow.join('_')}',
+          );
+          setState(() {});
+        }
+      },
+    );
+  }
 
   // ─── Controls visibility (auto-hide after 4s) ────────────────
   bool _controlsVisible = true;
@@ -90,13 +243,15 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   // ─── Controller helpers ──────────────────────────────────────
   VideoViewController _getLocalController(RtcEngine engine) {
     if (_localController == null || _localCachedEngine != engine) {
+      _localController?.dispose();
       _localCachedEngine = engine;
       _localController = VideoViewController(
         rtcEngine: engine,
         canvas: const VideoCanvas(
           uid: 0,
-          renderMode: RenderModeType.renderModeHidden,
+          renderMode: RenderModeType.renderModeFit,
         ),
+        useFlutterTexture: false,
       );
     }
     return _localController!;
@@ -116,9 +271,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         rtcEngine: engine,
         canvas: VideoCanvas(
           uid: remoteUid,
-          renderMode: RenderModeType.renderModeHidden,
+          renderMode: RenderModeType.renderModeFit,
         ),
         connection: RtcConnection(channelId: channelId),
+        useFlutterTexture: false,
       );
     }
     return _remoteController!;
@@ -128,6 +284,9 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   @override
   void initState() {
     super.initState();
+    log(
+      '$_kRuntimeMarker: init channel=${widget.channelId}, video=${widget.isVideoCall}',
+    );
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -143,6 +302,12 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     _pulseController.dispose();
     _hideTimer?.cancel();
     _webVideoReadyTimer?.cancel();
+    _webRemoteVideoRetryTimer?.cancel();
+    _cancelRemoteRenderableWatchdog();
+    _remoteRetryScheduledUids.clear();
+    _remoteDecodeHandledUids.clear();
+    _remoteFirstSeenAt.clear();
+    _forcedRenderableRemoteUids.clear();
     _localController?.dispose();
     _remoteController?.dispose();
     if (_patientCallSid != null) {
@@ -153,6 +318,16 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
   void _resetHideTimer() {
     _hideTimer?.cancel();
+
+    // Keep controls pinned on web. HTML video views can capture pointer
+    // events and prevent hover/tap from restoring hidden controls.
+    if (kIsWeb) {
+      if (!_controlsVisible) {
+        setState(() => _controlsVisible = true);
+      }
+      return;
+    }
+
     if (!_controlsVisible) {
       setState(() => _controlsVisible = true);
     }
@@ -237,7 +412,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
+                const Text(
                   'Enter the phone number to add them to the call.',
                   style: TextStyle(color: _kTextSecondary, fontSize: 12),
                 ),
@@ -343,7 +518,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       // Timer ticks (elapsed) are filtered out so they don't reset state.
       listenWhen: (prev, curr) {
         if (prev is CallOngoing && curr is CallOngoing) {
-          return prev.videoEnabled != curr.videoEnabled;
+          return prev.videoEnabled != curr.videoEnabled ||
+              prev.remoteUids.length != curr.remoteUids.length ||
+              prev.remoteVideoReadyUids.length !=
+                  curr.remoteVideoReadyUids.length;
         }
         return true;
       },
@@ -351,28 +529,112 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         if (state is CallEnded) {
           _webVideoReadyTimer?.cancel();
           _webVideoReadyTimer = null;
+          _webRemoteVideoRetryTimer?.cancel();
+          _webRemoteVideoRetryTimer = null;
+          _localController?.dispose();
+          _localController = null;
+          _localCachedEngine = null;
           _webVideoReady = false;
+          _lastVideoEnabled = null;
+          _remoteRetryScheduledUids.clear();
+          _remoteDecodeHandledUids.clear();
+          _remoteFirstSeenAt.clear();
+          _forcedRenderableRemoteUids.clear();
+          _cancelRemoteRenderableWatchdog();
+          _remoteViewEpoch = 0;
           _showFeedbackAndNavigateHome();
         } else if (state is CallConnecting) {
           _webVideoReadyTimer?.cancel();
           _webVideoReadyTimer = null;
+          _webRemoteVideoRetryTimer?.cancel();
+          _webRemoteVideoRetryTimer = null;
+          _localController?.dispose();
+          _localController = null;
+          _localCachedEngine = null;
           _webVideoReady = false;
+          _lastVideoEnabled = null;
+          _remoteRetryScheduledUids.clear();
+          _remoteDecodeHandledUids.clear();
+          _remoteFirstSeenAt.clear();
+          _forcedRenderableRemoteUids.clear();
+          _cancelRemoteRenderableWatchdog();
+          _remoteViewEpoch = 0;
         } else if (state is CallError) {
           log('CallScreen: error — ${state.error.message}');
         } else if (state is CallOngoing && state.isVideoCall) {
+          final wasVideoEnabled = _lastVideoEnabled;
+          final videoJustEnabled =
+              (wasVideoEnabled != null && !wasVideoEnabled && state.videoEnabled);
+          _lastVideoEnabled = state.videoEnabled;
+
+          _remoteRetryScheduledUids.removeWhere(
+            (uid) => !state.remoteUids.contains(uid),
+          );
+          _remoteDecodeHandledUids.removeWhere(
+            (uid) => !state.remoteUids.contains(uid),
+          );
+          _remoteFirstSeenAt.removeWhere(
+            (uid, _) => !state.remoteUids.contains(uid),
+          );
+          _forcedRenderableRemoteUids.removeWhere(
+            (uid) => !state.remoteUids.contains(uid),
+          );
+
+          final unreadyUids = state.remoteUids
+              .difference(state.remoteVideoReadyUids)
+              .difference(_remoteRetryScheduledUids)
+              .difference(_remoteDecodeHandledUids);
+          if (unreadyUids.isNotEmpty) {
+            _remoteRetryScheduledUids.addAll(unreadyUids);
+            _scheduleRemoteRebindSequence(
+              'remote_unready_${unreadyUids.join('_')}',
+            );
+          }
+
+          final newlyReadyUids = state.remoteVideoReadyUids.difference(
+            _remoteDecodeHandledUids,
+          );
+          if (newlyReadyUids.isNotEmpty) {
+            _remoteDecodeHandledUids.addAll(newlyReadyUids);
+            _remoteRetryScheduledUids.removeAll(newlyReadyUids);
+            _forcedRenderableRemoteUids.removeAll(newlyReadyUids);
+            for (final uid in newlyReadyUids) {
+              _remoteFirstSeenAt.remove(uid);
+            }
+            _webRemoteVideoRetryTimer?.cancel();
+            _webRemoteVideoRetryTimer = null;
+            _runRemoteRebindAttempt(
+              0,
+              'remote_decode_ready_${newlyReadyUids.join('_')}',
+            );
+          }
+
+          if (state.remoteUids.isEmpty) {
+            _webRemoteVideoRetryTimer?.cancel();
+            _webRemoteVideoRetryTimer = null;
+            _remoteRetryScheduledUids.clear();
+            _remoteDecodeHandledUids.clear();
+            _remoteFirstSeenAt.clear();
+            _forcedRenderableRemoteUids.clear();
+            _cancelRemoteRenderableWatchdog();
+          } else {
+            _refreshRemoteRenderableWatchdog(state);
+          }
+
           if (!_webVideoReady) {
             // Initial join: wait for the Iris Web SDK to finish
             // creating the camera track, then mount AgoraVideoView
             // fresh so setupLocalVideo finds a live track.
             _webVideoReadyTimer ??= Timer(
-              const Duration(milliseconds: 2000),
+              const Duration(milliseconds: 600),
               () {
                 if (!mounted) return;
                 log(
                   'Web: camera track should be ready — mounting AgoraVideoView',
                 );
                 setState(() {
-                  _localController = null; // discard stale controller
+                  _localController?.dispose(); // discard stale controller
+                  _localController = null;
                   _webVideoReady = true;
                 });
                 // After AgoraVideoView is in the DOM, force the Iris SDK
@@ -380,16 +642,19 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                 // muteLocalVideoStream alone only controls publishing;
                 // enableLocalVideo recreates the track binding.
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  final engine = context.read<CallBloc>().engine;
-                  if (engine != null) {
-                    engine.enableLocalVideo(true).catchError((_) {});
-                    engine.muteLocalVideoStream(false).catchError((_) {});
-                    engine.startPreview().catchError((_) {});
-                  }
+                  Future.delayed(const Duration(milliseconds: 120), () {
+                    if (!mounted) return;
+                    final engine = context.read<CallBloc>().engine;
+                    if (engine != null) {
+                      engine.enableLocalVideo(true).catchError((_) {});
+                      engine.muteLocalVideoStream(false).catchError((_) {});
+                      engine.startPreview().catchError((_) {});
+                    }
+                  });
                 });
               },
             );
-          } else if (state.videoEnabled) {
+          } else if (videoJustEnabled) {
             // Video was just re-enabled after being turned off.
             // The old AgoraVideoView was removed from the tree when
             // videoEnabled=false, so its HTML <video> element is gone.
@@ -399,7 +664,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             _webVideoReadyTimer?.cancel();
             _webVideoReadyTimer = Timer(const Duration(milliseconds: 300), () {
               if (!mounted) return;
-              setState(() => _localController = null);
+              setState(() {
+                _localController?.dispose();
+                _localController = null;
+              });
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 final engine = context.read<CallBloc>().engine;
                 if (engine != null) {
@@ -417,6 +685,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       buildWhen: (prev, curr) {
         if (prev is CallOngoing && curr is CallOngoing) {
           return prev.remoteUids.length != curr.remoteUids.length ||
+              prev.remoteVideoReadyUids.length !=
+                  curr.remoteVideoReadyUids.length ||
               prev.muted != curr.muted ||
               prev.speakerOn != curr.speakerOn ||
               prev.videoEnabled != curr.videoEnabled ||
@@ -523,13 +793,13 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   //  ENDED SCREEN
   // ═══════════════════════════════════════════════════════════════
   Widget _buildEndedScreen() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.call_end, color: _kTextSecondary, size: 48),
-          const SizedBox(height: 16),
-          const Text(
+          Icon(Icons.call_end, color: _kTextSecondary, size: 48),
+          SizedBox(height: 16),
+          Text(
             'Call Ended',
             style: TextStyle(
               color: _kTextPrimary,
@@ -537,8 +807,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
               fontWeight: FontWeight.w400,
             ),
           ),
-          const SizedBox(height: 24),
-          const CircularProgressIndicator(color: _kAccentBlue),
+          SizedBox(height: 24),
+          CircularProgressIndicator(color: _kAccentBlue),
         ],
       ),
     );
@@ -572,7 +842,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                     child: Container(
                       width: 80,
                       height: 80,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: _kSurfaceColor,
                       ),
@@ -615,15 +885,26 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   Widget _buildOngoingCallScreen(BuildContext context, CallOngoing state) {
     final engine = context.read<CallBloc>().engine;
     final hasRemote = state.remoteUids.isNotEmpty;
+    final hasRenderableRemote = _hasRenderableRemote(state);
     final isVideo = state.isVideoCall;
 
     return Stack(
       children: [
         // ── Background: remote video / avatar ──────────────────
-        Positioned.fill(child: _buildBackground(engine, state, hasRemote)),
+        // Pass hasRemote (not hasRenderableRemote) so background reserves
+        // space for remote even before decode-ready, and local video can
+        // be sized as PiP.
+        Positioned.fill(
+          child: _buildBackground(
+            engine,
+            state,
+            hasRemote,
+            hasRenderableRemote,
+          ),
+        ),
 
         // ── "Waiting for others" overlay (no remote yet) ───────
-        if (isVideo && !hasRemote)
+        if (isVideo && !hasRenderableRemote)
           Positioned(
             bottom: 120,
             left: 0,
@@ -639,7 +920,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: const Text(
-                  'Waiting for others to join...',
+                  'Waiting for remote video...',
                   style: TextStyle(color: _kTextSecondary, fontSize: 14),
                 ),
               ),
@@ -651,7 +932,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             state.videoEnabled &&
             engine != null &&
             !_webVideoReady &&
-            !hasRemote)
+            !hasRenderableRemote)
           const Positioned.fill(
             child: Center(
               child: Column(
@@ -673,6 +954,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         // Stack so Flutter updates the Positioned in place rather
         // than unmounting / remounting (which destroys the HTML
         // <video> element on web and loses the camera track).
+        // Use hasRemote to determine sizing: if any remote joined, show
+        // local as PiP; otherwise full-screen.
         if (isVideo && state.videoEnabled && engine != null && _webVideoReady)
           Positioned(
             left: hasRemote ? null : 0,
@@ -681,13 +964,19 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             bottom: hasRemote ? null : 0,
             width: hasRemote ? 180 : null,
             height: hasRemote ? 135 : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(hasRemote ? 11 : 0),
+            child: Container(
+              decoration:
+                  hasRemote
+                      ? BoxDecoration(
+                        border: Border.all(color: _kSurfaceLight, width: 2),
+                      )
+                      : null,
               child: _buildLocalVideoView(engine),
             ),
           ),
 
         // ── PiP decoration overlay (border + "You" label) ──────
+        // Show PiP decoration when remote is joined (hasRemote=true)
         if (isVideo && state.videoEnabled && hasRemote && _webVideoReady)
           Positioned(
             right: 16,
@@ -732,13 +1021,15 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
           ),
 
         // ── Top info bar ───────────────────────────────────────
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+        Positioned(
           top: _controlsVisible ? 0 : -80,
           left: 0,
           right: 0,
-          child: _buildTopBar(state),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _controlsVisible ? 1.0 : 0.0,
+            child: _buildTopBar(state),
+          ),
         ),
 
         // ── Third-party call chip ─────────────────────────────
@@ -746,13 +1037,15 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
           Positioned(top: 72, left: 0, right: 0, child: _buildThirdPartyChip()),
 
         // ── Floating control bar (bottom center) ─────────────
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+        Positioned(
           bottom: _controlsVisible ? 24 : -100,
           left: 0,
           right: 0,
-          child: _buildFloatingControlBar(context, state),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _controlsVisible ? 1.0 : 0.0,
+            child: _buildFloatingControlBar(context, state),
+          ),
         ),
       ],
     );
@@ -763,28 +1056,90 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     RtcEngine? engine,
     CallOngoing state,
     bool hasRemote,
+    bool hasRenderableRemote,
   ) {
     if (!state.isVideoCall) {
       return Center(child: _buildVoiceAvatar(hasRemote));
     }
-    // Remote user present → show remote full-screen
+
+    // Keep the remote view mounted whenever a remote user is present.
+    // This avoids losing the underlying HTML target element on web and
+    // prevents Agora from falling back to document.body.
     if (hasRemote && engine != null) {
-      final remoteUid = state.remoteUids.first;
+      final remoteUid = state.remoteUids.firstWhere(
+        (uid) =>
+            state.remoteVideoReadyUids.contains(uid) ||
+            _forcedRenderableRemoteUids.contains(uid),
+        orElse: () => state.remoteUids.first,
+      );
       try {
-        return AgoraVideoView(
-          controller: _getRemoteController(engine, remoteUid, state.channelId),
+        final controller = _getRemoteController(
+          engine,
+          remoteUid,
+          state.channelId,
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            AgoraVideoView(
+              key: ValueKey('remote-$remoteUid-$_remoteViewEpoch'),
+              controller: controller,
+            ),
+            if (!hasRenderableRemote) _buildRemoteWaitingSurface(),
+          ],
         );
       } catch (e) {
         log('CallScreen: AgoraVideoView (remote) error: $e');
         return Center(child: _buildVoiceAvatar(true));
       }
     }
+
     // No remote, video off → avatar
     if (!state.videoEnabled) {
       return Center(child: _buildVoiceAvatar(false));
     }
     // No remote, video on → transparent bg (local video rendered above)
     return const SizedBox.expand();
+  }
+
+  Widget _buildRemoteWaitingSurface() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_kBgColor, _kSurfaceColor],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: _kSurfaceColor.withAlpha(210),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _kSurfaceLight),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _kAccentBlue,
+                ),
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Connecting remote video...',
+                style: TextStyle(color: _kTextSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ─── Local AgoraVideoView (no GlobalKey, no wrapping) ──────
@@ -886,11 +1241,11 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
               color: _kSurfaceColor.withAlpha(180),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.lock_outline, color: _kTextSecondary, size: 12),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 Text(
                   'Encrypted',
                   style: TextStyle(color: _kTextSecondary, fontSize: 11),
@@ -910,11 +1265,18 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.people_outline, color: _kTextSecondary, size: 14),
+                  const Icon(
+                    Icons.people_outline,
+                    color: _kTextSecondary,
+                    size: 14,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     '${state.remoteUids.length + 1}',
-                    style: TextStyle(color: _kTextSecondary, fontSize: 12),
+                    style: const TextStyle(
+                      color: _kTextSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -947,7 +1309,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                 ),
               )
             else
-              Icon(Icons.phone_in_talk, color: _kGreen, size: 16),
+              const Icon(Icons.phone_in_talk, color: _kGreen, size: 16),
             const SizedBox(width: 8),
             Text(
               _patientCallStatus,
@@ -964,7 +1326,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                     color: _kEndRed.withAlpha(30),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.call_end, color: _kEndRed, size: 14),
+                  child: const Icon(Icons.call_end, color: _kEndRed, size: 14),
                 ),
               ),
             ],
@@ -1171,12 +1533,12 @@ class _EndCallButtonState extends State<_EndCallButton> {
             color: _hovered ? _kEndRedHover : _kEndRed,
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.call_end, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              const Text(
+              Icon(Icons.call_end, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
                 'Leave',
                 style: TextStyle(
                   color: Colors.white,

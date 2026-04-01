@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
@@ -143,11 +144,26 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
 
     setState(() => _isSaving = true);
 
-    // Phone number is passed to the next screen and saved to DB during
-    // the final registration step. No OTP is sent — admin verifies later.
-    if (mounted) {
-      setState(() => _isSaving = false);
-      _continue();
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        await Supabase.instance.client
+            .from('users_profile')
+            .update({'phone_number': _fullPhoneNumber, 'phone_verified': false})
+            .eq('user_id', userId);
+
+        await Supabase.instance.client
+            .from('interpreter_details')
+            .update({'onboarding_status': 'phone_entered'})
+            .eq('user_id', userId);
+      }
+    } catch (e) {
+      // Ignore or show error
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        _continue();
+      }
     }
   }
 

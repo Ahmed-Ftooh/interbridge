@@ -3,6 +3,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -119,8 +120,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
 
   void _playRingtone() {
     try {
-      _audioHandle =
-          web_audio.createLoopingAudio('assets/audio/Call_Ring.mp3');
+      _audioHandle = web_audio.createLoopingAudio(
+        'assets/audio/call_ring.mpeg',
+      );
       log('Web: Ringtone started playing via web audio helper');
     } catch (e) {
       log('Web: Error playing ringtone: $e');
@@ -139,7 +141,7 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
         Supabase.instance.client
             .channel('incoming_call_web_${widget.request.id}')
             .onPostgresChanges(
-              event: PostgresChangeEvent.update,
+              event: PostgresChangeEvent.all,
               schema: 'public',
               table: 'interpreter_requests',
               filter: PostgresChangeFilter(
@@ -148,6 +150,19 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
                 value: widget.request.id,
               ),
               callback: (payload) async {
+                log('Web: Request event type: ${payload.eventType}');
+
+                if (payload.eventType == PostgresChangeEvent.delete) {
+                  log('Web: Request was deleted (cancelled)');
+                  if (mounted && !_isAccepting) {
+                    await _stopRingtone();
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  }
+                  return;
+                }
+
                 final newStatus = payload.newRecord['status']?.toString();
                 log('Web: Request status changed to: $newStatus');
 
@@ -194,16 +209,6 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     super.dispose();
   }
 
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
-  }
-
   Future<void> _acceptCall() async {
     if (_isAccepting || _isDeclining) return;
 
@@ -242,7 +247,7 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
       if (!mounted) return;
 
       final isVideoCall = widget.request.callType == 'video';
-      final myUid = _uidFromUuid(currentUserId);
+      final myUid = uidFromUuid(currentUserId);
 
       // Start the call via CallBloc
       context.read<CallBloc>().add(
@@ -301,7 +306,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
     final isVideoCall = widget.request.callType == 'video';
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final isCompact = screenHeight < 700;
+    // Increased threshold so most users get a compact UI
+    // and reduced spacing to fit everything without vertical scrolling
+    final isCompact = screenHeight < 950;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -319,48 +326,48 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
           child: Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.symmetric(
-                vertical: isCompact ? 24 : 40,
+                vertical: isCompact ? 16 : 32,
                 horizontal: 16,
               ),
               child: Container(
                 constraints: BoxConstraints(
-                  maxWidth: screenWidth > 800 ? 520 : screenWidth * 0.9,
+                  maxWidth: screenWidth > 800 ? 460 : screenWidth * 0.9,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Call type badge
                     _buildCallTypeBadge(isVideoCall),
-                    SizedBox(height: isCompact ? 16 : 32),
+                    SizedBox(height: isCompact ? 12 : 24),
 
                     // "Incoming Call" title
                     Text(
                       'Incoming Interpretation Request',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: isCompact ? 14 : 16,
+                        fontSize: isCompact ? 13 : 15,
                         fontWeight: FontWeight.w500,
                         letterSpacing: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       '${_elapsedSeconds}s',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.4),
-                        fontSize: 13,
+                        fontSize: 12,
                         fontFamily: 'monospace',
                       ),
                     ),
-                    SizedBox(height: isCompact ? 20 : 40),
+                    SizedBox(height: isCompact ? 16 : 32),
 
                     // Animated avatar with ring waves
                     _buildAnimatedAvatar(isCompact),
-                    SizedBox(height: isCompact ? 24 : 48),
+                    SizedBox(height: isCompact ? 20 : 36),
 
                     // Language info card
                     _buildLanguageCard(isCompact),
-                    SizedBox(height: isCompact ? 28 : 48),
+                    SizedBox(height: isCompact ? 20 : 36),
 
                     // Action buttons
                     _buildActionButtons(isVideoCall, isCompact),
@@ -416,10 +423,10 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
   }
 
   Widget _buildAnimatedAvatar(bool isCompact) {
-    final double avatarSize = isCompact ? 90 : 120;
-    final double ringBase = isCompact ? 100 : 140;
-    final double ringExpand = isCompact ? 40 : 60;
-    final double containerSize = isCompact ? 150 : 200;
+    final double avatarSize = isCompact ? 80 : 110;
+    final double ringBase = isCompact ? 90 : 130;
+    final double ringExpand = isCompact ? 30 : 50;
+    final double containerSize = isCompact ? 130 : 180;
 
     return SizedBox(
       width: containerSize,
@@ -519,10 +526,10 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
 
   Widget _buildLanguageCard(bool isCompact) {
     return Container(
-      padding: EdgeInsets.all(isCompact ? 18 : 28),
+      padding: EdgeInsets.all(isCompact ? 16 : 24),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
@@ -573,9 +580,9 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
 
           // Specialization
           if (widget.request.specialization != null) ...[
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
@@ -660,7 +667,7 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
           isLoading: _isAccepting,
           isCompact: isCompact,
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: isCompact ? 12 : 16),
         // Decline button — secondary style
         _buildLargeActionButton(
           onTap: _isDeclining ? null : _declineCall,
@@ -692,7 +699,7 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           width: double.infinity,
-          padding: EdgeInsets.symmetric(vertical: isCompact ? 16 : 20),
+          padding: EdgeInsets.symmetric(vertical: isCompact ? 14 : 18),
           decoration: BoxDecoration(
             color: isSecondary ? color.withValues(alpha: 0.15) : color,
             borderRadius: BorderRadius.circular(20),
@@ -733,14 +740,14 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
                       Icon(
                         icon,
                         color: isSecondary ? color : Colors.white,
-                        size: isCompact ? 24 : 28,
+                        size: isCompact ? 22 : 26,
                       ),
                       const SizedBox(width: 12),
                       Text(
                         label,
                         style: TextStyle(
                           color: isSecondary ? color : Colors.white,
-                          fontSize: isCompact ? 16 : 18,
+                          fontSize: isCompact ? 15 : 17,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.5,
                         ),

@@ -47,43 +47,9 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   String? _selectedCountryFlag;
   String? _hoveredField;
 
-  // Always interpreter on web
-  late List<String> languages;
-  late Map<String, String?> fluency;
-  late List<int> skills;
-  late List<int> specializations;
-  late String? voiceSamplePath;
-  late String? certificatePath;
-  late String? medicalCertificatePath;
-  // Native-language voice sample
-  late String? voiceSampleNativePath;
-  Uint8List? voiceSampleNativeBytes;
-  String? voiceSampleNativeName;
-  // Web: raw bytes for uploads (blob URLs don't survive page navigation)
-  Uint8List? voiceSampleBytes;
-  String? voiceSampleName;
-  Uint8List? certificateBytes;
-  String? certificateName;
-  Uint8List? medicalCertificateBytes;
-  String? medicalCertificateName;
-  late String? bio;
-  late int? yearsExperience;
-  late String? employmentType;
-
   // Profile picture
   Uint8List? _profileImageBytes;
   String? _profileImageName;
-
-  // Government ID
-  Uint8List? governmentIdBytes;
-  String? governmentIdFileName;
-  String? governmentIdType;
-
-  // Phone number
-  String? phoneNumber;
-
-  // Voice prompt verification recordings (3 recordings from VoicePromptWebScreen)
-  List<Map<String, dynamic>>? voicePromptRecordings;
 
   // Doctor invite data
   String? _incomingRole;
@@ -98,117 +64,6 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   }
 
   void _initializeData() {
-    try {
-      final languagesData = widget.data['languages'];
-      if (languagesData is List) {
-        languages =
-            languagesData
-                .where((e) => e != null && e.toString().isNotEmpty)
-                .map((e) => e.toString())
-                .toList();
-      } else {
-        languages = [];
-      }
-    } catch (e) {
-      languages = [];
-    }
-
-    try {
-      final fluencyData = widget.data['fluency'];
-      fluency =
-          fluencyData is Map ? Map<String, String?>.from(fluencyData) : {};
-    } catch (e) {
-      fluency = {};
-    }
-
-    try {
-      final skillsData = widget.data['skills'];
-      if (skillsData is List) {
-        skills =
-            skillsData
-                .where((e) => e != null)
-                .map((e) => int.tryParse(e.toString()))
-                .where((e) => e != null && e > 0)
-                .cast<int>()
-                .toList();
-      } else {
-        skills = [];
-      }
-    } catch (e) {
-      skills = [];
-    }
-
-    try {
-      final specializationsData = widget.data['specializations'];
-      if (specializationsData is List) {
-        specializations =
-            specializationsData
-                .where((e) => e != null)
-                .map((e) => int.tryParse(e.toString()))
-                .where((e) => e != null && e > 0)
-                .cast<int>()
-                .toList();
-      } else {
-        specializations = [];
-      }
-    } catch (e) {
-      specializations = [];
-    }
-
-    voiceSamplePath = widget.data['voiceSamplePath'];
-    certificatePath = widget.data['certificatePath'];
-    medicalCertificatePath = widget.data['medicalCertificatePath'];
-    // Native-language voice sample
-    voiceSampleNativePath = widget.data['voiceSampleNativePath'];
-    voiceSampleNativeBytes =
-        widget.data['voiceSampleNativeBytes'] as Uint8List?;
-    voiceSampleNativeName = widget.data['voiceSampleNativeName'] as String?;
-    // Web: get voice sample and certificate bytes if available
-    voiceSampleBytes = widget.data['voiceSampleBytes'] as Uint8List?;
-    voiceSampleName = widget.data['voiceSampleName'] as String?;
-    certificateBytes = widget.data['certificateBytes'] as Uint8List?;
-    certificateName = widget.data['certificateName'] as String?;
-    medicalCertificateBytes =
-        widget.data['medicalCertificateBytes'] as Uint8List?;
-    medicalCertificateName = widget.data['medicalCertificateName'] as String?;
-    bio = widget.data['bio'] as String?;
-    yearsExperience =
-        widget.data['yearsExperience'] is int
-            ? widget.data['yearsExperience'] as int
-            : int.tryParse(widget.data['yearsExperience']?.toString() ?? '');
-
-    final trackValue =
-        widget.data['interpreterTrack'] ??
-        widget.data['interpreterLevel'] ??
-        widget.data['employmentType'];
-    if (trackValue is String) {
-      final normalized = trackValue.toLowerCase();
-      employmentType =
-          (normalized.contains('paid') || normalized.contains('professional'))
-              ? 'paid'
-              : 'volunteer';
-    } else {
-      employmentType = 'volunteer';
-    }
-
-    // Government ID
-    governmentIdBytes = widget.data['governmentIdBytes'] as Uint8List?;
-    governmentIdFileName = widget.data['governmentIdFileName'] as String?;
-    governmentIdType = widget.data['governmentIdType'] as String?;
-
-    // Phone number
-    phoneNumber = widget.data['phoneNumber'] as String?;
-
-    // Voice prompt recordings (3 samples from VoicePromptWebScreen)
-    final rawPromptRecs = widget.data['voicePromptRecordings'];
-    if (rawPromptRecs is List) {
-      voicePromptRecordings =
-          rawPromptRecs
-              .whereType<Map>()
-              .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
-              .toList();
-    }
-
     // Doctor invite / incoming role
     _incomingRole = widget.data['role'] as String?;
     _inviteOrganizationId = widget.data['organization_id'] as String?;
@@ -268,33 +123,32 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
         username: _usernameController.text.trim(),
         gender: _selectedGender ?? '',
         country: _selectedCountry,
-        languages: languages,
-        fluency: fluency,
-        skillIds: skills,
-        specializationIds: specializations,
+        languages: [],
+        fluency: {},
+        skillIds: [],
+        specializationIds: [],
         role: 'interpreter',
-        voiceSamplePath: voiceSamplePath,
-        certificatePath: certificatePath,
-        medicalCertificatePath: medicalCertificatePath,
-        voiceSampleNativePath: voiceSampleNativePath,
-        voiceSampleNativeBytes: voiceSampleNativeBytes,
-        voiceSampleNativeName: voiceSampleNativeName,
-        voiceSampleBytes: voiceSampleBytes,
-        voiceSampleName: voiceSampleName,
+        voiceSamplePath: null,
+        certificatePath: null,
+        medicalCertificatePath: null,
+        voiceSampleNativePath: null,
+        voiceSampleNativeBytes: null,
+        voiceSampleNativeName: null,
+        voiceSampleBytes: null,
+        voiceSampleName: null,
         profileImageBytes: _profileImageBytes,
         profileImageName: _profileImageName,
-        certificateBytes: certificateBytes,
-        certificateName: certificateName,
-        medicalCertificateBytes: medicalCertificateBytes,
-        medicalCertificateName: medicalCertificateName,
-        bio: bio,
-        yearsExperience: yearsExperience,
-        employmentType: employmentType,
-        governmentIdBytes: governmentIdBytes,
-        governmentIdFileName: governmentIdFileName,
-        governmentIdType: governmentIdType,
-        phoneNumber: phoneNumber,
-        voicePromptRecordings: voicePromptRecordings,
+        certificateBytes: null,
+        certificateName: null,
+        medicalCertificateBytes: null,
+        medicalCertificateName: null,
+        bio: null,
+        yearsExperience: null,
+        employmentType: 'volunteer',
+        governmentIdBytes: null,
+        governmentIdFileName: null,
+        governmentIdType: null,
+        phoneNumber: null,
       ),
     );
   }
@@ -333,44 +187,6 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
                 // Profile picture
                 _buildProfilePicturePicker(),
                 const SizedBox(height: 24),
-
-                // Summary badge (interpreter only)
-                if (_incomingRole != 'doctor_with_invite') ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F9FF),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFBAE6FD)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Color(0xFF0EA5E9),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '${languages.length} language${languages.length != 1 ? 's' : ''} · '
-                            '${specializations.length} specialization${specializations.length != 1 ? 's' : ''} · '
-                            '${employmentType == 'paid' ? 'Professional' : 'Volunteer'} track',
-                            style: const TextStyle(
-                              color: Color(0xFF0C4A6E),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
 
                 // Username field
                 _buildTextField(

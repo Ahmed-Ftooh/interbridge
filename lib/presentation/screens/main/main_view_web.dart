@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/core/error_handler.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/data/models/user_profile.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
@@ -14,7 +15,8 @@ import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view_web.dart';
 import 'package:interbridge/presentation/screens/main/document_translation/document_translation_view.dart';
-import 'package:interbridge/presentation/screens/main/document_translation/interpreter_dashboard_view.dart';
+import 'package:interbridge/presentation/screens/main/document_translation/web/interpreter_dashboard_web.dart'
+    as web_docs;
 import 'package:interbridge/presentation/screens/main/home/bloc/interpreter_job_bloc.dart';
 import 'package:interbridge/presentation/screens/main/profile/bloc/profile_bloc.dart';
 import 'package:interbridge/presentation/screens/main/profile/profile_view_web.dart';
@@ -170,10 +172,7 @@ class _MainViewWebState extends State<MainViewWeb> {
 
         final currentUserId =
             Supabase.instance.client.auth.currentUser?.id ?? '';
-        final hex = currentUserId.replaceAll('-', '');
-        final first8 =
-            hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-        final localUid = int.tryParse(first8, radix: 16) ?? 1;
+        final localUid = uidFromUuid(currentUserId);
 
         final callData = session['callData'] as Map<String, dynamic>? ?? {};
         final isVideoCall = callData['call_type'] == 'video';
@@ -356,7 +355,7 @@ class _MainViewWebState extends State<MainViewWeb> {
         const RequesterHomeWeb(),
       // Documents
       if (isInterpreter)
-        const InterpreterDashboardView()
+        const web_docs.InterpreterDashboardWeb()
       else
         const DocumentTranslationView(),
       // Profile

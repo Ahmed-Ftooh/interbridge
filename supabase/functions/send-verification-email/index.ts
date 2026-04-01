@@ -93,6 +93,32 @@ Deno.serve(async (req) => {
     if (!resendResponse.ok) {
       const errorData = await resendResponse.text();
       console.error("Resend API error:", errorData);
+
+      // In Resend testing mode, external recipients are blocked until a domain is verified.
+      // Return 200 with explicit metadata so admin workflows continue without hard-failing.
+      const isResendTestingRestriction =
+        resendResponse.status === 403 &&
+        errorData.includes(
+          "You can only send testing emails to your own email address"
+        );
+
+      if (isResendTestingRestriction) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            testMode: true,
+            error: "Resend testing restriction",
+            message:
+              "Resend is in testing mode. Verify a domain and use a sender on that domain to send external emails.",
+            details: errorData,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: "Failed to send email", details: errorData }),
         {

@@ -1519,7 +1519,7 @@ class _OrganizationDashboardWebViewState
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<int>(
-                            value: selectedMonth,
+                            initialValue: selectedMonth,
                             decoration: const InputDecoration(
                               labelText: 'Month',
                               border: OutlineInputBorder(),
@@ -1542,7 +1542,7 @@ class _OrganizationDashboardWebViewState
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<int>(
-                            value: selectedYear,
+                            initialValue: selectedYear,
                             decoration: const InputDecoration(
                               labelText: 'Year',
                               border: OutlineInputBorder(),

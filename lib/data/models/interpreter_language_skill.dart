@@ -11,9 +11,9 @@ class InterpreterLanguageSkill {
 
   factory InterpreterLanguageSkill.fromJson(Map<String, dynamic> json) {
     return InterpreterLanguageSkill(
-      userId: json['user_id'] as String,
-      languageId: json['language_id'] as int,
-      skillId: json['skill_id'] as int,
+      userId: json['user_id']?.toString() ?? '',
+      languageId: (json['language_id'] as num?)?.toInt() ?? 0,
+      skillId: (json['skill_id'] as num?)?.toInt() ?? 0,
     );
   }
 

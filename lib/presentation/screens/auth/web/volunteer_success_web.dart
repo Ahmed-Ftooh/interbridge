@@ -134,7 +134,7 @@ class VolunteerSuccessWebScreen extends StatelessWidget {
               onPressed: () {
                 Navigator.of(
                   context,
-                ).pushNamed(Routes.registerRoute, arguments: args);
+                ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0F172A),

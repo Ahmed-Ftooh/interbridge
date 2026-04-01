@@ -16,12 +16,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.example.interbridge"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.example.interbridge"
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -75,6 +75,8 @@ dependencies {
     implementation("com.google.android.play:app-update-ktx:2.1.0")
     implementation("com.google.android.play:review:2.0.2")
     implementation("com.google.android.play:review-ktx:2.0.2")
+    // Fix for R8 missing AutoValue$CopyAnnotations
+    implementation("com.google.auto.value:auto-value-annotations:1.10.4")
 }
 flutter {
     source = "../.."

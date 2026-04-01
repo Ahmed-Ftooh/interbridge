@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/enhanced_call_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,17 +14,6 @@ class NotificationHandler {
   final GlobalKey<NavigatorState> navigatorKey;
 
   NotificationHandler({required this.navigatorKey});
-
-  /// Build a stable int UID from the authenticated user UUID
-  static int _uidFromUuid(String uuid) {
-    if (uuid.isNotEmpty) {
-      final hex = uuid.replaceAll('-', '');
-      final first8 =
-          hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-      return int.tryParse(first8, radix: 16) ?? 1;
-    }
-    return 1;
-  }
 
   Future<void> initialize() async {
     // On web, we don't need CallKit - we use Supabase realtime
@@ -63,7 +53,7 @@ class NotificationHandler {
 
       // Navigate to the call screen
       final isVideoCall = callType == 'video';
-      final myUid = _uidFromUuid(currentUser.id);
+      final myUid = uidFromUuid(currentUser.id);
 
       _navigateToCallScreen(
         requestId: requestId,
@@ -96,7 +86,7 @@ class NotificationHandler {
       final isVideoCall = callType == 'video';
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser != null) {
-        final myUid = _uidFromUuid(currentUser.id);
+        final myUid = uidFromUuid(currentUser.id);
         _navigateToCallScreen(
           requestId: requestId,
           isVideoCall: isVideoCall,

@@ -23,4 +23,4 @@ class LoginPasswordChanged extends LoginEvent {
 
 class LoginSubmitted extends LoginEvent {}
 
-class LoginPasswordVisibilityToggled extends LoginEvent {} 
+class LoginPasswordVisibilityToggled extends LoginEvent {}

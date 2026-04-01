@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/config.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/data/services/call_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -49,6 +50,32 @@ class _RemoteUserLeft extends CallEvent {
   _RemoteUserLeft(this.uid);
 }
 
+class _RemoteVideoReady extends CallEvent {
+  final int uid;
+  _RemoteVideoReady(this.uid);
+}
+
+class _RemoteVideoStarting extends CallEvent {
+  final int uid;
+  final String reason;
+  _RemoteVideoStarting(this.uid, this.reason);
+}
+
+class _RemoteVideoUnavailable extends CallEvent {
+  final int uid;
+  final String reason;
+  final RemoteVideoStateReason? stateReason;
+  final bool isTransient;
+  final bool shouldRearmReadyFallback;
+  _RemoteVideoUnavailable(
+    this.uid,
+    this.reason, {
+    this.stateReason,
+    this.isTransient = false,
+    this.shouldRearmReadyFallback = false,
+  });
+}
+
 class _Tick extends CallEvent {
   final Duration elapsed;
   _Tick(this.elapsed);
@@ -92,6 +119,7 @@ class CallOngoing extends CallState {
   final String channelId;
   final int localUid;
   final Set<int> remoteUids;
+  final Set<int> remoteVideoReadyUids;
   final bool muted;
   final bool speakerOn;
   final Duration elapsed;
@@ -103,6 +131,7 @@ class CallOngoing extends CallState {
     required this.channelId,
     required this.localUid,
     required this.remoteUids,
+    required this.remoteVideoReadyUids,
     required this.muted,
     required this.speakerOn,
     required this.elapsed,
@@ -113,6 +142,7 @@ class CallOngoing extends CallState {
 
   CallOngoing copyWith({
     Set<int>? remoteUids,
+    Set<int>? remoteVideoReadyUids,
     bool? muted,
     bool? speakerOn,
     Duration? elapsed,
@@ -123,6 +153,7 @@ class CallOngoing extends CallState {
       channelId: channelId,
       localUid: localUid,
       remoteUids: remoteUids ?? this.remoteUids,
+      remoteVideoReadyUids: remoteVideoReadyUids ?? this.remoteVideoReadyUids,
       muted: muted ?? this.muted,
       speakerOn: speakerOn ?? this.speakerOn,
       elapsed: elapsed ?? this.elapsed,
@@ -148,8 +179,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   bool _speakerOn = true;
   bool _videoEnabled = true;
   bool _isVideoCall = false;
-  bool _webPostJoinDone = false;
   final Set<int> _remoteUids = {};
+  final Set<int> _remoteVideoReadyUids = {};
+  final Set<int> _remoteVideoStartingUids = {};
+  final Map<int, Timer> _remoteVideoUnavailableTimers = {};
+  final Map<int, Timer> _remoteVideoReadyFallbackTimers = {};
+  final Map<int, int> _remoteReadyFallbackAttempts = {};
+
+  static const Duration _kRemoteUnavailableGrace = Duration(milliseconds: 1200);
+  static const Duration _kRemoteReadyFallback = Duration(seconds: 3);
+  static const int _kMaxRemoteReadyFallbackAttempts = 4;
+  static const String _kRuntimeMarker = 'CALL_BLOC_MARKER_20260329_A';
 
   /// Expose engine for video rendering in UI
   RtcEngine? get engine => _engine;
@@ -164,6 +204,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     on<SwitchCamera>(_onSwitchCamera);
     on<_RemoteUserJoined>(_onRemoteUserJoined);
     on<_RemoteUserLeft>(_onRemoteUserLeft);
+    on<_RemoteVideoStarting>(_onRemoteVideoStarting);
+    on<_RemoteVideoReady>(_onRemoteVideoReady);
+    on<_RemoteVideoUnavailable>(_onRemoteVideoUnavailable);
     on<_Tick>(_onTick);
     on<_FallbackToOngoing>(_onFallbackToOngoing);
     on<_JoinChannelSuccess>(_onJoinChannelSuccess);
@@ -173,13 +216,42 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   Future<void> _onStartCall(StartCall e, Emitter<CallState> emit) async {
     try {
+      if (e.channelId.trim().isEmpty) {
+        emit(
+          CallError(
+            AppError(
+              message: 'Invalid call channel',
+              type: ErrorType.validation,
+              userAction: 'Please start the request again.',
+              isRetryable: false,
+            ),
+          ),
+        );
+        return;
+      }
+
+      final resolvedLocalUid = normalizeAgoraUid(e.localUid);
+      if (resolvedLocalUid != e.localUid) {
+        log(
+          'Normalized localUid from ${e.localUid} to $resolvedLocalUid for channel ${e.channelId}',
+        );
+      }
+
+      log(
+        '$_kRuntimeMarker: StartCall channel=${e.channelId}, video=${e.isVideoCall}, localUid=$resolvedLocalUid',
+      );
+
       // Notify global call state immediately so chat banner updates
       CallStateManager().startCall(e.channelId);
 
       // Store video call flag
       _isVideoCall = e.isVideoCall;
       _videoEnabled = e.isVideoCall; // Start with video on for video calls
-      _webPostJoinDone = false; // Reset for new call
+      _remoteVideoReadyUids.clear();
+      _remoteVideoStartingUids.clear();
+      _cancelAllPendingRemoteUnavailable();
+      _cancelAllPendingRemoteReadyFallback();
+      _remoteReadyFallbackAttempts.clear();
 
       // 1) Request microphone/camera permission
       if (!kIsWeb) {
@@ -238,11 +310,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         // BOTH mic and camera (if video call). This avoids cases where only
         // the mic prompt appears and the camera track never initializes.
         try {
-          await requestWebMediaPermissions(
-            video: e.isVideoCall,
-            keepAlive: const Duration(seconds: 3),
-          );
+          await requestWebMediaPermissions(video: e.isVideoCall);
           log('Web: media permissions granted');
+          stopWebMediaTracks();
         } catch (err) {
           log('Web: media permission request failed: $err');
           emit(
@@ -350,7 +420,10 @@ class CallBloc extends Bloc<CallEvent, CallState> {
           onJoinChannelSuccess: (connection, elapsed) {
             log('Successfully joined channel: ${e.channelId}');
             add(
-              _JoinChannelSuccess(channelId: e.channelId, localUid: e.localUid),
+              _JoinChannelSuccess(
+                channelId: e.channelId,
+                localUid: resolvedLocalUid,
+              ),
             );
           },
           onError: (errorCode, errorMsg) {
@@ -397,106 +470,175 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             log(
               'Remote video state changed: uid=$remoteUid, state=$state, reason=$reason',
             );
+            if (kIsWeb && _isVideoCall) {
+              if (state == RemoteVideoState.remoteVideoStateStarting) {
+                add(_RemoteVideoStarting(remoteUid, '$reason'));
+              } else if (state == RemoteVideoState.remoteVideoStateDecoding) {
+                add(_RemoteVideoReady(remoteUid));
+              } else if (state == RemoteVideoState.remoteVideoStateFailed ||
+                  state == RemoteVideoState.remoteVideoStateStopped ||
+                  state == RemoteVideoState.remoteVideoStateFrozen) {
+                final intentionalStop = _isIntentionalRemoteVideoStop(reason);
+                final recoverableReason = _isRecoverableRemoteVideoReason(
+                  reason,
+                );
+
+                final transientState =
+                    !intentionalStop &&
+                    (state == RemoteVideoState.remoteVideoStateStopped ||
+                        state == RemoteVideoState.remoteVideoStateFrozen ||
+                        recoverableReason);
+
+                add(
+                  _RemoteVideoUnavailable(
+                    remoteUid,
+                    '$state/$reason',
+                    stateReason: reason,
+                    isTransient: transientState,
+                    shouldRearmReadyFallback: recoverableReason,
+                  ),
+                );
+              }
+            }
+          },
+          onFirstRemoteVideoDecoded: (
+            connection,
+            remoteUid,
+            width,
+            height,
+            elapsed,
+          ) {
+            if (kIsWeb && _isVideoCall) {
+              log(
+                'First remote video decoded: uid=$remoteUid, ${width}x$height, elapsed=${elapsed}ms',
+              );
+              add(_RemoteVideoReady(remoteUid));
+            }
+          },
+          onFirstRemoteVideoFrame: (
+            connection,
+            remoteUid,
+            width,
+            height,
+            elapsed,
+          ) {
+            if (kIsWeb && _isVideoCall) {
+              log(
+                'First remote video frame: uid=$remoteUid, ${width}x$height, elapsed=${elapsed}ms',
+              );
+              add(_RemoteVideoReady(remoteUid));
+            }
           },
         ),
       );
 
-      // 4) Audio/Video setup
-      //    On WEB: skip ALL SDK calls that touch camera/mic before
-      //    joinChannel.  The Iris Web SDK can trigger getUserMedia
-      //    (browser permission dialog) from enableAudio(), enableVideo(),
-      //    enableLocalVideo(), or startPreview().  Before joinChannel
-      //    completes, the browser hasn't granted media permissions yet,
-      //    which causes NOT_READABLE / createCameraVideoTrack failures.
-      //
-      //    Everything is deferred to _onJoinChannelSuccess on web.
-      if (kIsWeb) {
-        log(
-          'Web: deferring ALL audio/video SDK calls until after joinChannel '
-          '(browser permission prompt happens during joinChannel)',
+      // 4) Audio/Video configuration
+      //    We configure tracks identically on mobile and web *before*
+      //    calling joinChannel. The web media tracks have already
+      //    been permitted in the explicit request above.
+      try {
+        await _engine!.enableAudio();
+        log('enableAudio() succeeded');
+      } catch (audioErr) {
+        log('Warning: enableAudio failed: $audioErr');
+      }
+
+      try {
+        await _engine!.enableLocalAudio(true);
+      } catch (audioErr) {
+        log('Warning: enableLocalAudio failed: $audioErr');
+      }
+
+      try {
+        await _engine!.setAudioProfile(
+          profile: AudioProfileType.audioProfileSpeechStandard,
         );
-      } else {
-        try {
-          await _engine!.enableAudio();
-          log('enableAudio() succeeded');
-        } catch (audioErr) {
-          log('Warning: enableAudio failed: $audioErr');
-        }
-        try {
-          await _engine!.enableLocalAudio(true);
-        } catch (audioErr) {
-          log('Warning: enableLocalAudio failed: $audioErr');
-        }
-        try {
-          await _engine!.setAudioProfile(
-            profile: AudioProfileType.audioProfileSpeechStandard,
-          );
-        } catch (audioProfileErr) {
-          log('Warning: setAudioProfile failed: $audioProfileErr');
-        }
-        await _engine!.setAudioScenario(AudioScenarioType.audioScenarioMeeting);
-        await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
+      } catch (audioProfileErr) {
+        log('Warning: setAudioProfile failed: $audioProfileErr');
       }
 
-      // 4b) Enable video for video calls (mobile only before join)
-      if (e.isVideoCall) {
-        log('Enabling video for video call...');
-
-        if (!kIsWeb) {
-          try {
-            await _engine!.enableVideo();
-            log('enableVideo() succeeded');
-          } catch (enableVideoErr) {
-            log('Warning: enableVideo failed: $enableVideoErr');
-          }
-
-          // Mobile-only: encoder config, local video enable, preview
-          try {
-            await _engine!.setVideoEncoderConfiguration(
-              const VideoEncoderConfiguration(
-                dimensions: VideoDimensions(width: 1920, height: 1080),
-                frameRate: 30,
-                bitrate: 4000,
-                minBitrate: 1000,
-                orientationMode: OrientationMode.orientationModeAdaptive,
-                degradationPreference: DegradationPreference.maintainQuality,
-                mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
-              ),
-            );
-          } catch (videoConfigErr) {
-            log('Warning: Could not set video encoder config: $videoConfigErr');
-          }
-          try {
-            await _engine!.enableLocalVideo(true);
-          } catch (localVideoErr) {
-            log('Warning: enableLocalVideo failed: $localVideoErr');
-          }
-          try {
-            await _engine!.startPreview();
-          } catch (previewErr) {
-            log('Warning: startPreview failed: $previewErr');
-          }
-        }
-
-        _speakerOn = true; // Video calls default to speaker
-      } else {
-        _speakerOn = false; // Voice calls start on earpiece
-      }
-
-      // setClientRole and muteLocalAudioStream — skip on web
       if (!kIsWeb) {
         try {
-          await _engine!.setClientRole(
-            role: ClientRoleType.clientRoleBroadcaster,
+          await _engine!.setAudioScenario(
+            AudioScenarioType.audioScenarioMeeting,
           );
-        } catch (roleErr) {
-          log('Warning: setClientRole failed: $roleErr');
+        } catch (audioScenarioErr) {
+          log('Warning: setAudioScenario failed: $audioScenarioErr');
         }
+      }
+
+      // Only mobile supports these specific audio routing controls
+      if (!kIsWeb) {
         try {
-          await _engine!.muteLocalAudioStream(_muted);
-        } catch (muteErr) {
-          log('Warning: muteLocalAudioStream failed: $muteErr');
+          await _engine!.setDefaultAudioRouteToSpeakerphone(e.isVideoCall);
+        } catch (err) {
+          log('Warning: setDefaultAudioRouteToSpeakerphone failed: $err');
         }
+      }
+
+      if (e.isVideoCall) {
+        log('Enabling video for video call...');
+        try {
+          await _engine!.enableVideo();
+          log('enableVideo() succeeded');
+        } catch (enableVideoErr) {
+          log('Warning: enableVideo failed: $enableVideoErr');
+        }
+
+        try {
+          await _engine!.setVideoEncoderConfiguration(
+            const VideoEncoderConfiguration(
+              dimensions: VideoDimensions(width: 1920, height: 1080),
+              frameRate: 30,
+              bitrate: 4000,
+              minBitrate: 1000,
+              orientationMode: OrientationMode.orientationModeAdaptive,
+              degradationPreference: DegradationPreference.maintainQuality,
+              mirrorMode: VideoMirrorModeType.videoMirrorModeDisabled,
+            ),
+          );
+        } catch (videoConfigErr) {
+          log('Warning: Could not set video encoder config: $videoConfigErr');
+        }
+
+        try {
+          await _engine!.enableLocalVideo(true);
+        } catch (localVideoErr) {
+          log('Warning: enableLocalVideo failed: $localVideoErr');
+        }
+
+        try {
+          await _engine!.muteLocalVideoStream(false);
+        } catch (unmuteVideoErr) {
+          log('Warning: muteLocalVideoStream(false) failed: $unmuteVideoErr');
+        }
+
+        try {
+          await _engine!.startPreview();
+        } catch (previewErr) {
+          log('Warning: startPreview failed: $previewErr');
+        }
+
+        _speakerOn = true;
+      } else {
+        _speakerOn = false;
+      }
+
+      try {
+        await _engine!.setClientRole(
+          role: ClientRoleType.clientRoleBroadcaster,
+        );
+      } catch (roleErr) {
+        log('Warning: setClientRole failed: $roleErr');
+      }
+
+      try {
+        await _engine!.muteLocalAudioStream(_muted);
+      } catch (muteErr) {
+        log('Warning: muteLocalAudioStream failed: $muteErr');
+      }
+
+      if (!kIsWeb) {
         try {
           await _engine!.setEnableSpeakerphone(_speakerOn);
         } catch (e) {
@@ -506,12 +648,12 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
       // 5) Token from Supabase with timeout
       log(
-        'Fetching Agora token for channel: ${e.channelId}, uid: ${e.localUid}',
+        'Fetching Agora token for channel: ${e.channelId}, uid: $resolvedLocalUid',
       );
       String token;
       try {
         token = await service
-            .fetchAgoraToken(channelName: e.channelId, uid: e.localUid)
+            .fetchAgoraToken(channelName: e.channelId, uid: resolvedLocalUid)
             .timeout(
               const Duration(seconds: 15),
               onTimeout: () {
@@ -538,90 +680,41 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       //    onJoinChannelSuccess / onError callbacks and the fallback
       //    timer below to drive state transitions instead.
       log('Joining Agora channel: ${e.channelId}');
-      if (kIsWeb) {
-        // Fire-and-forget on web — callbacks drive the state machine.
-        // joinChannel triggers the browser permission prompt (getUserMedia)
-        // which can take an unpredictable amount of time.
-        final engine = _engine;
-        if (engine == null) {
-          log('FATAL: engine is null before joinChannel on web');
-          emit(
-            CallError(
-              AppError(
-                message: 'Call engine lost before joining channel',
-                type: ErrorType.unknown,
-                userAction: 'Please try again.',
-                isRetryable: true,
-              ),
-            ),
+      try {
+        final future = _engine!.joinChannel(
+          token: token,
+          channelId: e.channelId,
+          uid: resolvedLocalUid,
+          options: ChannelMediaOptions(
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+            publishCameraTrack: e.isVideoCall,
+            publishMicrophoneTrack: true,
+            autoSubscribeVideo: e.isVideoCall,
+            autoSubscribeAudio: true,
+          ),
+        );
+
+        if (kIsWeb) {
+          // Fire and forget on web because it can hang waiting for permissions
+          future.catchError((err) {
+            log('Web: joinChannel error: $err');
+            add(_AgoraError('Failed to join call: $err'));
+          });
+        } else {
+          await future.timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              log('Join channel timeout after 15 seconds');
+              throw Exception(
+                'Voice call connection timeout. Please try again.',
+              );
+            },
           );
-          return;
+          log('Successfully joined Agora channel');
         }
-
-        log(
-          'Web: calling joinChannel with uid=${e.localUid}, '
-          'channel=${e.channelId}, isVideo=${e.isVideoCall}',
-        );
-
-        // runZonedGuarded absorbs any zone-level errors that Agora's Iris
-        // Web SDK raises internally (WebRTC / getUserMedia exceptions that
-        // bubble out of the JS interop bridge).  Without this the VS Code
-        // FlutterWeb debugger pauses on those caught-but-re-thrown errors.
-        runZonedGuarded(
-          () {
-            engine
-                .joinChannel(
-                  token: token,
-                  channelId: e.channelId,
-                  uid: e.localUid,
-                  options: ChannelMediaOptions(
-                    clientRoleType: ClientRoleType.clientRoleBroadcaster,
-                    publishCameraTrack: e.isVideoCall,
-                    publishMicrophoneTrack: true,
-                    autoSubscribeVideo: e.isVideoCall,
-                    autoSubscribeAudio: true,
-                  ),
-                )
-                .then((_) {
-                  log('Web: joinChannel Future completed successfully');
-                })
-                .catchError((err) {
-                  log('Web: joinChannel async error: $err');
-                  // Dispatch error event so the UI can react instead of
-                  // staying stuck on "Connecting..." forever.
-                  add(_AgoraError('Failed to join call: $err'));
-                });
-            log('Web: joinChannel dispatched (fire-and-forget)');
-          },
-          (err, stack) {
-            // Zone-level catch — non-fatal internal Agora/WebRTC errors.
-            log('Web: joinChannel zone error (non-fatal, ignored): $err');
-          },
-        );
-      } else {
-        await _engine!
-            .joinChannel(
-              token: token,
-              channelId: e.channelId,
-              uid: e.localUid,
-              options: ChannelMediaOptions(
-                clientRoleType: ClientRoleType.clientRoleBroadcaster,
-                publishCameraTrack: e.isVideoCall,
-                publishMicrophoneTrack: true,
-                autoSubscribeVideo: e.isVideoCall,
-                autoSubscribeAudio: true,
-              ),
-            )
-            .timeout(
-              const Duration(seconds: 15),
-              onTimeout: () {
-                log('Join channel timeout after 15 seconds');
-                throw Exception(
-                  'Voice call connection timeout. Please try again.',
-                );
-              },
-            );
-        log('Successfully joined Agora channel');
+      } catch (err) {
+        log('Join channel error: $err');
+        add(_AgoraError('Failed to join call: $err'));
       }
 
       // Fallback: If onJoinChannelSuccess doesn't fire within a
@@ -636,11 +729,33 @@ class CallBloc extends Bloc<CallEvent, CallState> {
             'Fallback: Manually transitioning to CallOngoing state (timer waits for remote user)',
           );
           // Use add() to trigger a new event instead of emit()
-          add(_FallbackToOngoing(channelId: e.channelId, localUid: e.localUid));
+          add(
+            _FallbackToOngoing(
+              channelId: e.channelId,
+              localUid: resolvedLocalUid,
+            ),
+          );
         }
       });
     } catch (e) {
       log('Error starting call: $e');
+
+      if (kIsWeb && e.toString().contains('AgoraRtcException(-4')) {
+        emit(
+          CallError(
+            AppError(
+              message: 'Browser call setup not supported for this operation',
+              type: ErrorType.unknown,
+              userAction:
+                  'Please retry the call. If it keeps failing, refresh the page and try again.',
+              technicalDetails: e.toString(),
+              isRetryable: true,
+            ),
+          ),
+        );
+        return;
+      }
+
       emit(CallError(ErrorHandler.handleError(e, context: 'StartCall')));
     }
   }
@@ -665,23 +780,21 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
     _startedAt = null;
     _remoteUids.clear();
+    _remoteVideoReadyUids.clear();
+    _remoteVideoStartingUids.clear();
+    _cancelAllPendingRemoteUnavailable();
+    _cancelAllPendingRemoteReadyFallback();
+    _remoteReadyFallbackAttempts.clear();
 
-    // Stop video preview if it was a video call
+    // Stop local camera capture/preview deterministically on all platforms,
+    // specifically web where browser camera indicator can otherwise remain on.
     if (_isVideoCall) {
-      try {
-        if (!kIsWeb) {
-          await _engine?.stopPreview();
-          await _engine?.disableVideo();
-        } else {
-          // On web, skip stopPreview — we never called startPreview.
-          // The browser manages the camera track via WebRTC.
-          _engine?.disableVideo().catchError((err) {
-            log('Web: disableVideo error (ignored): $err');
-          });
-        }
-      } catch (err) {
-        log('Error stopping video: $err');
-      }
+      await _stopLocalVideoCapture();
+    }
+
+    // Stop the explicit web media tracks (if on web)
+    if (kIsWeb) {
+      stopWebMediaTracks();
     }
 
     // Reset video state
@@ -809,12 +922,18 @@ class CallBloc extends Bloc<CallEvent, CallState> {
 
   void _onRemoteUserJoined(_RemoteUserJoined e, Emitter<CallState> emit) {
     _remoteUids.add(e.uid);
+    _remoteVideoReadyUids.remove(e.uid);
+    _remoteVideoStartingUids.remove(e.uid);
+    _remoteReadyFallbackAttempts.remove(e.uid);
+    _cancelPendingRemoteUnavailable(e.uid);
+    _scheduleRemoteReadyFallback(e.uid, requirePublishSignal: true);
 
     // On web, explicitly unmute / subscribe to the remote video stream.
     // autoSubscribeVideo in ChannelMediaOptions may not be sufficient on
     // the Iris Web SDK to actually bind remote tracks to views.
     if (kIsWeb && _isVideoCall && _engine != null) {
       log('Web: explicitly subscribing to remote video for uid=${e.uid}');
+      // Unmute remote streams immediately
       _engine!.muteRemoteVideoStream(uid: e.uid, mute: false).catchError((err) {
         log('Web: muteRemoteVideoStream error (ignored): $err');
       });
@@ -840,6 +959,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       emit(
         (state as CallOngoing).copyWith(
           remoteUids: {..._remoteUids},
+          remoteVideoReadyUids: {..._remoteVideoReadyUids},
           startTime: _startedAt, // Ensure start time is propagated
         ),
       );
@@ -853,6 +973,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     // fallback) must not terminate the call.
     final wasTracked = _remoteUids.contains(e.uid);
     _remoteUids.remove(e.uid);
+    _remoteVideoReadyUids.remove(e.uid);
+    _remoteVideoStartingUids.remove(e.uid);
+    _remoteReadyFallbackAttempts.remove(e.uid);
+    _cancelPendingRemoteUnavailable(e.uid);
+    _cancelPendingRemoteReadyFallback(e.uid);
 
     if (wasTracked && _remoteUids.isEmpty && state is CallOngoing) {
       log('Remote user left and no more participants - ending call');
@@ -861,7 +986,124 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
 
     if (state is CallOngoing) {
-      emit((state as CallOngoing).copyWith(remoteUids: {..._remoteUids}));
+      emit(
+        (state as CallOngoing).copyWith(
+          remoteUids: {..._remoteUids},
+          remoteVideoReadyUids: {..._remoteVideoReadyUids},
+        ),
+      );
+    }
+  }
+
+  void _onRemoteVideoStarting(_RemoteVideoStarting e, Emitter<CallState> emit) {
+    if (!_remoteUids.contains(e.uid)) return;
+
+    final firstSignal = _remoteVideoStartingUids.add(e.uid);
+    if (firstSignal) {
+      log(
+        'Remote video publish-start detected: uid=${e.uid}, reason=${e.reason}',
+      );
+    }
+
+    if (!_remoteVideoReadyUids.contains(e.uid)) {
+      _scheduleRemoteReadyFallback(e.uid, requirePublishSignal: false);
+    }
+  }
+
+  void _onRemoteVideoReady(_RemoteVideoReady e, Emitter<CallState> emit) {
+    _cancelPendingRemoteUnavailable(e.uid);
+    _cancelPendingRemoteReadyFallback(e.uid);
+    _remoteVideoStartingUids.add(e.uid);
+    _remoteReadyFallbackAttempts.remove(e.uid);
+
+    if (!_remoteUids.contains(e.uid)) return;
+    if (_remoteVideoReadyUids.contains(e.uid)) return;
+
+    _remoteVideoReadyUids.add(e.uid);
+    log('Remote video ready for rendering: uid=${e.uid}');
+
+    if (state is CallOngoing) {
+      emit(
+        (state as CallOngoing).copyWith(
+          remoteVideoReadyUids: {..._remoteVideoReadyUids},
+        ),
+      );
+    }
+  }
+
+  void _onRemoteVideoUnavailable(
+    _RemoteVideoUnavailable e,
+    Emitter<CallState> emit,
+  ) {
+    if (!_remoteUids.contains(e.uid)) return;
+
+    final alreadyReady = _remoteVideoReadyUids.contains(e.uid);
+
+    if (e.stateReason ==
+            RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted ||
+        e.stateReason ==
+            RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline) {
+      _remoteVideoStartingUids.remove(e.uid);
+      _remoteReadyFallbackAttempts.remove(e.uid);
+    }
+
+    if (alreadyReady) {
+      if (e.shouldRearmReadyFallback) {
+        _scheduleRemoteReadyFallback(e.uid, requirePublishSignal: false);
+      } else {
+        _cancelPendingRemoteReadyFallback(e.uid);
+      }
+    } else {
+      // During first-bind phase, keep fallback alive unless remote is
+      // explicitly offline. Some web SDK paths report muted/stopped before
+      // decode-ready and would otherwise deadlock on "Connecting remote video".
+      final definitelyOffline =
+          e.stateReason ==
+          RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline;
+      if (definitelyOffline) {
+        _cancelPendingRemoteReadyFallback(e.uid);
+      } else {
+        _scheduleRemoteReadyFallback(e.uid, requirePublishSignal: true);
+      }
+    }
+
+    if (e.isTransient) {
+      if (_remoteVideoUnavailableTimers.containsKey(e.uid)) {
+        return;
+      }
+
+      log(
+        'Remote video transient unavailable: uid=${e.uid}, reason=${e.reason}. Waiting ${_kRemoteUnavailableGrace.inMilliseconds}ms before downgrade.',
+      );
+      _remoteVideoUnavailableTimers[e.uid] = Timer(
+        _kRemoteUnavailableGrace,
+        () {
+          _remoteVideoUnavailableTimers.remove(e.uid);
+          add(
+            _RemoteVideoUnavailable(
+              e.uid,
+              '${e.reason}|grace_elapsed',
+              stateReason: e.stateReason,
+              isTransient: false,
+              shouldRearmReadyFallback: e.shouldRearmReadyFallback,
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    if (!alreadyReady) return;
+
+    _remoteVideoReadyUids.remove(e.uid);
+    log('Remote video unavailable: uid=${e.uid}, reason=${e.reason}');
+
+    if (state is CallOngoing) {
+      emit(
+        (state as CallOngoing).copyWith(
+          remoteVideoReadyUids: {..._remoteVideoReadyUids},
+        ),
+      );
     }
   }
 
@@ -875,18 +1117,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _FallbackToOngoing e,
     Emitter<CallState> emit,
   ) async {
-    log('Fallback handler: Transitioning to CallOngoing state');
-
-    // Same as _onJoinChannelSuccess: await camera setup before showing UI.
-    if (kIsWeb && _engine != null) {
-      await _webPostJoinSetup();
+    if (state is! CallConnecting) {
+      log('Fallback ignored: state is ${state.runtimeType}');
+      return;
     }
+
+    log('Fallback handler: Transitioning to CallOngoing state');
 
     emit(
       CallOngoing(
         channelId: e.channelId,
         localUid: e.localUid,
         remoteUids: {..._remoteUids},
+        remoteVideoReadyUids: {..._remoteVideoReadyUids},
         muted: _muted,
         speakerOn: _speakerOn,
         elapsed:
@@ -904,23 +1147,24 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _JoinChannelSuccess e,
     Emitter<CallState> emit,
   ) async {
+    if (state is CallOngoing) {
+      log('JoinChannelSuccess ignored: already in CallOngoing');
+      return;
+    }
+    if (state is! CallConnecting) {
+      log('JoinChannelSuccess ignored: state is ${state.runtimeType}');
+      return;
+    }
+
     log('Handler: onJoinChannelSuccess for channel: ${e.channelId}');
     _timer?.cancel();
-
-    // ===== WEB: Initialise audio/video and WAIT before showing UI =====
-    // Awaiting here ensures the camera track exists before emit(CallOngoing)
-    // so AgoraVideoView(uid:0) finds a live track in setupLocalVideo → no
-    // black screen. Without the await the track is created after the view
-    // mounts, making the preview black until the user toggles camera.
-    if (kIsWeb && _engine != null) {
-      await _webPostJoinSetup();
-    }
 
     emit(
       CallOngoing(
         channelId: e.channelId,
         localUid: e.localUid,
         remoteUids: {..._remoteUids},
+        remoteVideoReadyUids: {..._remoteVideoReadyUids},
         muted: _muted,
         speakerOn: _speakerOn,
         elapsed: Duration.zero,
@@ -930,67 +1174,6 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       ),
     );
     log('CallOngoing state emitted successfully');
-  }
-
-  /// Web-only: awaited by _onJoinChannelSuccess / _onFallbackToOngoing BEFORE
-  /// emitting CallOngoing.  By awaiting [enableLocalVideo] the camera track is
-  /// guaranteed to exist when AgoraVideoView(uid:0) mounts and calls
-  /// setupLocalVideo — that is the only way to avoid a black local preview.
-  Future<void> _webPostJoinSetup() async {
-    if (_webPostJoinDone) {
-      log('Web post-join: already done, skipping duplicate');
-      return;
-    }
-    final engine = _engine;
-    if (engine == null) return;
-    _webPostJoinDone = true;
-
-    // 1. enableVideo — sets the internal Iris SDK flag.
-    await engine.enableVideo().catchError((err) {
-      log('Web post-join: enableVideo error (ignored): $err');
-    });
-
-    // 2. enableAudio — initialises the audio module.
-    await engine.enableAudio().catchError((err) {
-      log('Web post-join: enableAudio error (ignored): $err');
-    });
-
-    if (_isVideoCall) {
-      // 3. enableLocalVideo — creates the camera track in the Iris Web SDK.
-      //    MUST be awaited so the track exists before AgoraVideoView mounts.
-      await engine.enableLocalVideo(true).catchError((err) {
-        log('Web post-join: enableLocalVideo error (ignored): $err');
-      });
-      // 4. muteLocalVideoStream(false) — signals Agora to bind the new track
-      //    to any HTML element that setupLocalVideo already registered.
-      await engine.muteLocalVideoStream(false).catchError((err) {
-        log('Web post-join: muteLocalVideoStream error (ignored): $err');
-      });
-      // 5. startPreview — tells the SDK to render the camera track into
-      //    the local HTML element. Without this the track is captured &
-      //    published to remote peers but NOT rendered in the local view.
-      await engine.startPreview().catchError((err) {
-        log('Web post-join: startPreview error (ignored): $err');
-      });
-    }
-
-    // 6. updateChannelMediaOptions — re-affirm video/audio options.
-    //    Fire-and-forget; non-critical for immediate rendering.
-    engine
-        .updateChannelMediaOptions(
-          ChannelMediaOptions(
-            autoSubscribeVideo: _isVideoCall,
-            autoSubscribeAudio: true,
-            publishCameraTrack: _isVideoCall,
-            publishMicrophoneTrack: true,
-            clientRoleType: ClientRoleType.clientRoleBroadcaster,
-          ),
-        )
-        .catchError((err) {
-          log('Web post-join: updateChannelMediaOptions error (ignored): $err');
-        });
-
-    log('Web post-join: camera track ready — CallOngoing will now be emitted');
   }
 
   void _onAgoraError(_AgoraError e, Emitter<CallState> emit) {
@@ -1107,10 +1290,44 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     }
   }
 
+  Future<void> _stopLocalVideoCapture() async {
+    final engine = _engine;
+    if (engine == null) return;
+
+    try {
+      await engine.muteLocalVideoStream(true).catchError((err) {
+        log('StopVideo: muteLocalVideoStream(true) error (ignored): $err');
+      });
+
+      await engine.enableLocalVideo(false).catchError((err) {
+        log('StopVideo: enableLocalVideo(false) error (ignored): $err');
+      });
+
+      await engine.stopPreview().catchError((err) {
+        log('StopVideo: stopPreview error (ignored): $err');
+      });
+
+      await engine.disableVideo().catchError((err) {
+        log('StopVideo: disableVideo error (ignored): $err');
+      });
+    } catch (err) {
+      log('StopVideo: unexpected error while stopping local video: $err');
+    }
+  }
+
   @override
   Future<void> close() async {
     _timer?.cancel();
     _timer = null;
+    _remoteVideoStartingUids.clear();
+    _cancelAllPendingRemoteUnavailable();
+    _cancelAllPendingRemoteReadyFallback();
+    _remoteReadyFallbackAttempts.clear();
+
+    // Best-effort camera shutdown before leave/release to avoid lingering
+    // browser camera indicator if the bloc is disposed mid-call.
+    await _stopLocalVideoCapture();
+
     try {
       if (kIsWeb) {
         // On web, leaveChannel / release can hang — use timeout + catchError
@@ -1149,5 +1366,93 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     } catch (_) {}
     _engine = null;
     return super.close();
+  }
+
+  void _cancelPendingRemoteUnavailable(int uid) {
+    _remoteVideoUnavailableTimers.remove(uid)?.cancel();
+  }
+
+  void _cancelAllPendingRemoteUnavailable() {
+    for (final timer in _remoteVideoUnavailableTimers.values) {
+      timer.cancel();
+    }
+    _remoteVideoUnavailableTimers.clear();
+  }
+
+  bool _isIntentionalRemoteVideoStop(RemoteVideoStateReason reason) {
+    return reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted ||
+        reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteOffline;
+  }
+
+  bool _isRecoverableRemoteVideoReason(RemoteVideoStateReason reason) {
+    if (_isIntentionalRemoteVideoStop(reason)) {
+      return false;
+    }
+
+    switch (reason) {
+      case RemoteVideoStateReason.remoteVideoStateReasonInternal:
+      case RemoteVideoStateReason.remoteVideoStateReasonNetworkCongestion:
+      case RemoteVideoStateReason.remoteVideoStateReasonNetworkRecovery:
+      case RemoteVideoStateReason.remoteVideoStateReasonLocalMuted:
+      case RemoteVideoStateReason.remoteVideoStateReasonLocalUnmuted:
+      case RemoteVideoStateReason.remoteVideoStateReasonRemoteUnmuted:
+      case RemoteVideoStateReason.remoteVideoStateReasonAudioFallback:
+      case RemoteVideoStateReason.remoteVideoStateReasonAudioFallbackRecovery:
+        return true;
+      case RemoteVideoStateReason.remoteVideoStateReasonCodecNotSupport:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  void _scheduleRemoteReadyFallback(
+    int uid, {
+    bool requirePublishSignal = true,
+  }) {
+    if (!(kIsWeb && _isVideoCall)) return;
+
+    _cancelPendingRemoteReadyFallback(uid);
+    _remoteVideoReadyFallbackTimers[uid] = Timer(_kRemoteReadyFallback, () {
+      _remoteVideoReadyFallbackTimers.remove(uid);
+
+      if (!_remoteUids.contains(uid) || _remoteVideoReadyUids.contains(uid)) {
+        return;
+      }
+
+      final attempts = (_remoteReadyFallbackAttempts[uid] ?? 0) + 1;
+      _remoteReadyFallbackAttempts[uid] = attempts;
+
+      final sawPublishSignal = _remoteVideoStartingUids.contains(uid);
+      if (requirePublishSignal && !sawPublishSignal) {
+        if (attempts >= _kMaxRemoteReadyFallbackAttempts) {
+          log(
+            'Remote ready fallback aborted for uid=$uid after $attempts attempts without publish-start signal.',
+          );
+          return;
+        }
+        log(
+          'Remote ready fallback waiting for publish-start signal: uid=$uid, attempt=$attempts/$_kMaxRemoteReadyFallbackAttempts.',
+        );
+        _scheduleRemoteReadyFallback(uid, requirePublishSignal: true);
+        return;
+      }
+
+      log(
+        'Remote video decode callback missing for uid=$uid; applying optimistic ready fallback after ${_kRemoteReadyFallback.inMilliseconds}ms (attempt=$attempts).',
+      );
+      add(_RemoteVideoReady(uid));
+    });
+  }
+
+  void _cancelPendingRemoteReadyFallback(int uid) {
+    _remoteVideoReadyFallbackTimers.remove(uid)?.cancel();
+  }
+
+  void _cancelAllPendingRemoteReadyFallback() {
+    for (final timer in _remoteVideoReadyFallbackTimers.values) {
+      timer.cancel();
+    }
+    _remoteVideoReadyFallbackTimers.clear();
   }
 }

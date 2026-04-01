@@ -91,13 +91,12 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF1F5F9),
         appBar: AppBar(
           backgroundColor: Colors.white,
           foregroundColor: ColorManager.textPrimary,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
             onPressed: () => Navigator.of(context).pop(),
           ),
           title: const Text('Interpreter Details'),
@@ -687,7 +686,6 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
                   gid['uploaded_at']?.toString().split('T')[0] ?? '';
               final reviewerNotes = gid['reviewer_notes']?.toString();
               final fileUrl = gid['file_url']?.toString();
-              final govId = gid['id']?.toString() ?? '';
 
               Color statusColor;
               switch (status) {
@@ -791,46 +789,24 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
                       children: [
                         if (fileUrl != null && fileUrl.isNotEmpty)
                           OutlinedButton.icon(
-                            onPressed: () => _viewGovernmentId(fileUrl),
-                            icon: const Icon(Icons.visibility, size: 18),
+                            onPressed: () => _openGovernmentId(fileUrl),
+                            icon: const Icon(Icons.open_in_new, size: 18),
                             label: const Text('View Document'),
                           ),
                         const Spacer(),
-                        if (status == 'pending') ...[
-                          OutlinedButton.icon(
-                            onPressed:
-                                () => _updateGovernmentIdStatus(
-                                  govId,
-                                  'rejected',
-                                ),
-                            icon: const Icon(
-                              Icons.close,
-                              size: 18,
-                              color: Colors.red,
-                            ),
-                            label: const Text(
-                              'Reject',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.red),
-                            ),
+                        // Status is read-only — shown as badge above
+                        Text(
+                          status == 'pending'
+                              ? 'Awaiting review'
+                              : status == 'approved'
+                              ? 'Document verified'
+                              : 'Document rejected',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: statusColor,
+                            fontStyle: FontStyle.italic,
                           ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed:
-                                () => _updateGovernmentIdStatus(
-                                  govId,
-                                  'approved',
-                                ),
-                            icon: const Icon(Icons.check, size: 18),
-                            label: const Text('Approve'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
                     ),
                   ],
@@ -1863,45 +1839,20 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
     }
   }
 
-  Future<void> _viewGovernmentId(String fileUrl) async {
+  /// Opens a government ID document URL in an external browser.
+  /// Tries to get a fresh signed URL first so the link never expires.
+  Future<void> _openGovernmentId(String fileUrl) async {
     try {
-      // Try to get a signed URL for the government ID
       final signedUrl = await _service.getFreshCertificateUrl(url: fileUrl);
       final url = signedUrl ?? fileUrl;
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _snack('Cannot open document URL', color: Colors.red);
+      }
     } catch (e) {
       _snack('Error opening document: $e', color: Colors.red);
-    }
-  }
-
-  Future<void> _updateGovernmentIdStatus(
-    String governmentIdId,
-    String status,
-  ) async {
-    String? notes;
-    if (status == 'rejected') {
-      notes = await _showTextInputDialog(
-        'Rejection Reason',
-        'Please provide a reason for rejecting this government ID:',
-      );
-      if (notes == null) return; // cancelled
-    }
-
-    try {
-      await _service.updateGovernmentIdStatus(
-        governmentIdId,
-        status: status,
-        reviewerNotes: notes,
-      );
-      _snack(
-        status == 'approved'
-            ? 'Government ID approved'
-            : 'Government ID rejected',
-        color: status == 'approved' ? const Color(0xFF10B981) : Colors.red,
-      );
-      _load();
-    } catch (e) {
-      _snack('Error: $e', color: Colors.red);
     }
   }
 

@@ -1,5 +1,7 @@
 import 'dart:html' as html;
 
+html.MediaStream? _activeStream;
+
 Future<void> requestWebMediaPermissions({
   required bool video,
   Duration? keepAlive,
@@ -12,20 +14,31 @@ Future<void> requestWebMediaPermissions({
   final constraints = <String, dynamic>{'audio': true, 'video': video};
 
   final stream = await media.getUserMedia(constraints);
-  if (keepAlive == null) {
-    // Stop tracks immediately; this is only for permission prompt.
-    for (final track in stream.getTracks()) {
-      track.stop();
-    }
-    return;
-  }
 
-  // Keep the stream alive briefly to avoid the camera turning off
-  // right after permission is granted. This also prevents a race
-  // where Agora requests the camera while the stream is stopping.
-  Future<void>.delayed(keepAlive, () {
-    for (final track in stream.getTracks()) {
+  if (_activeStream != null) {
+    for (final track in _activeStream!.getTracks()) {
       track.stop();
     }
-  });
+  }
+  _activeStream = stream;
+
+  if (keepAlive != null) {
+    Future<void>.delayed(keepAlive, () {
+      if (_activeStream == stream) {
+        for (final track in stream.getTracks()) {
+          track.stop();
+        }
+        _activeStream = null;
+      }
+    });
+  }
+}
+
+void stopWebMediaTracks() {
+  if (_activeStream != null) {
+    for (final track in _activeStream!.getTracks()) {
+      track.stop();
+    }
+    _activeStream = null;
+  }
 }

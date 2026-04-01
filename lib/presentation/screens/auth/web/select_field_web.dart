@@ -7,6 +7,7 @@ import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectFieldBloc/select_field_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectFieldBloc/select_field_event.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectFieldBloc/select_field_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Professional web specialization selection screen for interpreter onboarding
 class SelectFieldWebScreen extends StatefulWidget {
@@ -17,6 +18,8 @@ class SelectFieldWebScreen extends StatefulWidget {
 }
 
 class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
+  bool _isSaving = false;
+
   final List<Map<String, dynamic>> fieldData = [
     {
       'title': AppStrings.medicalInterpretation,
@@ -44,6 +47,82 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
     },
   ];
 
+  Future<void> _saveAndContinue(
+    SelectFieldState state,
+    Map<String, dynamic> data,
+  ) async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final List<int> specializationIds = [];
+      for (final fieldName in state.selectedFields) {
+        final field = fieldData.firstWhere(
+          (f) => f['title'] == fieldName,
+          orElse: () => {'id': 0},
+        );
+        if (field['id'] != 0) {
+          specializationIds.add(field['id'] as int);
+        }
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_specializations')
+          .delete()
+          .eq('user_id', userId);
+
+      if (specializationIds.isNotEmpty) {
+        final inserts =
+            specializationIds
+                .map((id) => {'user_id': userId, 'specialization_id': id})
+                .toList();
+        await Supabase.instance.client
+            .from('interpreter_specializations')
+            .insert(inserts);
+      }
+
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'specialization_selected'})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        final originalArgs =
+            ModalRoute.of(context)?.settings.arguments
+                as Map<String, dynamic>? ??
+            {};
+        final nextArgs = {...originalArgs, ...data};
+        if (!nextArgs.containsKey('role')) nextArgs['role'] = 'interpreter';
+
+        Navigator.pushNamed(
+          context,
+          Routes.voiceSampleRoute,
+          arguments: nextArgs,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to save specializations: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -65,39 +144,12 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
             type: SnackBarType.error,
           );
         }
-        if (state.isSuccess) {
+        if (state.isSuccess && !_isSaving) {
           final Map<String, dynamic> data =
               ModalRoute.of(context)?.settings.arguments
                   as Map<String, dynamic>? ??
               {};
-
-          final List<int> specializationIds = [];
-          for (final fieldName in state.selectedFields) {
-            final field = fieldData.firstWhere(
-              (f) => f['title'] == fieldName,
-              orElse: () => {'id': 0},
-            );
-            if (field['id'] != 0) {
-              specializationIds.add(field['id'] as int);
-            }
-          }
-
-          data['specializations'] = specializationIds;
-          if (!data.containsKey('role')) {
-            data['role'] = 'interpreter';
-          }
-
-          final originalArgs =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, dynamic>? ??
-              {};
-          final nextArgs = {...originalArgs, ...data};
-
-          Navigator.pushNamed(
-            context,
-            Routes.voiceSampleRoute,
-            arguments: nextArgs,
-          );
+          _saveAndContinue(state, data);
         }
       },
       builder: (context, state) {

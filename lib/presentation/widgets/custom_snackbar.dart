@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -15,6 +18,8 @@ class CustomSnackBar {
     bool showIcon = true,
   }) {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final width = MediaQuery.of(context).size.width;
+    final bool isWebDesktop = kIsWeb && width >= 900;
 
     scaffoldMessenger.showSnackBar(
       SnackBar(
@@ -42,6 +47,10 @@ class CustomSnackBar {
         backgroundColor: _getBackgroundColor(type),
         duration: duration,
         behavior: SnackBarBehavior.floating,
+        margin:
+            isWebDesktop
+                ? const EdgeInsets.only(bottom: 24, left: 24, right: 24)
+                : null,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSize.s8),
         ),

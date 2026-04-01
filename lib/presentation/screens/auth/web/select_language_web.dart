@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/const/app_const.dart';
+import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
@@ -22,6 +24,7 @@ class _LanguageSelectionWebScreenState
     extends State<LanguageSelectionWebScreen> {
   final SupabaseService _supabaseService = SupabaseService();
   final _searchController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -55,6 +58,84 @@ class _LanguageSelectionWebScreenState
     }
   }
 
+  Future<void> _saveAndContinue(
+    SelectLanguageState state,
+    Map<String, dynamic> data,
+  ) async {
+    final selectedNames =
+        state.selectedLanguages.entries
+            .where((entry) => entry.value)
+            .map((entry) => entry.key)
+            .toList();
+
+    if (selectedNames.length < 2) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in to continue.',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final languageIds = LanguageMappingUtility.convertNamesToIds(
+        selectedNames,
+      );
+
+      // Clear old selections
+      await Supabase.instance.client
+          .from('interpreter_languages')
+          .delete()
+          .eq('user_id', userId);
+
+      // Insert new selections
+      if (languageIds.isNotEmpty) {
+        final insertData =
+            languageIds
+                .map((id) => {'user_id': userId, 'language_id': id})
+                .toList();
+
+        await Supabase.instance.client
+            .from('interpreter_languages')
+            .insert(insertData);
+      }
+
+      // Update onboarding status
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({'onboarding_status': 'languages_selected'})
+          .eq('user_id', userId);
+
+      data['languages'] = selectedNames;
+      if (!data.containsKey('role')) {
+        data['role'] = 'interpreter';
+      }
+
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.languageFluencyScreen, arguments: data);
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to save: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic> data =
@@ -63,26 +144,12 @@ class _LanguageSelectionWebScreenState
 
     return BlocConsumer<SelectLanguageBloc, SelectLanguageState>(
       listener: (context, state) {
-        if (state.errorMessage != null) {
+        if (state.errorMessage != null && state.isFailure) {
           CustomSnackBar.show(
             context,
             message: state.errorMessage!,
             type: SnackBarType.error,
           );
-        }
-        if (state.isSuccess) {
-          final selected =
-              state.selectedLanguages.entries
-                  .where((entry) => entry.value)
-                  .map((entry) => entry.key)
-                  .toList();
-          data['languages'] = selected;
-          if (!data.containsKey('role')) {
-            data['role'] = 'interpreter';
-          }
-          Navigator.of(
-            context,
-          ).pushNamed(Routes.languageFluencyScreen, arguments: data);
         }
       },
       builder: (context, state) {
@@ -198,8 +265,8 @@ class _LanguageSelectionWebScreenState
                 height: 48,
                 child: ElevatedButton(
                   onPressed:
-                      selectedCount >= 2
-                          ? () => bloc.add(SubmitLanguages())
+                      (selectedCount >= 2 && !_isLoading)
+                          ? () => _saveAndContinue(state, data)
                           : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
@@ -211,10 +278,23 @@ class _LanguageSelectionWebScreenState
                     disabledBackgroundColor: const Color(0xFFE2E8F0),
                     disabledForegroundColor: const Color(0xFF94A3B8),
                   ),
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
+                  child:
+                      _isLoading
+                          ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Text(
+                            'Continue',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                 ),
               ),
               const SizedBox(height: 12),

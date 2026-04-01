@@ -68,6 +68,17 @@ class ProfileLoaded extends ProfileState {
   int get defaultFluencyId =>
       fluencyLevels.isNotEmpty ? fluencyLevels.first.id : 1;
 
+  Set<int> get allSkillIds {
+    final skillIds = <int>{};
+    for (final skill in interpreterSkills) {
+      skillIds.add(skill.skillId);
+    }
+    for (final langSkills in languageSkillMap.values) {
+      skillIds.addAll(langSkills);
+    }
+    return skillIds;
+  }
+
   @override
   List<Object?> get props => [
     profile,

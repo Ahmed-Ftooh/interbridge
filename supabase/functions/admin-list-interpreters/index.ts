@@ -69,7 +69,25 @@ Deno.serve(async (req) => {
 
     if (search) {
       // Case-insensitive match on username
-      query = query.ilike("username", `%${search}%`);
+      let orQuery = `username.ilike.%${search}%`;
+      // If the search string is purely numerical, it might be the derived Interpreter ID
+      const isNumeric = /^\d+$/.test(search);
+      if (isNumeric) {
+        try {
+          const numId = parseInt(search, 10);
+          if (!isNaN(numId)) {
+            const hexStr = numId.toString(16).toLowerCase();
+            if (hexStr.length <= 8) {
+              const uuidPrefix = hexStr.padStart(8, '0');
+              const lowerBound = `${uuidPrefix}-0000-0000-0000-000000000000`;
+              const upperBound = `${uuidPrefix}-ffff-ffff-ffff-ffffffffffff`;
+              // Try to match the UUID range using gte and lte to avoid casting issues in PostgREST
+              orQuery += `,and(user_id.gte.${lowerBound},user_id.lte.${upperBound})`;
+            }
+          }
+        } catch (_) {}
+      }
+      query = query.or(orQuery);
     }
 
     // Apply status filter (verified/unverified)

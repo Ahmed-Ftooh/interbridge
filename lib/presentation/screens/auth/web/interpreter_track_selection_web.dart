@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_level.dart';
 import 'package:interbridge/data/models/interpreter_track.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 
 /// Professional web interpreter track selection screen
 class InterpreterTrackSelectionWebScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class _InterpreterTrackSelectionWebScreenState
     extends State<InterpreterTrackSelectionWebScreen> {
   InterpreterLevel? _selectedLevel;
   String? _hoveredTrack;
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +68,8 @@ class _InterpreterTrackSelectionWebScreenState
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: _selectedLevel != null ? _continue : null,
+              onPressed:
+                  (_selectedLevel != null && !_isLoading) ? _continue : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0F172A),
                 foregroundColor: Colors.white,
@@ -76,10 +80,23 @@ class _InterpreterTrackSelectionWebScreenState
                 disabledBackgroundColor: const Color(0xFFE2E8F0),
                 disabledForegroundColor: const Color(0xFF94A3B8),
               ),
-              child: const Text(
-                'Continue',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
+              child:
+                  _isLoading
+                      ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                      : const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
             ),
           ),
           const SizedBox(height: 16),
@@ -272,20 +289,61 @@ class _InterpreterTrackSelectionWebScreenState
     );
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     if (_selectedLevel == null) return;
 
-    final track =
-        _selectedLevel == InterpreterLevel.volunteer
-            ? InterpreterTrack.volunteer
-            : InterpreterTrack.paid;
+    setState(() => _isLoading = true);
 
-    final args = <String, dynamic>{
-      'role': 'interpreter',
-      'interpreterLevel': _selectedLevel!.name,
-      'interpreterTrack': track.name,
-      'requiresMedicalDocs': _selectedLevel == InterpreterLevel.paid,
-    };
-    Navigator.of(context).pushNamed(Routes.selectLanguage, arguments: args);
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        CustomSnackBar.show(
+          context,
+          message: 'Error: You must be logged in to continue.',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+
+      final track =
+          _selectedLevel == InterpreterLevel.volunteer
+              ? InterpreterTrack.volunteer
+              : InterpreterTrack.paid;
+
+      // Update users_profile
+      await Supabase.instance.client
+          .from('users_profile')
+          .update({'employment_type': track.name})
+          .eq('user_id', userId);
+
+      // Update interpreter_details status
+      await Supabase.instance.client
+          .from('interpreter_details')
+          .update({
+            'onboarding_status': 'track_selected',
+            'employment_type': track.name,
+          })
+          .eq('user_id', userId);
+
+      if (!mounted) return;
+
+      final args = <String, dynamic>{
+        'role': 'interpreter',
+        'interpreterLevel': _selectedLevel!.name,
+        'interpreterTrack': track.name,
+        'requiresMedicalDocs': _selectedLevel == InterpreterLevel.paid,
+      };
+      Navigator.of(context).pushNamed(Routes.selectLanguage, arguments: args);
+    } catch (e) {
+      if (mounted) {
+        CustomSnackBar.show(
+          context,
+          message: 'Failed to update track: $e',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }

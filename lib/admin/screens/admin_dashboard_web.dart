@@ -6,6 +6,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:interbridge/admin/screens/admin_details_web.dart';
 import 'package:interbridge/admin/services/admin_service.dart';
 import 'package:interbridge/config.dart';
+import 'package:interbridge/core/uid_utils.dart';
 import 'package:interbridge/data/services/call_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/app/app_prf.dart';
@@ -13,10 +14,6 @@ import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-int _uidFromUuid(String uuid) {
-  return uuid.hashCode.abs();
-}
 
 class AdminDashboardWeb extends StatefulWidget {
   const AdminDashboardWeb({super.key});
@@ -51,6 +48,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   List<Map<String, dynamic>> _callLogs = [];
   List<Map<String, dynamic>> _activeCalls = [];
   bool _isLoadingCalls = false;
+  Map<int, String> _languagesMap = {};
 
   // Admin listen mode
   final CallService _callService = CallService();
@@ -78,10 +76,18 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
 
       final profile = await _supabaseService.getUserProfile(user.id);
       final isAdmin = profile?.role == 'admin' || profile?.role == 'superadmin';
+
+      final langs = await _supabaseService.getLanguages();
+      final langMap = <int, String>{};
+      for (final l in langs) {
+        langMap[l.id] = l.name;
+      }
+
       if (mounted) {
         setState(() {
           _isAdmin = isAdmin;
           _checking = false;
+          _languagesMap = langMap;
         });
       }
       if (isAdmin) _load(reset: true);
@@ -109,19 +115,45 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     setState(() => _isLoading = true);
 
     try {
-      final newItems = await _adminService.listInterpreters(
-        search: _searchCtrl.text.trim(),
-        limit: _limit,
-        offset: _offset,
-        filterStatus: _filterStatus,
-        filterAccount: _filterAccount,
-      );
+      final searchText = _searchCtrl.text.trim();
+      // Check if search is a 5-digit number (interpreter ID)
+      final isFiveDigitId = RegExp(r'^\d{5}$').hasMatch(searchText);
+      List<dynamic> newItems;
+      if (isFiveDigitId) {
+        // Fetch a large enough batch to find the match (or implement backend support for this)
+        final allItems = await _adminService.listInterpreters(
+          search: '',
+          limit: 500,
+          offset: 0,
+          filterStatus: _filterStatus,
+          filterAccount: _filterAccount,
+        );
+        newItems =
+            allItems.where((item) {
+              final userId = item['user_id']?.toString() ?? '';
+              if (userId.isEmpty) return false;
+              final idNum = uidFromUuid(userId).toString();
+              final id5 = idNum.length > 5 ? idNum.substring(0, 5) : idNum;
+              return id5 == searchText;
+            }).toList();
+        // No pagination for ID search
+        _hasMore = false;
+        _offset = 0;
+      } else {
+        newItems = await _adminService.listInterpreters(
+          search: searchText,
+          limit: _limit,
+          offset: _offset,
+          filterStatus: _filterStatus,
+          filterAccount: _filterAccount,
+        );
+      }
 
       if (mounted) {
         setState(() {
           _items.addAll(newItems);
-          _offset += newItems.length;
-          if (newItems.length < _limit) _hasMore = false;
+          if (!isFiveDigitId) _offset += newItems.length;
+          if (newItems.length < _limit || isFiveDigitId) _hasMore = false;
           _isLoading = false;
         });
       }
@@ -177,10 +209,10 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
       if (userIds.isNotEmpty) {
         final profiles = await client
             .from('users_profile')
-            .select('id, username, full_name, role')
-            .inFilter('id', userIds.toList());
+            .select('user_id, username, role')
+            .inFilter('user_id', userIds.toList());
         for (final p in profiles) {
-          profileMap[p['id'] as String] = Map<String, dynamic>.from(p);
+          profileMap[p['user_id'] as String] = Map<String, dynamic>.from(p);
         }
       }
 
@@ -228,7 +260,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     final adminUser = _supabaseService.getCurrentUser();
     if (adminUser == null) return;
 
-    final adminUid = _uidFromUuid(adminUser.id);
+    final adminUid = uidFromUuid(adminUser.id);
 
     setState(() {
       _isListening = true;
@@ -374,8 +406,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
 
     final requester = call['_requester'] as Map<String, dynamic>?;
     final interpreter = call['_interpreter'] as Map<String, dynamic>?;
-    final fromLang = call['from_language'] ?? 'Unknown';
-    final toLang = call['to_language'] ?? 'Unknown';
+    final fromLang = _getLanguageName(call['from_language']);
+    final toLang = _getLanguageName(call['to_language']);
     final minutes = _listenElapsed.inMinutes;
     final seconds = _listenElapsed.inSeconds % 60;
 
@@ -467,9 +499,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      requester?['full_name'] ??
-                          requester?['username'] ??
-                          'Doctor',
+                      requester?['username'] ?? 'Doctor',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -489,9 +519,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      interpreter?['full_name'] ??
-                          interpreter?['username'] ??
-                          'Interpreter',
+                      interpreter?['username'] ?? 'Interpreter',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -1291,6 +1319,12 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     final username = item['username']?.toString() ?? 'Unknown';
     final isVerified = item['is_verified'] == true;
     final isSuspended = item['is_suspended'] == true;
+    // Generate 5-digit interpreter ID (same as interpreter home web)
+    String interpreterId5 = '';
+    if (userId.isNotEmpty) {
+      final idNum = uidFromUuid(userId).toString();
+      interpreterId5 = idNum.length > 5 ? idNum.substring(0, 5) : idNum;
+    }
 
     return InkWell(
       onTap: () => _openDetails(userId),
@@ -1322,6 +1356,25 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
               ),
             ),
             const SizedBox(width: 16),
+            // Show 5-digit ID next to username
+            if (interpreterId5.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  interpreterId5,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Color(0xFF6366F1),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               flex: 3,
               child: Column(
@@ -1714,8 +1767,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   Widget _buildActiveCallCard(Map<String, dynamic> call) {
     final requester = call['_requester'] as Map<String, dynamic>?;
     final interpreter = call['_interpreter'] as Map<String, dynamic>?;
-    final fromLang = call['from_language'] ?? 'Unknown';
-    final toLang = call['to_language'] ?? 'Unknown';
+    final fromLang = _getLanguageName(call['from_language']);
+    final toLang = _getLanguageName(call['to_language']);
     final callType = call['call_type'] ?? 'voice';
     final startedAt = DateTime.tryParse(call['created_at'] ?? '');
     final elapsed =
@@ -1789,7 +1842,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             children: [
               Expanded(
                 child: Text(
-                  '${requester?['full_name'] ?? requester?['username'] ?? 'Doctor'} ↔ ${interpreter?['full_name'] ?? interpreter?['username'] ?? 'Interpreter'}',
+                  '${requester?['username'] ?? 'Doctor'} ↔ ${interpreter?['username'] ?? 'Interpreter'}',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 12,
@@ -1850,12 +1903,23 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     );
   }
 
+  String _getLanguageName(dynamic langId) {
+    if (langId == null) return 'Unknown';
+    if (langId is int) return _languagesMap[langId] ?? langId.toString();
+    if (langId is String) {
+      final parsed = int.tryParse(langId);
+      if (parsed != null) return _languagesMap[parsed] ?? langId;
+      return langId; // Fallback if already a string name
+    }
+    return langId.toString();
+  }
+
   Widget _buildCallLogRow(Map<String, dynamic> call, int index) {
     final requester = call['_requester'] as Map<String, dynamic>?;
     final interpreter = call['_interpreter'] as Map<String, dynamic>?;
     final metadata = call['metadata'] as Map<String, dynamic>?;
-    final fromLang = metadata?['from_language'] ?? 'Unknown';
-    final toLang = metadata?['to_language'] ?? 'Unknown';
+    final fromLang = _getLanguageName(metadata?['from_language']);
+    final toLang = _getLanguageName(metadata?['to_language']);
     final durationSec = (call['duration_seconds'] as int?) ?? 0;
     final cost = (call['cost'] as num?)?.toDouble() ?? 0.0;
     final startedAt = DateTime.tryParse(call['started_at'] ?? '');
