@@ -180,7 +180,13 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final routeArgs =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = routeArgs['authContinuationFullScreen'] == true;
+
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: 'Your phone number',
       subtitle: 'Add your phone number so clients and admins can reach you',
       child: Column(

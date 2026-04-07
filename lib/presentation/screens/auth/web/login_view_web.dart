@@ -13,12 +13,14 @@ import 'package:interbridge/data/services/permission_service.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/login_screen/view_Model/bloc/login_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/login_screen/view_Model/bloc/login_event.dart';
 import 'package:interbridge/presentation/screens/auth/login_screen/view_Model/bloc/login_state.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen.dart';
 
 /// Professional interpreter-focused web login view
 class LoginViewWeb extends StatelessWidget {
@@ -47,7 +49,6 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
-  bool _rememberMe = false;
 
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
@@ -65,6 +66,27 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     // Immediate check — session may already be available
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null && user.emailConfirmedAt != null) {
+      try {
+        final profile = await _supabaseService
+            .getUserProfile(user.id)
+            .timeout(const Duration(seconds: 5));
+
+        if (profile?.role == 'interpreter') {
+          await _supabaseService.signOut();
+          await _appPreferences.logout();
+          if (!mounted) return;
+          CustomSnackBar.show(
+            context,
+            message:
+                'For security, interpreters must sign in every time the app opens.',
+            type: SnackBarType.info,
+          );
+          return;
+        }
+      } catch (e) {
+        log('LoginViewWeb: failed role check for existing auth: $e');
+      }
+
       if (_isNavigating) return;
       _isNavigating = true;
       AppInitializer.markInitialAuthHandled();
@@ -132,7 +154,17 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       'interpreterTrack': employmentType,
       'interpreterLevel': employmentType,
       'requiresMedicalDocs': isPaid,
+      'authContinuationFullScreen': true,
     };
+  }
+
+  Future<bool> _runInterpreterComplianceCheck() async {
+    final passed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const InterpreterLoginComplianceScreen(),
+      ),
+    );
+    return passed == true;
   }
 
   Future<bool> _resumeInterpreterOnboarding({
@@ -158,6 +190,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         Navigator.of(context).pushNamedAndRemoveUntil(
           Routes.interpreterTrackSelection,
           (route) => false,
+          arguments: resumeArgs,
         );
         return true;
       case 'track_selected':
@@ -267,6 +300,18 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
+        final passedCompliance = await _runInterpreterComplianceCheck();
+        if (!mounted) return;
+        if (!passedCompliance) {
+          await _supabaseService.signOut();
+          await _appPreferences.logout();
+          if (!mounted) return;
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+          return;
+        }
+
         final appPrefs = instance<AppPreferences>();
         // Check interpreter badge completion and onboarding status before navigating.
         try {
@@ -290,16 +335,23 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
               .from('interpreter_badges')
               .select('badge')
               .eq('user_id', userId);
+          final Future<List<Map<String, dynamic>>> fluencyFuture = client
+              .from('voice_samples')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('sentence_type', advancedFluencySentenceType);
 
           final results = await Future.wait<dynamic>([
             profileFuture,
             badgesFuture,
             detailsFuture,
+            fluencyFuture,
           ]).timeout(const Duration(seconds: 5));
 
           final profileData = results[0] as Map<String, dynamic>?;
           final badgesData = results[1] as List<Map<String, dynamic>>;
           final detailsData = results[2] as Map<String, dynamic>?;
+          final fluencyData = results[3] as List<Map<String, dynamic>>;
 
           final employmentType = profileData?['employment_type'] ?? 'volunteer';
 
@@ -324,9 +376,13 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
 
           final hasGeneral = badges.contains('general');
           final medicalCount = badges.where((b) => b != 'general').length;
+          final hasAdvancedFluency =
+              fluencyData.length >= advancedFluencyQuestionCount;
           final bool isExperienced = employmentType == 'paid';
           final bool allComplete =
-              isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+              isExperienced
+                  ? (hasGeneral && medicalCount >= 10 && hasAdvancedFluency)
+                  : (hasGeneral && hasAdvancedFluency);
 
           if (!mounted) return;
 
@@ -531,37 +587,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Remember me + Forgot
+                  // Forgot password
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: Checkbox(
-                              value: _rememberMe,
-                              onChanged:
-                                  (v) =>
-                                      setState(() => _rememberMe = v ?? false),
-                              activeColor: const Color(0xFF3B82F6),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Remember me',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
                       TextButton(
                         onPressed:
                             () => Navigator.pushNamed(
@@ -668,9 +697,9 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                     height: 48,
                     child: OutlinedButton(
                       onPressed:
-                            () => Navigator.of(context).pushNamed(
-                              Routes.selectRole,
-                            ),
+                          () => Navigator.of(
+                            context,
+                          ).pushNamed(Routes.selectRole),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: BorderSide(

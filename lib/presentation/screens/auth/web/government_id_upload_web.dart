@@ -126,7 +126,13 @@ class _GovernmentIdUploadWebScreenState
 
   @override
   Widget build(BuildContext context) {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = args['authContinuationFullScreen'] == true;
+
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: 'Identity verification',
       subtitle:
           'Upload a government-issued ID for verification. This helps us keep the platform safe.',

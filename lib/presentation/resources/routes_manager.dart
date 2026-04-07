@@ -66,6 +66,7 @@ import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
     if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 import 'package:interbridge/presentation/screens/auth/web/phone_otp_web.dart';
 import 'package:interbridge/presentation/screens/auth/web/government_id_upload_web.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -216,10 +217,12 @@ class RouteGenerator {
         if (kIsWeb) {
           return MaterialPageRoute(
             builder: (_) => const InterpreterTrackSelectionWebScreen(),
+            settings: RouteSettings(arguments: settings.arguments),
           );
         }
         return MaterialPageRoute(
           builder: (_) => const InterpreterTrackSelectionScreen(),
+          settings: RouteSettings(arguments: settings.arguments),
         );
       case Routes.interpreterFieldScreen:
         if (kIsWeb) {
@@ -611,6 +614,7 @@ class _AuthCallbackLoadingScreenState
       'interpreterTrack': employmentType,
       'interpreterLevel': employmentType,
       'requiresMedicalDocs': isPaid,
+      'authContinuationFullScreen': true,
     };
   }
 
@@ -637,6 +641,7 @@ class _AuthCallbackLoadingScreenState
         Navigator.of(context).pushNamedAndRemoveUntil(
           Routes.interpreterTrackSelection,
           (route) => false,
+          arguments: resumeArgs,
         );
         return true;
       case 'track_selected':
@@ -777,16 +782,23 @@ class _AuthCallbackLoadingScreenState
               .from('interpreter_badges')
               .select('badge')
               .eq('user_id', userId);
+          final fluencyFuture = client
+              .from('voice_samples')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('sentence_type', advancedFluencySentenceType);
 
           final results = await Future.wait<dynamic>([
             profileFuture,
             detailsFuture,
             badgesFuture,
+            fluencyFuture,
           ]);
 
           final profileData = results[0] as Map<String, dynamic>?;
           final detailsData = results[1] as Map<String, dynamic>?;
           final badgesData = results[2] as List<dynamic>;
+          final fluencyData = results[3] as List<dynamic>;
 
           final employmentType =
               profileData?['employment_type'] as String? ?? 'volunteer';
@@ -811,9 +823,13 @@ class _AuthCallbackLoadingScreenState
 
           final hasGeneral = badges.contains('general');
           final medicalCount = badges.where((b) => b != 'general').length;
+          final hasAdvancedFluency =
+              fluencyData.length >= advancedFluencyQuestionCount;
           final bool isExperienced = employmentType == 'paid';
           final bool allComplete =
-              isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+              isExperienced
+                  ? (hasGeneral && medicalCount >= 10 && hasAdvancedFluency)
+                  : (hasGeneral && hasAdvancedFluency);
 
           if (!mounted) return;
 

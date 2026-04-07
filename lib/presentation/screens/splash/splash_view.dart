@@ -200,103 +200,15 @@ class _SplashViewState extends State<SplashView> {
           );
         });
       } else if (profile?.role == 'interpreter') {
-        // Only check quizzes on first login — skip if already completed once
-        final appPrefs = instance<AppPreferences>();
-        if (appPrefs.isQuizOnboardingDone()) {
-          _navigateOnce(() {
-            Navigator.pushReplacementNamed(context, Routes.mainRoute);
-          });
-        } else {
-          try {
-            final client = Supabase.instance.client;
-            
-            final profileFuture = client
-                .from('users_profile')
-                .select('employment_type')
-                .eq('user_id', userId)
-                .maybeSingle();
-                
-            final detailsFuture = client
-                .from('interpreter_details')
-                .select('onboarding_status, is_verified')
-                .eq('user_id', userId)
-                .maybeSingle();
-
-            final badgesFuture = client
-                .from('interpreter_badges')
-                .select('badge')
-                .eq('user_id', userId);
-
-            final results = await Future.wait<dynamic>([
-              profileFuture,
-              badgesFuture,
-              detailsFuture,
-            ]);
-
-            final profileData = results[0] as Map<String, dynamic>?;
-            final badgesData = results[1] as List<Map<String, dynamic>>;
-            final detailsData = results[2] as Map<String, dynamic>?;
-
-            final employmentType =
-                profileData?['employment_type'] ?? 'volunteer';
-                
-            final onboardingStatus = detailsData?['onboarding_status'] as String? ?? 'not_started';
-            final isVerified = detailsData?['is_verified'] == true;
-
-            if (!mounted) return;
-
-            // If verified or under_review, let them into the dashboard directly
-            if (isVerified || onboardingStatus == 'under_review') {
-              // But first check if they magically bypassed quiz tracking locally
-              await appPrefs.setQuizOnboardingDone();
-              _navigateOnce(() {
-                Navigator.pushReplacementNamed(context, Routes.mainRoute);
-              });
-              return;
-            }
-
-            // Route unfinished onboarding
-            if (onboardingStatus == 'not_started' || onboardingStatus == 'track_selected' || onboardingStatus == 'languages_done' || onboardingStatus == 'docs_done') {
-              _navigateOnce(() {
-                Navigator.pushReplacementNamed(context, Routes.interpreterTrackSelection);
-              });
-              return;
-            }
-
-            final badges =
-                (badgesData as List)
-                    .map((b) => b['badge']?.toString() ?? '')
-                    .where((b) => b.isNotEmpty)
-                    .toSet();
-
-            final hasGeneral = badges.contains('general');
-            final medicalCount = badges.where((b) => b != 'general').length;
-            final bool isExperienced = employmentType == 'paid';
-            final bool allComplete =
-                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
-
-            if (allComplete) {
-              await appPrefs.setQuizOnboardingDone();
-              await client.from('interpreter_details').update({'onboarding_status': 'under_review'}).eq('user_id', userId);
-              _navigateOnce(() {
-                Navigator.pushReplacementNamed(context, Routes.mainRoute);
-              });
-            } else {
-              _navigateOnce(() {
-                Navigator.pushReplacementNamed(
-                  context,
-                  Routes.interpreterQuizHubRoute,
-                );
-              });
-            }
-          } catch (e) {
-            log('SplashView: Error checking interpreter quiz status: $e');
-            if (!mounted) return;
-            _navigateOnce(() {
-              Navigator.pushReplacementNamed(context, Routes.mainRoute);
-            });
-          }
-        }
+        log(
+          'SplashView: Interpreter session found at startup, forcing re-login',
+        );
+        await _supabaseService.signOut();
+        await _appPreferences.logout();
+        if (!mounted) return;
+        _navigateOnce(() {
+          Navigator.pushReplacementNamed(context, Routes.loginRoute);
+        });
       } else {
         log('SplashView: Navigating to main route');
         _navigateOnce(() {

@@ -72,6 +72,7 @@ class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
     final Map<String, dynamic> data =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
+    final fullScreenResume = data['authContinuationFullScreen'] == true;
 
     final languagesData = data['languages'];
     List<String> selectedLanguages = [];
@@ -116,6 +117,7 @@ class _LanguageFluencyWebScreenState extends State<LanguageFluencyWebScreen> {
         final langIndex = state.currentLanguageIndex;
 
         return AuthWebWrapper(
+          fullScreen: fullScreenResume,
           title:
               state.isSelectingFluency
                   ? 'Fluency in $currentLang'

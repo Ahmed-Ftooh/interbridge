@@ -21,6 +21,8 @@ import 'language_cache_service.dart';
 class SupabaseService {
   // Singleton pattern
   static final SupabaseService _instance = SupabaseService._internal();
+  static const String _interpreterComplianceBucket =
+      'interpreter-login-compliance';
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
@@ -1276,6 +1278,98 @@ class SupabaseService {
     return _client.storage
         .from('profiles')
         .getPublicUrl('profile_images/$imagePath');
+  }
+
+  /// Upload the required interpreter login compliance selfie.
+  Future<void> uploadInterpreterLoginCompliancePhoto(
+    Uint8List bytes, {
+    required String fileName,
+  }) async {
+    final user = getCurrentUser();
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    if (bytes.isEmpty) {
+      throw Exception('Compliance photo is empty');
+    }
+
+    if (bytes.length > 12 * 1024 * 1024) {
+      throw Exception('Compliance photo is too large (max 12MB)');
+    }
+
+    final extCandidate = fileName.split('.').last.toLowerCase();
+    final ext =
+        ['jpg', 'jpeg', 'png'].contains(extCandidate) ? extCandidate : 'jpg';
+    final now = DateTime.now().toUtc();
+    final storagePath =
+        '${user.id}/${now.millisecondsSinceEpoch}_login_compliance.$ext';
+
+    await cleanupExpiredInterpreterLoginCompliancePhotos(userId: user.id);
+
+    await _client.storage
+        .from(_interpreterComplianceBucket)
+        .uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: _getContentType(ext),
+          ),
+        );
+
+    await _client.from('interpreter_login_compliance_photos').insert({
+      'user_id': user.id,
+      'storage_path': storagePath,
+      'status': 'pending',
+      'expires_at': now.add(const Duration(days: 7)).toIso8601String(),
+    });
+  }
+
+  /// Deletes compliance photos after their retention period (7 days).
+  Future<void> cleanupExpiredInterpreterLoginCompliancePhotos({
+    required String userId,
+  }) async {
+    final rows = await _client
+        .from('interpreter_login_compliance_photos')
+        .select('id, storage_path')
+        .eq('user_id', userId)
+        .lt('expires_at', DateTime.now().toUtc().toIso8601String());
+
+    final expiredRows = (rows as List).cast<Map<String, dynamic>>();
+    if (expiredRows.isEmpty) {
+      return;
+    }
+
+    final paths =
+        expiredRows
+            .map((row) => row['storage_path'] as String?)
+            .whereType<String>()
+            .where((path) => path.isNotEmpty)
+            .toList();
+
+    if (paths.isNotEmpty) {
+      try {
+        await _client.storage.from(_interpreterComplianceBucket).remove(paths);
+      } catch (e) {
+        log(
+          'cleanupExpiredInterpreterLoginCompliancePhotos: remove failed: $e',
+        );
+      }
+    }
+
+    final rowIds =
+        expiredRows
+            .map((row) => row['id'] as String?)
+            .whereType<String>()
+            .toList();
+
+    if (rowIds.isNotEmpty) {
+      await _client
+          .from('interpreter_login_compliance_photos')
+          .delete()
+          .inFilter('id', rowIds);
+    }
   }
 
   /// Upload a voice sample file to Supabase storage and return its public URL

@@ -7,12 +7,14 @@ class AuthWebWrapper extends StatefulWidget {
   final Widget child;
   final String? title;
   final String? subtitle;
+  final bool fullScreen;
 
   const AuthWebWrapper({
     super.key,
     required this.child,
     this.title,
     this.subtitle,
+    this.fullScreen = false,
   });
 
   @override
@@ -43,11 +45,129 @@ class _AuthWebWrapperState extends State<AuthWebWrapper>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.fullScreen) {
+      return _buildFullScreenLayout(context);
+    }
+
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 960;
 
     if (isMobile) return _buildMobileLayout(context);
     return _buildDesktopLayout(context);
+  }
+
+  Widget _buildFullScreenLayout(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isCompact = screenWidth < 960;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                ),
+              ),
+              child: CustomPaint(painter: _GridPatternPainter()),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 20 : 28,
+                  vertical: 24,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: isCompact ? 640 : 980),
+                  child: Container(
+                    padding: EdgeInsets.all(isCompact ? 24 : 36),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B).withValues(alpha: 0.68),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.24),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _buildLogo(size: 40),
+                            const SizedBox(width: 12),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'InterBridge',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: -0.4,
+                                  ),
+                                ),
+                                Text(
+                                  'Interpreter platform',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF94A3B8),
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        if (widget.title != null) ...[
+                          SizedBox(height: isCompact ? 20 : 24),
+                          Text(
+                            widget.title!,
+                            style: TextStyle(
+                              fontSize: isCompact ? 28 : 34,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              letterSpacing: -0.6,
+                            ),
+                          ),
+                        ],
+                        if (widget.subtitle != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.subtitle!,
+                            style: TextStyle(
+                              fontSize: isCompact ? 14 : 15,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                        SizedBox(height: isCompact ? 20 : 26),
+                        widget.child,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMobileLayout(BuildContext context) {

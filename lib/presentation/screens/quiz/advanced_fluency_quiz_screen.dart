@@ -1,0 +1,1180 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:interbridge/core/io_helpers/read_file_bytes.dart'
+    if (dart.library.io) 'package:interbridge/core/io_helpers/read_file_bytes_io.dart'
+    as file_bytes;
+import 'package:interbridge/core/web_helpers/inline_audio_player.dart'
+    if (dart.library.html) 'package:interbridge/core/web_helpers/inline_audio_player_web.dart'
+    as inline_audio;
+import 'package:interbridge/core/web_helpers/fetch_blob_bytes.dart'
+    if (dart.library.html) 'package:interbridge/core/web_helpers/fetch_blob_bytes_web.dart'
+    as blob_helper;
+import 'package:interbridge/presentation/resources/assets_manager.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class AdvancedFluencyQuizScreen extends StatefulWidget {
+  const AdvancedFluencyQuizScreen({super.key});
+
+  @override
+  State<AdvancedFluencyQuizScreen> createState() =>
+      _AdvancedFluencyQuizScreenState();
+}
+
+class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
+  static const int _maxListeningPlays = 2;
+
+  late final AudioRecorder _audioRecorder;
+  late final AudioPlayer _recordingPlayer;
+  late final AudioPlayer _listeningPlayer;
+  inline_audio.InlineAudioHandle? _webListeningHandle;
+
+  bool _hasPermission = false;
+  bool _isRecording = false;
+  bool _isPlayingRecording = false;
+  bool _isPlayingListeningAudio = false;
+  bool _isSubmitting = false;
+
+  int _currentQuestionIndex = 0;
+  int _recordingSeconds = 0;
+  Timer? _recordingTimer;
+
+  final Map<String, _RecordedAnswer> _recordings = {};
+  final Map<String, int> _listeningStarts = {};
+
+  static const List<_FluencyQuestion> _questions = [
+    _FluencyQuestion(
+      id: 's1_q1',
+      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
+      questionTitle: 'Question 1',
+      prompt:
+          'Introduce yourself as if you are meeting a colleague for the first time. Include your name, background, education, work experience, and your main skills or interests.',
+      guidePrompts: [
+        'Name and background',
+        'Education',
+        'Work experience',
+        'Main skills and interests',
+      ],
+      suggestedSeconds: 90,
+    ),
+    _FluencyQuestion(
+      id: 's1_q2',
+      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
+      questionTitle: 'Question 2',
+      prompt:
+          'Do you prefer explaining things in English or your native language? Why?',
+      guidePrompts: ['Choose one preference', 'Explain your reason clearly'],
+      suggestedSeconds: 60,
+    ),
+    _FluencyQuestion(
+      id: 's1_q3',
+      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
+      questionTitle: 'Question 3',
+      prompt:
+          'Explain a simple idea, such as how to learn a new skill, manage time, or stay organized.',
+      guidePrompts: [
+        'Pick one simple idea',
+        'Break it into steps',
+        'Use clear transitions',
+      ],
+      suggestedSeconds: 75,
+    ),
+    _FluencyQuestion(
+      id: 's1_q4',
+      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
+      questionTitle: 'Question 4',
+      prompt:
+          'While speaking English, what do you find most challenging: fluency, vocabulary, or grammar? Explain with an example.',
+      guidePrompts: ['Choose one challenge', 'Give a real example'],
+      suggestedSeconds: 75,
+    ),
+    _FluencyQuestion(
+      id: 's2_q1',
+      sectionTitle: 'Section 2 - Extended Speaking / Fluency and Organization',
+      questionTitle: 'Question 1',
+      prompt:
+          'Some people believe working remotely requires stronger communication skills than on-site work. Do you agree or disagree? Explain your opinion and give examples.',
+      guidePrompts: [
+        'State your opinion',
+        'Provide at least one example',
+        'Support your reasoning',
+      ],
+      suggestedSeconds: 120,
+    ),
+    _FluencyQuestion(
+      id: 's2_q2',
+      sectionTitle: 'Section 2 - Extended Speaking / Fluency and Organization',
+      questionTitle: 'Question 2',
+      prompt: 'Why do you want to be a medical interpreter?',
+      guidePrompts: ['Motivation', 'Personal values', 'Career goals'],
+      suggestedSeconds: 90,
+    ),
+    _FluencyQuestion(
+      id: 's3_q1',
+      sectionTitle: 'Section 3 - Picture Description',
+      questionTitle: 'Question 1 (Picture 1)',
+      prompt: 'Describe the picture in detail.',
+      guidePrompts: [
+        'Who is in the picture?',
+        'What is the interpreter doing?',
+        'Why is the interpreter important in this situation?',
+      ],
+      suggestedSeconds: 90,
+      imageAsset: ImageAssets.picture1,
+    ),
+    _FluencyQuestion(
+      id: 's3_q2',
+      sectionTitle: 'Section 3 - Picture Description',
+      questionTitle: 'Question 2 (Picture 2)',
+      prompt: 'Describe the picture in detail.',
+      guidePrompts: [
+        'Describe the overall scene and what is happening',
+        'What is the condition of the car and where is the driver?',
+        'How are the medical personnel interacting with the injured driver?',
+      ],
+      suggestedSeconds: 90,
+      imageAsset: ImageAssets.picture2,
+    ),
+    _FluencyQuestion(
+      id: 's4_q1',
+      sectionTitle: 'Section 4 - Listening + Speaking',
+      questionTitle: 'Question 1',
+      prompt: 'Summarize what the speaker said in your own words.',
+      guidePrompts: [
+        'Listen to the provided audio first',
+        'Give a clear summary',
+      ],
+      suggestedSeconds: 75,
+      listeningAudioAsset: AudioAssets.firstTest,
+    ),
+    _FluencyQuestion(
+      id: 's4_q2',
+      sectionTitle: 'Section 4 - Listening + Speaking',
+      questionTitle: 'Question 2',
+      prompt:
+          'Explain what he is afraid of and what he finds exciting. Then describe what frightens you the most.',
+      guidePrompts: [
+        'Identify his fear',
+        'Identify what excites him',
+        'Share your own fear clearly',
+      ],
+      suggestedSeconds: 90,
+      listeningAudioAsset: AudioAssets.secondTest,
+    ),
+    _FluencyQuestion(
+      id: 's5_q1',
+      sectionTitle: 'Section 5 - Language Control / Advanced',
+      questionTitle: 'Question 1',
+      prompt:
+          'Explain the difference between something that is urgent and something that is important, using examples.',
+      guidePrompts: ['Define urgent vs important', 'Give practical examples'],
+      suggestedSeconds: 90,
+    ),
+    _FluencyQuestion(
+      id: 's5_q2',
+      sectionTitle: 'Section 5 - Language Control / Advanced',
+      questionTitle: 'Question 2',
+      prompt:
+          "Correct the sentence and explain why: 'If he would have listened, the problem didn't happen.'",
+      guidePrompts: ['Say the corrected sentence', 'Explain the grammar rule'],
+      suggestedSeconds: 90,
+    ),
+  ];
+
+  _FluencyQuestion get _currentQuestion => _questions[_currentQuestionIndex];
+
+  _RecordedAnswer? get _currentAnswer => _recordings[_currentQuestion.id];
+
+  @override
+  void initState() {
+    super.initState();
+    _audioRecorder = AudioRecorder();
+    _recordingPlayer = AudioPlayer();
+    _listeningPlayer = AudioPlayer();
+
+    _recordingPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() => _isPlayingRecording = false);
+      }
+    });
+
+    _listeningPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() => _isPlayingListeningAudio = false);
+      }
+    });
+
+    _checkMicrophonePermission();
+  }
+
+  @override
+  void dispose() {
+    _recordingTimer?.cancel();
+    _audioRecorder.dispose();
+    _recordingPlayer.dispose();
+    _listeningPlayer.dispose();
+    inline_audio.disposeInlineAudio(_webListeningHandle);
+    super.dispose();
+  }
+
+  int _listensUsedForQuestion(String questionId) =>
+      _listeningStarts[questionId] ?? 0;
+
+  int _listensRemainingForQuestion(String questionId) {
+    final remaining = _maxListeningPlays - _listensUsedForQuestion(questionId);
+    return remaining > 0 ? remaining : 0;
+  }
+
+  Future<void> _stopListeningAudio() async {
+    try {
+      if (kIsWeb) {
+        await inline_audio.stopInlineAudio(_webListeningHandle);
+      } else {
+        await _listeningPlayer.stop();
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _isPlayingListeningAudio = false);
+    }
+  }
+
+  Future<void> _checkMicrophonePermission() async {
+    try {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (mounted) {
+        setState(() => _hasPermission = hasPermission);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _hasPermission = false);
+      }
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (_isRecording || _isSubmitting) {
+      return;
+    }
+
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() => _hasPermission = false);
+      }
+      _showMessage('Microphone permission is required to record your answer.');
+      return;
+    }
+
+    setState(() => _hasPermission = true);
+
+    try {
+      await _recordingPlayer.stop();
+      await _stopListeningAudio();
+
+      if (kIsWeb) {
+        await _audioRecorder.start(
+          const RecordConfig(encoder: AudioEncoder.opus),
+          path: '',
+        );
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final path =
+            '${directory.path}/advanced_fluency_${_currentQuestion.id}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _audioRecorder.start(const RecordConfig(), path: path);
+      }
+
+      _recordingTimer?.cancel();
+      setState(() {
+        _isRecording = true;
+        _isPlayingRecording = false;
+        _isPlayingListeningAudio = false;
+        _recordingSeconds = 0;
+        _recordings.remove(_currentQuestion.id);
+      });
+
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _recordingSeconds++);
+      });
+    } catch (e) {
+      _showMessage('Unable to start recording: $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_isRecording) {
+      return;
+    }
+
+    try {
+      final path = await _audioRecorder.stop();
+      _recordingTimer?.cancel();
+
+      if (path == null || path.isEmpty) {
+        setState(() {
+          _isRecording = false;
+          _recordingSeconds = 0;
+        });
+        _showMessage('Recording was not saved. Please try again.');
+        return;
+      }
+
+      Uint8List? audioBytes;
+      if (kIsWeb && path.startsWith('blob:')) {
+        audioBytes = await blob_helper.fetchBlobBytes(path);
+      }
+
+      setState(() {
+        _isRecording = false;
+        _recordings[_currentQuestion.id] = _RecordedAnswer(
+          path: path,
+          bytes: audioBytes,
+          durationSeconds: _recordingSeconds,
+        );
+      });
+    } catch (e) {
+      _showMessage('Unable to stop recording: $e');
+    }
+  }
+
+  Future<void> _toggleRecordingPlayback() async {
+    final answer = _currentAnswer;
+    if (answer == null) {
+      return;
+    }
+
+    try {
+      if (_isPlayingRecording) {
+        await _recordingPlayer.pause();
+        setState(() => _isPlayingRecording = false);
+        return;
+      }
+
+      final source =
+          kIsWeb ? UrlSource(answer.path) : DeviceFileSource(answer.path);
+      await _recordingPlayer.play(source);
+      setState(() => _isPlayingRecording = true);
+    } catch (e) {
+      _showMessage('Unable to play recording: $e');
+    }
+  }
+
+  Future<void> _toggleListeningAudio({
+    required String audioAsset,
+    required String questionId,
+  }) async {
+    try {
+      if (_isPlayingListeningAudio) {
+        await _stopListeningAudio();
+        return;
+      }
+
+      final usedStarts = _listensUsedForQuestion(questionId);
+      if (usedStarts >= _maxListeningPlays) {
+        _showMessage(
+          'Listening is locked for this question. You have used both attempts.',
+        );
+        return;
+      }
+
+      await _recordingPlayer.stop();
+
+      if (kIsWeb) {
+        inline_audio.disposeInlineAudio(_webListeningHandle);
+        _webListeningHandle = inline_audio.createInlineAudio(
+          assetPath: audioAsset,
+          onEnded: () {
+            if (mounted) {
+              setState(() => _isPlayingListeningAudio = false);
+            }
+          },
+        );
+
+        if (_webListeningHandle == null) {
+          throw Exception('Unable to initialize web audio player');
+        }
+
+        await inline_audio.playInlineAudio(_webListeningHandle);
+      } else {
+        await _listeningPlayer.stop();
+        await _listeningPlayer.play(AssetSource(audioAsset));
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isPlayingListeningAudio = true;
+        _listeningStarts[questionId] = usedStarts + 1;
+      });
+    } catch (e) {
+      _showMessage('Unable to play the listening audio: $e');
+    }
+  }
+
+  Future<void> _nextQuestion() async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    if (!_recordings.containsKey(_currentQuestion.id)) {
+      _showMessage('Please record your answer before continuing.');
+      return;
+    }
+
+    await _recordingPlayer.stop();
+    await _stopListeningAudio();
+
+    if (_currentQuestionIndex == _questions.length - 1) {
+      await _submitTest();
+      return;
+    }
+
+    setState(() {
+      _isPlayingRecording = false;
+      _isPlayingListeningAudio = false;
+      _currentQuestionIndex++;
+      _recordingSeconds = _currentAnswer?.durationSeconds ?? 0;
+    });
+  }
+
+  Future<void> _previousQuestion() async {
+    if (_currentQuestionIndex == 0 || _isSubmitting) {
+      return;
+    }
+
+    await _recordingPlayer.stop();
+    await _stopListeningAudio();
+
+    setState(() {
+      _isPlayingRecording = false;
+      _isPlayingListeningAudio = false;
+      _currentQuestionIndex--;
+      _recordingSeconds = _currentAnswer?.durationSeconds ?? 0;
+    });
+  }
+
+  Future<void> _submitTest() async {
+    if (_recordings.length < _questions.length) {
+      final remaining = _questions.length - _recordings.length;
+      _showMessage(
+        'Please record all answers before submitting. ($remaining left)',
+      );
+      return;
+    }
+
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      _showMessage('You must be logged in to submit the test.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final client = Supabase.instance.client;
+
+      await client
+          .from('voice_samples')
+          .delete()
+          .eq('user_id', userId)
+          .eq('sentence_type', advancedFluencySentenceType);
+
+      for (final question in _questions) {
+        final answer = _recordings[question.id];
+        if (answer == null) {
+          throw Exception('Missing recording for ${question.questionTitle}');
+        }
+
+        Uint8List? bytes = answer.bytes;
+        if ((bytes == null || bytes.isEmpty) && !kIsWeb) {
+          bytes = await file_bytes.readFileBytes(answer.path);
+        }
+
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('Could not read recording bytes for ${question.id}');
+        }
+
+        final extension = kIsWeb ? 'webm' : 'm4a';
+        final storagePath =
+            '$userId/advanced_fluency/${question.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+        await client.storage
+            .from('voice_samples')
+            .uploadBinary(
+              storagePath,
+              bytes,
+              fileOptions: const FileOptions(upsert: true),
+            );
+
+        final publicUrl = client.storage
+            .from('voice_samples')
+            .getPublicUrl(storagePath);
+
+        await client.from('voice_samples').insert({
+          'user_id': userId,
+          'url': publicUrl,
+          'prompt':
+              '${question.sectionTitle} - ${question.questionTitle}\n${question.prompt}',
+          'sentence_type': advancedFluencySentenceType,
+        });
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Speaking test submitted successfully.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      _showMessage('Failed to submit speaking test: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final remainingSeconds = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$remainingSeconds';
+  }
+
+  Widget _buildProgressHeader({
+    required _FluencyQuestion question,
+    required double progress,
+    required bool wide,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(wide ? 20 : 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFFE2E8F0),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Suggested: ${question.suggestedSeconds}s',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFFCBD5E1),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            question.sectionTitle,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF7DD3FC),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 9,
+              backgroundColor: const Color(0xFF334155),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFF38BDF8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionCard(_FluencyQuestion question) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question.questionTitle,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            question.prompt,
+            style: const TextStyle(
+              fontSize: 15,
+              color: Color(0xFF334155),
+              height: 1.55,
+            ),
+          ),
+          if (question.guidePrompts.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children:
+                    question.guidePrompts
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '• ',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Color(0xFF0F172A),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    item,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF475569),
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListeningCard(_FluencyQuestion question) {
+    final audioAsset = question.listeningAudioAsset;
+    if (audioAsset == null) {
+      return const SizedBox.shrink();
+    }
+
+    final listensUsed = _listensUsedForQuestion(question.id);
+    final listensRemaining = _listensRemainingForQuestion(question.id);
+    final isLocked = listensRemaining == 0 && !_isPlayingListeningAudio;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBAE6FD)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed:
+                    _isSubmitting || isLocked
+                        ? null
+                        : () => _toggleListeningAudio(
+                          audioAsset: audioAsset,
+                          questionId: question.id,
+                        ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      isLocked
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF0284C7),
+                  foregroundColor: Colors.white,
+                ),
+                icon: Icon(
+                  _isPlayingListeningAudio
+                      ? Icons.stop_rounded
+                      : (isLocked
+                          ? Icons.lock_outline
+                          : Icons.play_arrow_rounded),
+                ),
+                label: Text(
+                  _isPlayingListeningAudio
+                      ? 'Stop Audio'
+                      : (isLocked ? 'Audio Locked' : 'Start Listening'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0C4A6E).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$listensUsed/$_maxListeningPlays listens used',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF0C4A6E),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Audio: ${audioAsset.split('/').last}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF0C4A6E),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            listensRemaining > 0
+                ? 'You can listen $listensRemaining more ${listensRemaining == 1 ? 'time' : 'times'} for this question.'
+                : 'Listening limit reached for this question.',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingCard({
+    required _FluencyQuestion question,
+    required bool hasRecording,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color:
+              hasRecording ? const Color(0xFF22C55E) : const Color(0xFFE2E8F0),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (!_hasPermission)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: const Text(
+                'Microphone access is required. Please grant permission, then try recording again.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
+              ),
+            ),
+          GestureDetector(
+            onTap:
+                _isSubmitting
+                    ? null
+                    : (_isRecording ? _stopRecording : _startRecording),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 86,
+              height: 86,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color:
+                    _isRecording
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF0F172A),
+                boxShadow: [
+                  BoxShadow(
+                    color: (_isRecording
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF0F172A))
+                        .withValues(alpha: 0.25),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
+                _isRecording ? Icons.stop_rounded : Icons.mic,
+                size: 34,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _isRecording
+                ? 'Recording... ${_formatDuration(_recordingSeconds)}'
+                : hasRecording
+                ? 'Answer recorded (${_formatDuration(_currentAnswer!.durationSeconds)})'
+                : 'Tap to start recording',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: _isRecording ? FontWeight.bold : FontWeight.w500,
+              color:
+                  _isRecording
+                      ? const Color(0xFFDC2626)
+                      : const Color(0xFF475569),
+            ),
+          ),
+          if (hasRecording && !_isRecording) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: _isSubmitting ? null : _toggleRecordingPlayback,
+                  icon: Icon(
+                    _isPlayingRecording
+                        ? Icons.pause_circle
+                        : Icons.play_circle,
+                  ),
+                  label: Text(
+                    _isPlayingRecording ? 'Pause Playback' : 'Play Recording',
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed:
+                      _isSubmitting
+                          ? null
+                          : () {
+                            setState(() {
+                              _recordings.remove(question.id);
+                              _isPlayingRecording = false;
+                            });
+                          },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionRow() {
+    return Row(
+      children: [
+        OutlinedButton(
+          onPressed:
+              _currentQuestionIndex == 0 || _isSubmitting
+                  ? null
+                  : _previousQuestion,
+          child: const Text('Previous'),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _isRecording || _isSubmitting ? null : _nextQuestion,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0EA5E9),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child:
+                _isSubmitting
+                    ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                    : Text(
+                      _currentQuestionIndex == _questions.length - 1
+                          ? 'Submit Test'
+                          : 'Next Question',
+                    ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (_currentQuestionIndex + 1) / _questions.length;
+    final question = _currentQuestion;
+    final hasRecording = _currentAnswer != null;
+    final isWideWeb = kIsWeb && MediaQuery.sizeOf(context).width >= 1024;
+
+    return Scaffold(
+      backgroundColor:
+          isWideWeb ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          advancedFluencyQuizTitle,
+          style: TextStyle(
+            fontSize: isWideWeb ? 18 : 15,
+            color: const Color(0xFF0F172A),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child:
+            isWideWeb
+                ? Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1280),
+                      child: Column(
+                        children: [
+                          _buildProgressHeader(
+                            question: question,
+                            progress: progress,
+                            wide: true,
+                          ),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: ListView(
+                                    padding: EdgeInsets.zero,
+                                    children: [
+                                      _buildQuestionCard(question),
+                                      if (question.imageAsset != null) ...[
+                                        const SizedBox(height: 14),
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          child: Image.asset(
+                                            question.imageAsset!,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) {
+                                              return Container(
+                                                height: 260,
+                                                alignment: Alignment.center,
+                                                color: const Color(0xFFE2E8F0),
+                                                child: const Text(
+                                                  'Image could not be loaded',
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                      if (question.listeningAudioAsset !=
+                                          null) ...[
+                                        const SizedBox(height: 14),
+                                        _buildListeningCard(question),
+                                      ],
+                                      const SizedBox(height: 12),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 18),
+                                SizedBox(
+                                  width: 390,
+                                  child: Column(
+                                    children: [
+                                      _buildRecordingCard(
+                                        question: question,
+                                        hasRecording: hasRecording,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFE2E8F0),
+                                          ),
+                                        ),
+                                        child: _buildActionRow(),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+                : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: _buildProgressHeader(
+                        question: question,
+                        progress: progress,
+                        wide: false,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: [
+                          _buildQuestionCard(question),
+                          if (question.imageAsset != null) ...[
+                            const SizedBox(height: 14),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.asset(
+                                question.imageAsset!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) {
+                                  return Container(
+                                    height: 180,
+                                    alignment: Alignment.center,
+                                    color: const Color(0xFFE2E8F0),
+                                    child: const Text(
+                                      'Image could not be loaded',
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                          if (question.listeningAudioAsset != null) ...[
+                            const SizedBox(height: 14),
+                            _buildListeningCard(question),
+                          ],
+                          const SizedBox(height: 14),
+                          _buildRecordingCard(
+                            question: question,
+                            hasRecording: hasRecording,
+                          ),
+                          const SizedBox(height: 100),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: _buildActionRow(),
+                    ),
+                  ],
+                ),
+      ),
+    );
+  }
+}
+
+class _FluencyQuestion {
+  final String id;
+  final String sectionTitle;
+  final String questionTitle;
+  final String prompt;
+  final List<String> guidePrompts;
+  final int suggestedSeconds;
+  final String? imageAsset;
+  final String? listeningAudioAsset;
+
+  const _FluencyQuestion({
+    required this.id,
+    required this.sectionTitle,
+    required this.questionTitle,
+    required this.prompt,
+    required this.guidePrompts,
+    required this.suggestedSeconds,
+    this.imageAsset,
+    this.listeningAudioAsset,
+  });
+}
+
+class _RecordedAnswer {
+  final String path;
+  final Uint8List? bytes;
+  final int durationSeconds;
+
+  const _RecordedAnswer({
+    required this.path,
+    required this.bytes,
+    required this.durationSeconds,
+  });
+}

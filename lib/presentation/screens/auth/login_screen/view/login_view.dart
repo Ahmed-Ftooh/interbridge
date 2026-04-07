@@ -12,6 +12,7 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
+import 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen.dart';
 import 'package:interbridge/presentation/widgets/simple_fade_animation.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/custom_button.dart';
@@ -43,6 +44,15 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
   final AppPreferences _appPreferences = instance<AppPreferences>();
   final SupabaseService _supabaseService = SupabaseService();
 
+  Future<bool> _runInterpreterComplianceCheck() async {
+    final passed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const InterpreterLoginComplianceScreen(),
+      ),
+    );
+    return passed == true;
+  }
+
   Future<void> _navigateBasedOnRole(String userId) async {
     try {
       final profile = await _supabaseService.getUserProfile(userId);
@@ -53,6 +63,23 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
           Routes.organizationDashboardRoute,
           (route) => false,
         );
+      } else if (profile?.role == 'interpreter') {
+        final passedCompliance = await _runInterpreterComplianceCheck();
+        if (!mounted) return;
+
+        if (!passedCompliance) {
+          await _supabaseService.signOut();
+          await _appPreferences.logout();
+          if (!mounted) return;
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+          return;
+        }
+
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       } else {
         Navigator.of(
           context,

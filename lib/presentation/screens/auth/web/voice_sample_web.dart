@@ -27,9 +27,6 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   late final AudioPlayer _playerEnglish;
   late final AudioPlayer _playerNative;
 
-  bool _isSaving = false;
-
-  bool _hasPermission = false;
   bool _permissionDenied = false;
 
   // --- English sample state ---
@@ -83,7 +80,6 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       final hasPermission = await _audioRecorder.hasPermission();
       if (mounted) {
         setState(() {
-          _hasPermission = hasPermission;
           _permissionDenied = !hasPermission;
         });
       }
@@ -103,7 +99,6 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
         );
 
         setState(() {
-          _hasPermission = true;
           _permissionDenied = false;
           if (isNative) {
             _isRecordingNat = true;
@@ -226,7 +221,6 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   Future<void> _continue() async {
     if (!_canContinue) return;
 
-    setState(() => _isSaving = true);
     final userId = Supabase.instance.client.auth.currentUser?.id;
 
     try {
@@ -293,9 +287,7 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      // no-op
     }
   }
 
@@ -308,7 +300,13 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   // ─── UI ───────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = args['authContinuationFullScreen'] == true;
+
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: 'Voice check',
       subtitle:
           'Record two short voice samples — one in English and one in your native language',

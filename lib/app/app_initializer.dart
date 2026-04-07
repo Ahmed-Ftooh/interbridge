@@ -15,6 +15,7 @@ import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/app/app.dart';
 import 'package:interbridge/data/services/pending_registration_service.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
 
 // Conditional import for app_links (not available on web)
 import 'app_initializer_mobile.dart'
@@ -292,6 +293,11 @@ class AppInitializer {
                 .from('interpreter_badges')
                 .select('badge')
                 .eq('user_id', userId);
+            final fluencyData = await client
+                .from('voice_samples')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('sentence_type', advancedFluencySentenceType);
 
             final employmentType =
                 profileData?['employment_type'] ?? 'volunteer';
@@ -303,10 +309,14 @@ class AppInitializer {
 
             final hasGeneral = badges.contains('general');
             final medicalCount = badges.where((b) => b != 'general').length;
+            final hasAdvancedFluency =
+                (fluencyData as List).length >= advancedFluencyQuestionCount;
 
             final bool isExperienced = employmentType == 'paid';
             final bool allComplete =
-                isExperienced ? (hasGeneral && medicalCount >= 10) : hasGeneral;
+                isExperienced
+                    ? (hasGeneral && medicalCount >= 10 && hasAdvancedFluency)
+                    : (hasGeneral && hasAdvancedFluency);
 
             if (allComplete) {
               await appPrefs.setQuizOnboardingDone();

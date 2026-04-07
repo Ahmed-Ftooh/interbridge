@@ -23,7 +23,13 @@ class _InterpreterTrackSelectionWebScreenState
 
   @override
   Widget build(BuildContext context) {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = args['authContinuationFullScreen'] == true;
+
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: 'Choose your track',
       subtitle: 'Select the path that matches your experience level',
       child: Column(
@@ -327,7 +333,11 @@ class _InterpreterTrackSelectionWebScreenState
 
       if (!mounted) return;
 
+      final currentArgs =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+          {};
       final args = <String, dynamic>{
+        ...currentArgs,
         'role': 'interpreter',
         'interpreterLevel': _selectedLevel!.name,
         'interpreterTrack': track.name,

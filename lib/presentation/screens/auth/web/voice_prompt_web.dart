@@ -27,7 +27,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
   late final AudioPlayer _audioPlayer;
 
   bool _loadingPrompts = true;
-  bool _hasPermission = false;
   bool _permissionDenied = false;
   String? _loadError;
 
@@ -36,8 +35,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
 
   bool _isRecording = false;
   bool _isPlaying = false;
-  String? _audioPath;
-  Uint8List? _audioBytes;
   int _recordDuration = 0;
   Timer? _recordTimer;
 
@@ -76,7 +73,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
       final hasPermission = await _audioRecorder.hasPermission();
       if (mounted) {
         setState(() {
-          _hasPermission = hasPermission;
           _permissionDenied = !hasPermission;
         });
       }
@@ -120,11 +116,8 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
           path: '',
         );
         setState(() {
-          _hasPermission = true;
           _permissionDenied = false;
           _isRecording = true;
-          _audioPath = null;
-          _audioBytes = null;
           _recordDuration = 0;
         });
         _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -150,8 +143,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
 
       setState(() {
         _isRecording = false;
-        _audioPath = path;
-        _audioBytes = bytes;
         // Store for current prompt
         _recordings[_currentPromptIndex] = bytes;
         _recordingPaths[_currentPromptIndex] = path;
@@ -184,8 +175,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
       _recordings.remove(_currentPromptIndex);
       _recordingPaths.remove(_currentPromptIndex);
       _recordingDurations.remove(_currentPromptIndex);
-      _audioPath = null;
-      _audioBytes = null;
       _isPlaying = false;
       _recordDuration = 0;
     });
@@ -197,8 +186,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
       setState(() {
         _currentPromptIndex++;
         _isPlaying = false;
-        _audioPath = _recordingPaths[_currentPromptIndex];
-        _audioBytes = _recordings[_currentPromptIndex];
         _recordDuration = _recordingDurations[_currentPromptIndex] ?? 0;
       });
     }
@@ -210,8 +197,6 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
       setState(() {
         _currentPromptIndex--;
         _isPlaying = false;
-        _audioPath = _recordingPaths[_currentPromptIndex];
-        _audioBytes = _recordings[_currentPromptIndex];
         _recordDuration = _recordingDurations[_currentPromptIndex] ?? 0;
       });
     }
@@ -248,7 +233,13 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
   // ─── UI ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = args['authContinuationFullScreen'] == true;
+
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: 'Voice verification',
       subtitle:
           'Read aloud the prompts below so we can verify your language skills',

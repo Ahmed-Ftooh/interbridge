@@ -135,6 +135,11 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final Map<String, dynamic> data =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
+        {};
+    final fullScreenResume = data['authContinuationFullScreen'] == true;
+
     return BlocConsumer<SelectFieldBloc, SelectFieldState>(
       listener: (context, state) {
         if (state.errorMessage != null) {
@@ -145,10 +150,6 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
           );
         }
         if (state.isSuccess && !_isSaving) {
-          final Map<String, dynamic> data =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, dynamic>? ??
-              {};
           _saveAndContinue(state, data);
         }
       },
@@ -156,6 +157,7 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
         final bloc = context.read<SelectFieldBloc>();
 
         return AuthWebWrapper(
+          fullScreen: fullScreenResume,
           title: 'Specializations',
           subtitle: 'Select the areas you specialize in',
           child: Column(

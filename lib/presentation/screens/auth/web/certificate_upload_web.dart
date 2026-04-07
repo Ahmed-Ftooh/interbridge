@@ -150,8 +150,10 @@ class _CertificateUploadWebScreenState
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
     final isPaid = _isPaidTrack(args);
+    final fullScreenResume = args['authContinuationFullScreen'] == true;
 
     return AuthWebWrapper(
+      fullScreen: fullScreenResume,
       title: isPaid ? 'Certification' : 'Training certificate',
       subtitle:
           isPaid
@@ -258,22 +260,25 @@ class _CertificateUploadWebScreenState
                 disabledBackgroundColor: const Color(0xFFE2E8F0),
                 disabledForegroundColor: const Color(0xFF94A3B8),
               ),
-              child: _isSaving 
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              child:
+                  _isSaving
+                      ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                      : Text(
+                        isPaid ? 'Continue to registration' : 'Continue',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    )
-                  : Text(
-                      isPaid ? 'Continue to registration' : 'Continue',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
             ),
           ),
           const SizedBox(height: 12),

@@ -141,6 +141,7 @@ class _LanguageSelectionWebScreenState
     final Map<String, dynamic> data =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
+    final fullScreenResume = data['authContinuationFullScreen'] == true;
 
     return BlocConsumer<SelectLanguageBloc, SelectLanguageState>(
       listener: (context, state) {
@@ -171,6 +172,7 @@ class _LanguageSelectionWebScreenState
             state.selectedLanguages.values.where((v) => v).length;
 
         return AuthWebWrapper(
+          fullScreen: fullScreenResume,
           title: 'Select your languages',
           subtitle: 'Choose at least 2 languages you can interpret',
           child: Column(
