@@ -58,9 +58,14 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
       final profile = await _supabaseService.getUserProfile(userId);
       if (!mounted) return;
 
-      if (profile?.role == 'organization_admin') {
+      if (profile?.role == 'admin' || profile?.role == 'superadmin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationDashboardRoute,
+          Routes.adminPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile?.role == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationPortalDashboardRoute,
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
@@ -71,15 +76,17 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
           await _supabaseService.signOut();
           await _appPreferences.logout();
           if (!mounted) return;
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterPortalLoginRoute,
+            (route) => false,
+          );
           return;
         }
 
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterPortalDashboardRoute,
+          (route) => false,
+        );
       } else {
         Navigator.of(
           context,

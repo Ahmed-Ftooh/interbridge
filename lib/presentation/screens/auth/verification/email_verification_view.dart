@@ -103,9 +103,19 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
       if (!mounted) return;
 
       // Navigate based on role
-      if (userRole == 'organization_admin') {
+      if (userRole == 'admin' || userRole == 'superadmin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationDashboardRoute,
+          Routes.adminPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (userRole == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (userRole == 'interpreter') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.interpreterPortalDashboardRoute,
           (route) => false,
         );
       } else {

@@ -167,6 +167,51 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     return passed == true;
   }
 
+  String _currentPortalIntent() {
+    if (!kIsWeb) return 'shared';
+
+    final path = Uri.base.path.toLowerCase();
+    final host = Uri.base.host.toLowerCase();
+
+    if (path.startsWith('/admin') || host.startsWith('admin.')) {
+      return 'admin';
+    }
+    if (path.startsWith('/organization') || host.startsWith('organization.')) {
+      return 'organization';
+    }
+    if (path.startsWith('/interpreter') || host.startsWith('interpreter.')) {
+      return 'interpreter';
+    }
+
+    return 'shared';
+  }
+
+  bool _roleMatchesPortal(String? role, String portalIntent) {
+    switch (portalIntent) {
+      case 'admin':
+        return role == 'admin' || role == 'superadmin';
+      case 'organization':
+        return role == 'organization_admin';
+      case 'interpreter':
+        return role == 'interpreter';
+      default:
+        return true;
+    }
+  }
+
+  String _loginRouteForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'admin':
+        return Routes.adminPortalLoginRoute;
+      case 'organization':
+        return Routes.organizationPortalLoginRoute;
+      case 'interpreter':
+        return Routes.interpreterPortalLoginRoute;
+      default:
+        return Routes.loginRoute;
+    }
+  }
+
   Future<bool> _resumeInterpreterOnboarding({
     required SupabaseClient client,
     required String userId,
@@ -176,9 +221,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   }) async {
     if (isVerified || onboardingStatus == 'under_review') {
       if (!mounted) return true;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.interpreterPortalDashboardRoute,
+        (route) => false,
+      );
       return true;
     }
 
@@ -294,17 +340,37 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           .timeout(const Duration(seconds: 5));
       if (!mounted) return;
 
-      if (profile?.role == 'admin' || profile?.role == 'superadmin') {
+      final role = profile?.role;
+      final portalIntent = _currentPortalIntent();
+
+      if (!_roleMatchesPortal(role, portalIntent)) {
+        await _supabaseService.signOut();
+        await _appPreferences.logout();
+        if (!mounted) return;
+        CustomSnackBar.show(
+          context,
+          message:
+              'This account is not allowed in this portal. Please use the correct portal login.',
+          type: SnackBarType.error,
+        );
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          _loginRouteForPortal(portalIntent),
+          (route) => false,
+        );
+        return;
+      }
+
+      if (role == 'admin' || role == 'superadmin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
           Routes.adminPortalDashboardRoute,
           (route) => false,
         );
-      } else if (profile?.role == 'organization_admin') {
+      } else if (role == 'organization_admin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
           Routes.organizationPortalDashboardRoute,
           (route) => false,
         );
-      } else if (profile?.role == 'interpreter') {
+      } else if (role == 'interpreter') {
         final passedCompliance = await _runInterpreterComplianceCheck();
         if (!mounted) return;
         if (!passedCompliance) {
@@ -427,9 +493,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     } catch (e) {
       log('Error getting user profile: $e');
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        _loginRouteForPortal(_currentPortalIntent()),
+        (route) => false,
+      );
     }
   }
 
@@ -441,9 +508,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         if (userId != null) {
           await _navigateBasedOnRole(userId);
         } else {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            _loginRouteForPortal(_currentPortalIntent()),
+            (route) => false,
+          );
         }
       }
 
@@ -460,9 +528,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         if (userId != null) {
           await _navigateBasedOnRole(userId);
         } else {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            _loginRouteForPortal(_currentPortalIntent()),
+            (route) => false,
+          );
         }
       }
     }

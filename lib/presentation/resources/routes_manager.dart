@@ -70,6 +70,8 @@ import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_cons
 
 class Routes {
   static const String splashRoute = "/";
+  static const String interpreterPortalRootRoute = "/interpreter";
+  static const String organizationPortalRootRoute = "/organization";
   static const String loginRoute = "/login";
   static const String interpreterPortalLoginRoute = "/interpreter/login";
   static const String interpreterPortalSignupRoute = "/interpreter/signup";
@@ -121,7 +123,36 @@ class Routes {
   static const String governmentIdUploadRoute = "/governmentIdUpload";
 }
 
+enum _WebPortalKind { interpreter, organization, admin }
+
 class RouteGenerator {
+  static _WebPortalKind? _portalFromCurrentHost() {
+    if (!kIsWeb) return null;
+
+    final host = Uri.base.host.toLowerCase();
+    if (host.startsWith('interpreter.')) {
+      return _WebPortalKind.interpreter;
+    }
+    if (host.startsWith('organization.')) {
+      return _WebPortalKind.organization;
+    }
+    if (host.startsWith('admin.')) {
+      return _WebPortalKind.admin;
+    }
+    return null;
+  }
+
+  static String _loginRouteForPortal(_WebPortalKind kind) {
+    switch (kind) {
+      case _WebPortalKind.interpreter:
+        return Routes.interpreterPortalLoginRoute;
+      case _WebPortalKind.organization:
+        return Routes.organizationPortalLoginRoute;
+      case _WebPortalKind.admin:
+        return Routes.adminPortalLoginRoute;
+    }
+  }
+
   static Route<dynamic> getRoute(RouteSettings settings) {
     // Extract the path without query parameters for matching
     final String? routeName = settings.name;
@@ -164,9 +195,35 @@ class RouteGenerator {
     switch (basePath ?? settings.name) {
       case Routes.splashRoute:
         if (kIsWeb) {
+          final portalKind = _portalFromCurrentHost();
+          if (portalKind != null) {
+            return MaterialPageRoute(
+              builder: (_) => _WebPortalEntryResolver(kind: portalKind),
+            );
+          }
           return MaterialPageRoute(builder: (_) => const LoginViewWeb());
         }
         return MaterialPageRoute(builder: (_) => const SplashView());
+      case Routes.interpreterPortalRootRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => const _WebPortalEntryResolver(
+                  kind: _WebPortalKind.interpreter,
+                ),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const LoginView());
+      case Routes.organizationPortalRootRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => const _WebPortalEntryResolver(
+                  kind: _WebPortalKind.organization,
+                ),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const LoginView());
       case Routes.emailVerificationRoute:
         return MaterialPageRoute(
           builder: (_) => const EmailVerificationView(),
@@ -573,11 +630,24 @@ class _UnknownRouteRecoveryScreenState
     final user = Supabase.instance.client.auth.currentUser;
 
     if (user != null && user.emailConfirmedAt != null) {
-      // User is authenticated — go to main screen
-      log('UnknownRouteRecovery: User authenticated, going to main');
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      try {
+        final profile = await SupabaseService().getUserProfile(user.id);
+        final role = profile?.role;
+        final route =
+            role == 'interpreter'
+                ? Routes.interpreterPortalDashboardRoute
+                : role == 'organization_admin'
+                ? Routes.organizationPortalDashboardRoute
+                : role == 'admin' || role == 'superadmin'
+                ? Routes.adminPortalDashboardRoute
+                : Routes.mainRoute;
+        log('UnknownRouteRecovery: User authenticated, going to $route');
+        Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
+      } catch (_) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
     } else {
       // Not authenticated — go to splash (clean start)
       log('UnknownRouteRecovery: No auth, going to splash');
@@ -685,6 +755,80 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
       return const SizedBox.shrink();
     }
     return widget.child;
+  }
+}
+
+class _WebPortalEntryResolver extends StatefulWidget {
+  const _WebPortalEntryResolver({required this.kind});
+
+  final _WebPortalKind kind;
+
+  @override
+  State<_WebPortalEntryResolver> createState() =>
+      _WebPortalEntryResolverState();
+}
+
+class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final targetLogin = RouteGenerator._loginRouteForPortal(widget.kind);
+
+    if (!kIsWeb) {
+      _redirect(targetLogin);
+      return;
+    }
+
+    // Keep current interpreter policy: always require fresh sign-in.
+    if (widget.kind == _WebPortalKind.interpreter) {
+      _redirect(targetLogin);
+      return;
+    }
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null || user.emailConfirmedAt == null) {
+      _redirect(targetLogin);
+      return;
+    }
+
+    try {
+      final profile = await SupabaseService().getUserProfile(user.id);
+      final role = profile?.role;
+      final allowed =
+          (widget.kind == _WebPortalKind.organization &&
+              role == 'organization_admin') ||
+          (widget.kind == _WebPortalKind.admin &&
+              (role == 'admin' || role == 'superadmin'));
+
+      if (allowed) {
+        _redirect(
+          widget.kind == _WebPortalKind.organization
+              ? Routes.organizationPortalDashboardRoute
+              : Routes.adminPortalDashboardRoute,
+        );
+        return;
+      }
+
+      await SupabaseService().signOut();
+      _redirect(targetLogin);
+    } catch (e) {
+      log('WebPortalEntryResolver error: $e');
+      _redirect(targetLogin);
+    }
+  }
+
+  void _redirect(String route) {
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
 
@@ -802,9 +946,10 @@ class _AuthCallbackLoadingScreenState
   }) async {
     if (isVerified || onboardingStatus == 'under_review') {
       if (!mounted) return true;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.interpreterPortalDashboardRoute,
+        (route) => false,
+      );
       return true;
     }
 

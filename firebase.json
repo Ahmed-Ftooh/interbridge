@@ -1,1 +1,69 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"interbridge-6e3b8","appId":"1:801241694290:android:ec9ca96c02044f7c6edf8b","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"interbridge-6e3b8","configurations":{"android":"1:801241694290:android:ec9ca96c02044f7c6edf8b","ios":"1:801241694290:ios:2781ede225c13d856edf8b"}}}}}}
+{
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "interbridge-6e3b8",
+					"appId": "1:801241694290:android:ec9ca96c02044f7c6edf8b",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "interbridge-6e3b8",
+					"configurations": {
+						"android": "1:801241694290:android:ec9ca96c02044f7c6edf8b",
+						"ios": "1:801241694290:ios:2781ede225c13d856edf8b"
+					}
+				}
+			}
+		}
+	},
+	"hosting": [
+		{
+			"target": "interpreter-portal",
+			"public": "build/web",
+			"ignore": [
+				"firebase.json",
+				"**/.*",
+				"**/node_modules/**"
+			],
+			"rewrites": [
+				{
+					"source": "**",
+					"destination": "/index.html"
+				}
+			]
+		},
+		{
+			"target": "organization-portal",
+			"public": "build/web",
+			"ignore": [
+				"firebase.json",
+				"**/.*",
+				"**/node_modules/**"
+			],
+			"rewrites": [
+				{
+					"source": "**",
+					"destination": "/index.html"
+				}
+			]
+		},
+		{
+			"target": "admin-portal",
+			"public": "build/web",
+			"ignore": [
+				"firebase.json",
+				"**/.*",
+				"**/node_modules/**"
+			],
+			"rewrites": [
+				{
+					"source": "**",
+					"destination": "/index.html"
+				}
+			]
+		}
+	]
+}
