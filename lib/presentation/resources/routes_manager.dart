@@ -71,6 +71,15 @@ import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_cons
 class Routes {
   static const String splashRoute = "/";
   static const String loginRoute = "/login";
+  static const String interpreterPortalLoginRoute = "/interpreter/login";
+  static const String interpreterPortalSignupRoute = "/interpreter/signup";
+  static const String interpreterPortalDashboardRoute =
+      "/interpreter/dashboard";
+  static const String organizationPortalLoginRoute = "/organization/login";
+  static const String organizationPortalDashboardRoute =
+      "/organization/dashboard";
+  static const String adminPortalLoginRoute = "/admin/login";
+  static const String adminPortalDashboardRoute = "/admin/dashboard";
   static const String registerRoute = "/register";
   static const String forgotPasswordRoute = "/forgotPassword";
   static const String emailVerificationRoute = "/emailVerification";
@@ -152,7 +161,7 @@ class RouteGenerator {
       );
     }
 
-    switch (settings.name) {
+    switch (basePath ?? settings.name) {
       case Routes.splashRoute:
         if (kIsWeb) {
           return MaterialPageRoute(builder: (_) => const LoginViewWeb());
@@ -184,10 +193,28 @@ class RouteGenerator {
           builder: (_) => const InterpreterDocumentView(),
         );
       case Routes.loginRoute:
+      case Routes.interpreterPortalLoginRoute:
+      case Routes.organizationPortalLoginRoute:
+      case Routes.adminPortalLoginRoute:
         if (kIsWeb) {
           return MaterialPageRoute(builder: (_) => const LoginViewWeb());
         }
         return MaterialPageRoute(builder: (_) => const LoginView());
+      case Routes.interpreterPortalSignupRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder: (_) => const InterpreterTrackSelectionWebScreen(),
+            settings: RouteSettings(
+              arguments: settings.arguments ?? {'role': 'interpreter'},
+            ),
+          );
+        }
+        return MaterialPageRoute(
+          builder: (_) => const InterpreterTrackSelectionScreen(),
+          settings: RouteSettings(
+            arguments: settings.arguments ?? {'role': 'interpreter'},
+          ),
+        );
       case Routes.onBoardingRoute:
         return MaterialPageRoute(builder: (_) => const OnboardingView());
       case Routes.registerRoute:
@@ -327,9 +354,13 @@ class RouteGenerator {
         if (kIsWeb) {
           return MaterialPageRoute(
             builder:
-                (_) => BlocProvider(
-                  create: (context) => instance<OrganizationDashboardBloc>(),
-                  child: const OrganizationDashboardWebView(),
+                (_) => _PortalRoleGateWeb(
+                  allowedRoles: const {'organization_admin'},
+                  unauthenticatedRoute: Routes.organizationPortalLoginRoute,
+                  child: BlocProvider(
+                    create: (context) => instance<OrganizationDashboardBloc>(),
+                    child: const OrganizationDashboardWebView(),
+                  ),
                 ),
           );
         }
@@ -378,6 +409,51 @@ class RouteGenerator {
           return MaterialPageRoute(builder: (_) => const MainViewWeb());
         }
         return MaterialPageRoute(builder: (_) => const MainView());
+      case Routes.interpreterPortalDashboardRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => const _PortalRoleGateWeb(
+                  allowedRoles: {'interpreter'},
+                  unauthenticatedRoute: Routes.interpreterPortalLoginRoute,
+                  child: MainViewWeb(),
+                ),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const MainView());
+      case Routes.organizationPortalDashboardRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => _PortalRoleGateWeb(
+                  allowedRoles: const {'organization_admin'},
+                  unauthenticatedRoute: Routes.organizationPortalLoginRoute,
+                  child: BlocProvider(
+                    create: (context) => instance<OrganizationDashboardBloc>(),
+                    child: const OrganizationDashboardWebView(),
+                  ),
+                ),
+          );
+        }
+        return MaterialPageRoute(
+          builder:
+              (_) => BlocProvider(
+                create: (context) => instance<OrganizationDashboardBloc>(),
+                child: const OrganizationDashboardView(),
+              ),
+        );
+      case Routes.adminPortalDashboardRoute:
+        if (kIsWeb) {
+          return MaterialPageRoute(
+            builder:
+                (_) => const _PortalRoleGateWeb(
+                  allowedRoles: {'admin', 'superadmin'},
+                  unauthenticatedRoute: Routes.adminPortalLoginRoute,
+                  child: AdminDashboardWeb(),
+                ),
+          );
+        }
+        return MaterialPageRoute(builder: (_) => const AdminListScreen());
       case Routes.chatRoute:
         final args = settings.arguments as Map<String, dynamic>?;
         return MaterialPageRoute(
@@ -412,7 +488,14 @@ class RouteGenerator {
         return MaterialPageRoute(builder: (_) => const ChangePasswordView());
       case Routes.adminRoute:
         if (kIsWeb) {
-          return MaterialPageRoute(builder: (_) => const AdminDashboardWeb());
+          return MaterialPageRoute(
+            builder:
+                (_) => const _PortalRoleGateWeb(
+                  allowedRoles: {'admin', 'superadmin'},
+                  unauthenticatedRoute: Routes.adminPortalLoginRoute,
+                  child: AdminDashboardWeb(),
+                ),
+          );
         }
         return MaterialPageRoute(builder: (_) => const AdminListScreen());
       case Routes.phoneOtpRoute:
@@ -510,6 +593,98 @@ class _UnknownRouteRecoveryScreenState
       backgroundColor: ColorManager.backgroundPrimary,
       body: const Center(child: CircularProgressIndicator()),
     );
+  }
+}
+
+class _PortalRoleGateWeb extends StatefulWidget {
+  const _PortalRoleGateWeb({
+    required this.allowedRoles,
+    required this.child,
+    required this.unauthenticatedRoute,
+  });
+
+  final Set<String> allowedRoles;
+  final Widget child;
+  final String unauthenticatedRoute;
+
+  @override
+  State<_PortalRoleGateWeb> createState() => _PortalRoleGateWebState();
+}
+
+class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
+  bool _isAllowed = false;
+  bool _isChecking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAccess();
+  }
+
+  Future<void> _checkAccess() async {
+    if (!kIsWeb) {
+      if (!mounted) return;
+      setState(() {
+        _isAllowed = true;
+        _isChecking = false;
+      });
+      return;
+    }
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        _redirect(widget.unauthenticatedRoute);
+        return;
+      }
+
+      final profile = await SupabaseService().getUserProfile(user.id);
+      final role = profile?.role;
+
+      if (role != null && widget.allowedRoles.contains(role)) {
+        if (!mounted) return;
+        setState(() {
+          _isAllowed = true;
+          _isChecking = false;
+        });
+        return;
+      }
+
+      _redirect(_routeForRole(role));
+    } catch (e) {
+      log('PortalRoleGate error: $e');
+      _redirect(Routes.loginRoute);
+    }
+  }
+
+  String _routeForRole(String? role) {
+    switch (role) {
+      case 'interpreter':
+        return Routes.interpreterPortalDashboardRoute;
+      case 'organization_admin':
+        return Routes.organizationPortalDashboardRoute;
+      case 'admin':
+      case 'superadmin':
+        return Routes.adminPortalDashboardRoute;
+      default:
+        return Routes.mainRoute;
+    }
+  }
+
+  void _redirect(String route) {
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isChecking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (!_isAllowed) {
+      return const SizedBox.shrink();
+    }
+    return widget.child;
   }
 }
 
@@ -758,7 +933,12 @@ class _AuthCallbackLoadingScreenState
 
       if (profile.role == 'organization_admin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationDashboardRoute,
+          Routes.organizationPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile.role == 'admin' || profile.role == 'superadmin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.adminPortalDashboardRoute,
           (route) => false,
         );
       } else if (profile.role == 'interpreter') {
@@ -836,9 +1016,10 @@ class _AuthCallbackLoadingScreenState
           if (allComplete) {
             await appPrefs.setQuizOnboardingDone();
             if (!mounted) return;
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.interpreterPortalDashboardRoute,
+              (route) => false,
+            );
           } else {
             Navigator.of(context).pushNamedAndRemoveUntil(
               Routes.interpreterQuizHubRoute,

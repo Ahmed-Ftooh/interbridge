@@ -191,12 +191,20 @@ class _SplashViewState extends State<SplashView> {
       log('SplashView: Profile found: role=${profile?.role}');
       if (!mounted) return;
 
-      if (profile?.role == 'organization_admin') {
+      if (profile?.role == 'admin' || profile?.role == 'superadmin') {
+        log('SplashView: Navigating to admin portal dashboard');
+        _navigateOnce(() {
+          Navigator.pushReplacementNamed(
+            context,
+            Routes.adminPortalDashboardRoute,
+          );
+        });
+      } else if (profile?.role == 'organization_admin') {
         log('SplashView: Navigating to organization dashboard');
         _navigateOnce(() {
           Navigator.pushReplacementNamed(
             context,
-            Routes.organizationDashboardRoute,
+            Routes.organizationPortalDashboardRoute,
           );
         });
       } else if (profile?.role == 'interpreter') {
@@ -207,7 +215,10 @@ class _SplashViewState extends State<SplashView> {
         await _appPreferences.logout();
         if (!mounted) return;
         _navigateOnce(() {
-          Navigator.pushReplacementNamed(context, Routes.loginRoute);
+          Navigator.pushReplacementNamed(
+            context,
+            Routes.interpreterPortalLoginRoute,
+          );
         });
       } else {
         log('SplashView: Navigating to main route');

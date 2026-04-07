@@ -267,16 +267,24 @@ class AppInitializer {
       final supabaseService = SupabaseService();
       final profile = await supabaseService.getUserProfile(userId);
 
-      if (profile?.role == 'organization_admin') {
+      if (profile?.role == 'admin' || profile?.role == 'superadmin') {
         navigator.pushNamedAndRemoveUntil(
-          Routes.organizationDashboardRoute,
+          Routes.adminPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile?.role == 'organization_admin') {
+        navigator.pushNamedAndRemoveUntil(
+          Routes.organizationPortalDashboardRoute,
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
         // Only check quizzes on first login — skip if already completed once
         final appPrefs = instance<AppPreferences>();
         if (appPrefs.isQuizOnboardingDone()) {
-          navigator.pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+          navigator.pushNamedAndRemoveUntil(
+            Routes.interpreterPortalDashboardRoute,
+            (route) => false,
+          );
         } else {
           // For interpreters, check if they still need to complete qualification quizzes
           try {
@@ -321,7 +329,7 @@ class AppInitializer {
             if (allComplete) {
               await appPrefs.setQuizOnboardingDone();
               navigator.pushNamedAndRemoveUntil(
-                Routes.mainRoute,
+                Routes.interpreterPortalDashboardRoute,
                 (route) => false,
               );
             } else {

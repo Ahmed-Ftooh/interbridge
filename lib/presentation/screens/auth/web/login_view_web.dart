@@ -294,9 +294,14 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           .timeout(const Duration(seconds: 5));
       if (!mounted) return;
 
-      if (profile?.role == 'organization_admin') {
+      if (profile?.role == 'admin' || profile?.role == 'superadmin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationDashboardRoute,
+          Routes.adminPortalDashboardRoute,
+          (route) => false,
+        );
+      } else if (profile?.role == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.organizationPortalDashboardRoute,
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
@@ -306,9 +311,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           await _supabaseService.signOut();
           await _appPreferences.logout();
           if (!mounted) return;
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterPortalLoginRoute,
+            (route) => false,
+          );
           return;
         }
 
@@ -394,9 +400,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                 .update({'onboarding_status': 'under_review'})
                 .eq('user_id', userId);
             if (!mounted) return;
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.interpreterPortalDashboardRoute,
+              (route) => false,
+            );
           } else {
             Navigator.of(context).pushNamedAndRemoveUntil(
               Routes.interpreterQuizHubRoute,
