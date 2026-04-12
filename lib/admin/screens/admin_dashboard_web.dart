@@ -184,11 +184,17 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
           .order('started_at', ascending: false)
           .limit(100);
 
-      // Fetch currently active calls (interpreter_requests that are accepted but not completed)
+      // We had stale active calls because some older accepted requests
+      // never got marked as completed correctly if someone disconnected unexpectedly.
+      // We only consider requests created in the last 2 hours as 'active'.
+      final twoHoursAgo =
+          DateTime.now().toUtc().subtract(const Duration(hours: 2)).toIso8601String();
+
       final active = await client
           .from('interpreter_requests')
           .select('*')
           .eq('status', 'accepted')
+          .gte('created_at', twoHoursAgo)
           .order('created_at', ascending: false);
 
       // Resolve user profiles for all unique user IDs
@@ -673,6 +679,65 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                       color: Colors.white,
                       size: 28,
                     )
+                    : const Text(
+                      'Admin Portal',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+          ),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 16),
+          // Links
+          _buildNavLink(
+            0,
+            'All Interpreters',
+            Icons.people_alt_outlined,
+            collapsed: collapsed,
+          ),
+          _buildNavLink(
+            1,
+            'Pending Reviews',
+            Icons.pending_actions_outlined,
+            collapsed: collapsed,
+          ),
+          _buildNavLink(
+            2,
+            'Call Logs',
+            Icons.history_outlined,
+            collapsed: collapsed,
+          ),
+          const Spacer(),
+          // Broadcast Button here
+          if (!collapsed)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: ElevatedButton.icon(
+                onPressed: () => _showBroadcastDialog(context),
+                icon: const Icon(Icons.campaign, size: 18),
+                label: const Text('Broadcast', overflow: TextOverflow.ellipsis),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1), // Indigo
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Broadcast',
+              icon: const Icon(Icons.campaign, color: Colors.white),
+              onPressed: () => _showBroadcastDialog(context),
+            ),
+          // Logout / Collapse
+          const Divider(color: Colors.white24, height: 1),
+                    )
                     : Row(
                       children: [
                         Icon(
@@ -832,7 +897,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Search interpreters by name...',
+                hintText: 'Search interpreters by name or 5-digit ID...',
                 hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
                 prefixIcon: Icon(
                   Icons.search,
@@ -2212,7 +2277,132 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                     ),
           ),
         ],
-      ),
+  // ──────── HELPER: Broadcast Dialog ────────
+  Future<void> _showBroadcastDialog(BuildContext context) async {
+    final titleCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+    bool sendEmail = true;
+    bool sendPush = true;
+    bool isSending = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Broadcast Message'),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: 400,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Send a message to ALL verified interpreters.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Subject / Title',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: messageCtrl,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Message Body',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      CheckboxListTile(
+                        title: const Text('Send Email (Resend)'),
+                        value: sendEmail,
+                        onChanged: (val) => setDialogState(() => sendEmail = val ?? false),
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Send Push Notification (OneSignal)'),
+                        value: sendPush,
+                        onChanged: (val) => setDialogState(() => sendPush = val ?? false),
+                      ),
+                      if (isSending)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending ? null : () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          final subject = titleCtrl.text.trim();
+                          final message = messageCtrl.text.trim();
+                          if (subject.isEmpty || message.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Subject and message are required')),
+                            );
+                            return;
+                          }
+                          if (!sendEmail && !sendPush) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Select at least one delivery method')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSending = true);
+
+                          try {
+                            final result = await _adminService.sendAdminBroadcast(
+                              subject: subject,
+                              message: message,
+                              sendEmail: sendEmail,
+                              sendPush: sendPush,
+                            );
+
+                            if (ctx.mounted) {
+                              Navigator.of(ctx).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Broadcast sent successfully!'),
+                                  duration: const Duration(seconds: 5),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSending = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to send broadcast: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: const Text('Send Broadcast'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
