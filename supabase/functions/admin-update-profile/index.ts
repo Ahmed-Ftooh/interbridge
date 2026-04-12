@@ -3,7 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-context',
 }
 
 serve(async (req) => {
@@ -38,6 +39,14 @@ serve(async (req) => {
 
     if (profile?.role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Forbidden: Admin access required' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 403,
+      })
+    }
+
+    const portalContext = (req.headers.get('x-portal-context') ?? '').trim().toLowerCase()
+    if (portalContext !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Forbidden: Admin portal context required' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 403,
       })

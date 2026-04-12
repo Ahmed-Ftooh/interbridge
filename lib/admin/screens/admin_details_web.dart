@@ -1954,6 +1954,7 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
       try {
         await Supabase.instance.client.functions.invoke(
           'admin-update-profile',
+          headers: const {'x-portal-context': 'admin'},
           body: {
             'user_id': widget.userId,
             'username': usernameCtrl.text,
@@ -1983,6 +1984,7 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
       try {
         await Supabase.instance.client.functions.invoke(
           'admin-suspend-account',
+          headers: const {'x-portal-context': 'admin'},
           body: {'user_id': widget.userId, 'suspend': !currentlySuspended},
         );
         _snack(
@@ -2076,6 +2078,7 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
       try {
         await Supabase.instance.client.functions.invoke(
           'admin-delete-account',
+          headers: const {'x-portal-context': 'admin'},
           body: {'user_id': widget.userId},
         );
         _snack('Account deleted', color: const Color(0xFF10B981));

@@ -17,6 +17,9 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: "Unauthorized" }, 401);
     const isAdmin = await ensureIsAdmin(user.id);
     if (!isAdmin) return json({ error: "Forbidden" }, 403);
+    if (!hasAdminPortalContext(req)) {
+      return json({ error: "Forbidden: Admin portal context required" }, 403);
+    }
 
     const { searchParams } = new URL(req.url);
     let id = searchParams.get("id");
@@ -189,8 +192,8 @@ Deno.serve(async (req) => {
 function cors() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-portal-context",
   };
 }
 
@@ -224,6 +227,11 @@ async function ensureIsAdmin(userId: string) {
     .maybeSingle();
   if (error) return false;
   return data?.role === "admin" || data?.role === "superadmin";
+}
+
+function hasAdminPortalContext(req: Request) {
+  const portalContext = (req.headers.get("x-portal-context") ?? "").trim().toLowerCase();
+  return portalContext === "admin";
 }
 
 async function serviceClient() {

@@ -2,6 +2,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AdminService {
   final SupabaseClient _client = Supabase.instance.client;
+  static const Map<String, String> _adminPortalHeaders = {
+    'x-portal-context': 'admin',
+  };
 
   Future<List<dynamic>> listInterpreters({
     String? search,
@@ -12,6 +15,7 @@ class AdminService {
   }) async {
     final res = await _client.functions.invoke(
       'admin-list-interpreters',
+      headers: _adminPortalHeaders,
       body: {
         if (search != null && search.isNotEmpty) 'search': search,
         if (limit != null) 'limit': limit,
@@ -33,6 +37,7 @@ class AdminService {
   Future<Map<String, dynamic>> getInterpreterDetails(String userId) async {
     final res = await _client.functions.invoke(
       'admin-interpreter-details',
+      headers: _adminPortalHeaders,
       body: {'id': userId},
     );
     final data = res.data;
@@ -46,6 +51,7 @@ class AdminService {
   }) async {
     final res = await _client.functions.invoke(
       'admin-certificate-signed-url',
+      headers: _adminPortalHeaders,
       body: {
         if (certificateId != null) 'certificate_id': certificateId,
         if (url != null) 'url': url,
@@ -61,6 +67,7 @@ class AdminService {
   Future<void> approveCertificate(String certificateId, {String? note}) async {
     await _client.functions.invoke(
       'admin-certificate-approve',
+      headers: _adminPortalHeaders,
       body: {
         'certificate_id': certificateId,
         if (note != null && note.isNotEmpty) 'approve_note': note,
@@ -71,6 +78,7 @@ class AdminService {
   Future<void> rejectCertificate(String certificateId, {String? note}) async {
     await _client.functions.invoke(
       'admin-certificate-reject',
+      headers: _adminPortalHeaders,
       body: {
         'certificate_id': certificateId,
         if (note != null && note.isNotEmpty) 'reject_note': note,

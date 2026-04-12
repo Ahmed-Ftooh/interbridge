@@ -808,6 +808,7 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                   try {
                     await Supabase.instance.client.functions.invoke(
                       'admin-update-profile',
+                      headers: const {'x-portal-context': 'admin'},
                       body: {
                         'user_id': userId,
                         'username': usernameController.text,
@@ -880,6 +881,7 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
       try {
         await Supabase.instance.client.functions.invoke(
           'admin-suspend-account',
+          headers: const {'x-portal-context': 'admin'},
           body: {'user_id': userId, 'suspend': !currentlySuspended},
         );
 
@@ -1011,6 +1013,7 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
       try {
         await Supabase.instance.client.functions.invoke(
           'admin-delete-account',
+          headers: const {'x-portal-context': 'admin'},
           body: {'user_id': userId},
         );
 
