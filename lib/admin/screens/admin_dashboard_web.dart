@@ -692,24 +692,9 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
           const Divider(color: Colors.white24, height: 1),
           const SizedBox(height: 16),
           // Links
-          _buildNavLink(
-            0,
-            'All Interpreters',
-            Icons.people_alt_outlined,
-            collapsed: collapsed,
-          ),
-          _buildNavLink(
-            1,
-            'Pending Reviews',
-            Icons.pending_actions_outlined,
-            collapsed: collapsed,
-          ),
-          _buildNavLink(
-            2,
-            'Call Logs',
-            Icons.history_outlined,
-            collapsed: collapsed,
-          ),
+          _buildNavItem(0, Icons.people_alt_outlined, 'All Interpreters'),
+          _buildNavItem(1, Icons.pending_actions_outlined, 'Pending Reviews'),
+          _buildNavItem(2, Icons.history_outlined, 'Call Logs'),
           const Spacer(),
           // Broadcast Button here
           if (!collapsed)
@@ -737,38 +722,6 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             ),
           // Logout / Collapse
           const Divider(color: Colors.white24, height: 1),
-                    )
-                    : Row(
-                      children: [
-                        Icon(
-                          Icons.admin_panel_settings,
-                          color: ColorManager.primary,
-                          size: 28,
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Admin Panel',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-          ),
-          const Divider(color: Colors.white24, height: 1),
-          const SizedBox(height: 8),
-
-          // Nav items
-          _buildNavItem(0, Icons.people, 'All Interpreters'),
-          _buildNavItem(1, Icons.pending_actions, 'Pending Reviews'),
-          _buildNavItem(2, Icons.phone_in_talk, 'Call Logs'),
-          const Spacer(),
-
           // Collapse toggle
           InkWell(
             onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
@@ -2277,6 +2230,10 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                     ),
           ),
         ],
+      ),
+    );
+  }
+
   // ──────── HELPER: Broadcast Dialog ────────
   Future<void> _showBroadcastDialog(BuildContext context) async {
     final titleCtrl = TextEditingController();
@@ -2376,13 +2333,25 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
 
                             if (ctx.mounted) {
                               Navigator.of(ctx).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Broadcast sent successfully!'),
-                                  duration: const Duration(seconds: 5),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
+                              final delivered = result['deliveredToCounts'];
+                              final errors = result['errors'];
+                              if (errors != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Warning - partially failed: $errors\nSent to: ${delivered?['emails']} emails.'),
+                                    duration: const Duration(seconds: 10),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Broadcast sent successfully!'),
+                                    duration: Duration(seconds: 5),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
                             }
                           } catch (e) {
                             setDialogState(() => isSending = false);
