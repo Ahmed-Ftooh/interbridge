@@ -113,6 +113,150 @@ class _AdminListScreenState extends State<AdminListScreen> {
     }
   }
 
+  Future<void> _showBroadcastDialog(BuildContext context) async {
+    final titleCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+    bool sendEmail = true;
+    bool sendPush = true;
+    bool isSending = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Broadcast Message'),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: 400,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Send a message to ALL verified interpreters.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Subject / Title',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: messageCtrl,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Message Body',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      CheckboxListTile(
+                        title: const Text('Send Email (Resend)'),
+                        value: sendEmail,
+                        onChanged:
+                            (val) =>
+                                setDialogState(() => sendEmail = val ?? false),
+                      ),
+                      CheckboxListTile(
+                        title: const Text('Send Push Notification (OneSignal)'),
+                        value: sendPush,
+                        onChanged:
+                            (val) =>
+                                setDialogState(() => sendPush = val ?? false),
+                      ),
+                      if (isSending)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending ? null : () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed:
+                      isSending
+                          ? null
+                          : () async {
+                            final subject = titleCtrl.text.trim();
+                            final message = messageCtrl.text.trim();
+                            if (subject.isEmpty || message.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Subject and message are required',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            if (!sendEmail && !sendPush) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Select at least one delivery method',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setDialogState(() => isSending = true);
+
+                            try {
+                              final result = await _adminService
+                                  .sendAdminBroadcast(
+                                    subject: subject,
+                                    message: message,
+                                    sendEmail: sendEmail,
+                                    sendPush: sendPush,
+                                  );
+
+                              if (ctx.mounted) {
+                                Navigator.of(ctx).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Broadcast sent successfully! Check logs for details: $result',
+                                    ),
+                                    duration: const Duration(seconds: 5),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              setDialogState(() => isSending = false);
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Failed to send broadcast: $e',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                  child: const Text('Send Broadcast'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -135,6 +279,11 @@ class _AdminListScreenState extends State<AdminListScreen> {
         title: const Text('Admin Dashboard'),
         centerTitle: true,
         actions: [
+          IconButton(
+            onPressed: () => _showBroadcastDialog(context),
+            icon: const Icon(Icons.campaign),
+            tooltip: 'Broadcast to Interpreters',
+          ),
           IconButton(
             onPressed: () => _load(reset: true),
             icon: const Icon(Icons.refresh),

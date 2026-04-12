@@ -122,4 +122,26 @@ class AdminService {
         })
         .eq('id', governmentIdId);
   }
+
+  Future<Map<String, dynamic>> sendAdminBroadcast({
+    required String subject,
+    required String message,
+    required bool sendEmail,
+    required bool sendPush,
+  }) async {
+    final response = await _client.functions.invoke(
+      'admin-broadcast',
+      headers: _adminPortalHeaders,
+      body: {
+        'subject': subject,
+        'message': message,
+        'sendEmail': sendEmail,
+        'sendPush': sendPush,
+      },
+    );
+    if (response.data is Map<String, dynamic>) {
+      return response.data;
+    }
+    return {};
+  }
 }
