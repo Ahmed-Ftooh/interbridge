@@ -394,7 +394,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
 
                 // NEW: Show Interpreter ID clearly for doctors to copy
                 Wrap(
-                  crossAxisAlignment: WrapCrossAxisAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 16,
                   runSpacing: 12,
                   children: [
@@ -420,7 +420,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                         ),
                       ),
                       child: Wrap(
-                        crossAxisAlignment: WrapCrossAxisAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Icon(
                             Icons.badge_outlined,
