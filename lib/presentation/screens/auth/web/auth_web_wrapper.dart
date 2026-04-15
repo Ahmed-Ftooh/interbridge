@@ -45,14 +45,15 @@ class _AuthWebWrapperState extends State<AuthWebWrapper>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.fullScreen) {
-      return _buildFullScreenLayout(context);
-    }
-
+    // If explicitly full screen, or if it shrinks below 960 (for mobile),
+    // always use the full-screen layout style to prevent screen flashing/swapping!
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 960;
 
-    if (isMobile) return _buildMobileLayout(context);
+    if (widget.fullScreen || isMobile) {
+      return _buildFullScreenLayout(context);
+    }
+
     return _buildDesktopLayout(context);
   }
 

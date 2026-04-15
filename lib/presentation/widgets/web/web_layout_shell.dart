@@ -35,6 +35,7 @@ class WebLayoutShell extends StatefulWidget {
 class _WebLayoutShellState extends State<WebLayoutShell> {
   bool _isCollapsed = false;
   bool _isHovering = false;
+  final GlobalKey _contentKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +55,10 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(24),
-                child: widget.child,
+                child: KeyedSubtree(
+                  key: _contentKey,
+                  child: widget.child,
+                ),
               ),
             ),
           ],
@@ -76,7 +80,10 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.all(24),
-                    child: widget.child,
+                    child: KeyedSubtree(
+                      key: _contentKey,
+                      child: widget.child,
+                    ),
                   ),
                 ),
               ],
