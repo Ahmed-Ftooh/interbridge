@@ -393,8 +393,10 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                 const SizedBox(height: 12),
 
                 // NEW: Show Interpreter ID clearly for doctors to copy
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                Wrap(
+                  crossAxisAlignment: WrapCrossAxisAlignment.center,
+                  spacing: 16,
+                  runSpacing: 12,
                   children: [
                     Text(
                       'Ready to bridge the gap? You have completed $_totalSessions sessions.',
@@ -404,7 +406,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(width: 16),
                     // Built-in ID Badge
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -418,8 +419,8 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                           color: Colors.white.withValues(alpha: 0.3),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAxisAlignment.center,
                         children: [
                           const Icon(
                             Icons.badge_outlined,
