@@ -617,10 +617,34 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
 
-    if (isMobile) {
-      return _buildMobileLayout();
+    if (screenWidth < 900) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF1F5F9),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.black87),
+          elevation: 1,
+          title: const Text(
+            'Admin Portal',
+            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+          ),
+        ),
+        drawer: Drawer(
+          child: _buildSidebar(),
+        ),
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                _buildTopBar(),
+                Expanded(child: _buildMainContent()),
+              ],
+            ),
+            if (_isListening) _buildListenPanel(),
+          ],
+        ),
+      );
     }
 
     return Scaffold(
@@ -845,61 +869,70 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
       child: Row(
         children: [
           // Search
-          SizedBox(
-            width: 380,
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search interpreters by name or 5-digit ID...',
-                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: Colors.grey.shade400,
-                  size: 20,
+          Expanded(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search interpreters by name or 5-digit ID...',
+                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: Colors.grey.shade400,
+                    size: 20,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF1F5F9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
-                filled: true,
-                fillColor: const Color(0xFFF1F5F9),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
+                onSubmitted: (_) => _load(reset: true),
               ),
-              onSubmitted: (_) => _load(reset: true),
             ),
           ),
           const SizedBox(width: 16),
-          _buildFilterChip(
-            label: _filterStatusLabel(),
-            icon: Icons.verified_user,
-            items: [
-              {'label': 'All Status', 'value': 'all'},
-              {'label': 'Verified', 'value': 'verified'},
-              {'label': 'Unverified', 'value': 'unverified'},
-            ],
-            value: _filterStatus,
-            onChanged: (val) {
-              setState(() => _filterStatus = val);
-              _load(reset: true);
-            },
-          ),
-          const SizedBox(width: 8),
-          _buildFilterChip(
-            label: _filterAccountLabel(),
-            icon: Icons.manage_accounts,
-            items: [
-              {'label': 'All Accounts', 'value': 'all'},
-              {'label': 'Active', 'value': 'active'},
-              {'label': 'Suspended', 'value': 'suspended'},
-            ],
-            value: _filterAccount,
-            onChanged: (val) {
-              setState(() => _filterAccount = val);
-              _load(reset: true);
-            },
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip(
+                  label: _filterStatusLabel(),
+                  icon: Icons.verified_user,
+                  items: [
+                    {'label': 'All Status', 'value': 'all'},
+                    {'label': 'Verified', 'value': 'verified'},
+                    {'label': 'Unverified', 'value': 'unverified'},
+                  ],
+                  value: _filterStatus,
+                  onChanged: (val) {
+                    setState(() => _filterStatus = val);
+                    _load(reset: true);
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  label: _filterAccountLabel(),
+                  icon: Icons.manage_accounts,
+                  items: [
+                    {'label': 'All Accounts', 'value': 'all'},
+                    {'label': 'Active', 'value': 'active'},
+                    {'label': 'Suspended', 'value': 'suspended'},
+                  ],
+                  value: _filterAccount,
+                  onChanged: (val) {
+                    setState(() => _filterAccount = val);
+                    _load(reset: true);
+                  },
+                ),
+              ],
+            ),
           ),
           const Spacer(),
           IconButton(
@@ -1123,113 +1156,125 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  // Table header
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth > 900 ? constraints.maxWidth : 900,
                       ),
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        SizedBox(width: 48), // Avatar space
-                        SizedBox(width: 16),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            'Interpreter',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
+                      child: Column(
+                        children: [
+                          // Table header
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'User ID',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(12),
+                              ),
+                              border: Border(
+                                bottom: BorderSide(color: Colors.grey.shade200),
+                              ),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Status',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Account',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 44),
-                      ],
-                    ),
-                  ),
-
-                  // Table rows
-                  Expanded(
-                    child:
-                        _items.isEmpty && !_isLoading
-                            ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.search_off,
-                                    size: 48,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'No interpreters found',
+                            child: const Row(
+                              children: [
+                                SizedBox(width: 48), // Avatar space
+                                SizedBox(width: 16),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'Interpreter',
                                     style: TextStyle(
-                                      color: Colors.grey.shade500,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
                                     ),
                                   ),
-                                ],
-                              ),
-                            )
-                            : ListView.builder(
-                              itemCount: _items.length + (_hasMore ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (index == _items.length) {
-                                  return _buildLoadMore();
-                                }
-                                return _buildTableRow(
-                                  _items[index] as Map,
-                                  index,
-                                );
-                              },
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'User ID',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Status',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Account',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 44),
+                              ],
                             ),
-                  ),
-                ],
+                          ),
+
+                          // Table rows
+                          Expanded(
+                            child:
+                                _items.isEmpty && !_isLoading
+                                    ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.search_off,
+                                            size: 48,
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'No interpreters found',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                    : ListView.builder(
+                                      itemCount: _items.length + (_hasMore ? 1 : 0),
+                                      itemBuilder: (context, index) {
+                                        if (index == _items.length) {
+                                          return _buildLoadMore();
+                                        }
+                                        return _buildTableRow(
+                                          _items[index] as Map,
+                                          index,
+                                        );
+                                      },
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -1244,36 +1289,39 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     final unverified = total - verified;
     final suspended = _items.where((i) => i['is_suspended'] == true).length;
 
-    return Row(
-      children: [
-        _buildSummaryCard(
-          'Total Loaded',
-          '$total${_hasMore ? '+' : ''}',
-          Icons.people,
-          const Color(0xFF3B82F6),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Verified',
-          '$verified',
-          Icons.verified_user,
-          const Color(0xFF10B981),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Unverified',
-          '$unverified',
-          Icons.pending,
-          const Color(0xFFF59E0B),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Suspended',
-          '$suspended',
-          Icons.block,
-          const Color(0xFFEF4444),
-        ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildSummaryCard(
+            'Total Loaded',
+            '$total${_hasMore ? '+' : ''}',
+            Icons.people,
+            const Color(0xFF3B82F6),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Verified',
+            '$verified',
+            Icons.verified_user,
+            const Color(0xFF10B981),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Unverified',
+            '$unverified',
+            Icons.pending,
+            const Color(0xFFF59E0B),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Suspended',
+            '$suspended',
+            Icons.block,
+            const Color(0xFFEF4444),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1283,33 +1331,34 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     IconData icon,
     Color color,
   ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return Container(
+      width: 250,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Column(
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -1318,16 +1367,18 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   label,
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1606,128 +1657,140 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  // Table header
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth > 900 ? constraints.maxWidth : 900,
                       ),
-                      border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Requester',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
+                      child: Column(
+                        children: [
+                          // Table header
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Interpreter',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(12),
+                              ),
+                              border: Border(
+                                bottom: BorderSide(color: Colors.grey.shade200),
+                              ),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Languages',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Duration',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Cost',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            'Date / Time',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Rows
-                  Expanded(
-                    child:
-                        _isLoadingCalls
-                            ? const Center(child: CircularProgressIndicator())
-                            : _callLogs.isEmpty
-                            ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.phone_missed,
-                                    size: 48,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'No call logs yet',
+                            child: const Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Requester',
                                     style: TextStyle(
-                                      color: Colors.grey.shade500,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
                                     ),
                                   ),
-                                ],
-                              ),
-                            )
-                            : ListView.builder(
-                              itemCount: _callLogs.length,
-                              itemBuilder: (context, index) {
-                                return _buildCallLogRow(
-                                  _callLogs[index],
-                                  index,
-                                );
-                              },
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Interpreter',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Languages',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Duration',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Cost',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Date / Time',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                  ),
-                ],
+                          ),
+                          // Rows
+                          Expanded(
+                            child:
+                                _isLoadingCalls
+                                    ? const Center(child: CircularProgressIndicator())
+                                    : _callLogs.isEmpty
+                                    ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.phone_missed,
+                                            size: 48,
+                                            color: Colors.grey.shade300,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'No call logs yet',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                    : ListView.builder(
+                                      itemCount: _callLogs.length,
+                                      itemBuilder: (context, index) {
+                                        return _buildCallLogRow(
+                                          _callLogs[index],
+                                          index,
+                                        );
+                                      },
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -1749,36 +1812,39 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
       (sum, c) => sum + ((c['cost'] as num?)?.toDouble() ?? 0.0),
     );
 
-    return Row(
-      children: [
-        _buildSummaryCard(
-          'Total Calls',
-          '$totalCalls',
-          Icons.phone,
-          const Color(0xFF3B82F6),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Total Hours',
-          totalHours,
-          Icons.access_time,
-          const Color(0xFF10B981),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Active Now',
-          '$activeCalls',
-          Icons.phone_in_talk,
-          const Color(0xFF22C55E),
-        ),
-        const SizedBox(width: 16),
-        _buildSummaryCard(
-          'Total Cost',
-          '\$${totalCost.toStringAsFixed(2)}',
-          Icons.attach_money,
-          const Color(0xFFF59E0B),
-        ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildSummaryCard(
+            'Total Calls',
+            '$totalCalls',
+            Icons.phone,
+            const Color(0xFF3B82F6),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Total Hours',
+            totalHours,
+            Icons.access_time,
+            const Color(0xFF10B981),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Active Now',
+            '$activeCalls',
+            Icons.phone_in_talk,
+            const Color(0xFF22C55E),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Total Cost',
+            '\$${totalCost.toStringAsFixed(2)}',
+            Icons.attach_money,
+            const Color(0xFFF59E0B),
+          ),
+        ],
+      ),
     );
   }
 

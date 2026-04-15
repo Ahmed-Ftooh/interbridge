@@ -40,11 +40,26 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isCompact = screenWidth < 1200;
-    final isMobile = screenWidth < 768;
 
-    // On mobile, use bottom nav instead
-    if (isMobile) {
-      return _buildMobileLayout();
+    if (screenWidth < 900) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: _buildMobileAppBar(),
+        drawer: Drawer(
+          child: _buildSidebar(false),
+        ),
+        body: Column(
+          children: [
+            if (screenWidth >= 768) _buildHeader(),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                child: widget.child,
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Scaffold(
@@ -72,19 +87,11 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
     );
   }
 
-  Widget _buildMobileLayout() {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildMobileAppBar(),
-      body: widget.child,
-      bottomNavigationBar: _buildMobileBottomNav(),
-    );
-  }
-
   PreferredSizeWidget _buildMobileAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
+      iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
       title: Row(
         children: [
           Container(
@@ -113,78 +120,6 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
         ],
       ),
       actions: const [],
-    );
-  }
-
-  Widget _buildMobileBottomNav() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children:
-                _getNavItems()
-                    .asMap()
-                    .entries
-                    .map((e) => _buildMobileNavItem(e.key, e.value))
-                    .toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMobileNavItem(int index, _NavItem item) {
-    final isSelected = widget.currentIndex == index;
-    return InkWell(
-      onTap: () => widget.onNavigationChanged(index),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? const Color(0xFF0955FA).withValues(alpha: 0.1)
-                  : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              item.icon,
-              color:
-                  isSelected
-                      ? const Color(0xFF0955FA)
-                      : const Color(0xFF94A3B8),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              item.label,
-              style: TextStyle(
-                color:
-                    isSelected
-                        ? const Color(0xFF0955FA)
-                        : const Color(0xFF94A3B8),
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
