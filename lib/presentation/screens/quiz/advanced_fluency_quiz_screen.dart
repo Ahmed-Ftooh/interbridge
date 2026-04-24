@@ -27,7 +27,7 @@ class AdvancedFluencyQuizScreen extends StatefulWidget {
 }
 
 class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
-  static const int _maxListeningPlays = 2;
+  static const int _maxListeningPlays = 1;
 
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _recordingPlayer;
@@ -50,87 +50,8 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   static const List<_FluencyQuestion> _questions = [
     _FluencyQuestion(
       id: 's1_q1',
-      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
+      sectionTitle: 'Section 1 - Listening & Comprehension Check',
       questionTitle: 'Question 1',
-      prompt:
-          'Introduce yourself as if you are meeting a colleague for the first time. Include your name, background, education, work experience, and your main skills or interests.',
-      guidePrompts: [
-        'Name and background',
-        'Education',
-        'Work experience',
-        'Main skills and interests',
-      ],
-      suggestedSeconds: 90,
-    ),
-    _FluencyQuestion(
-      id: 's1_q2',
-      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
-      questionTitle: 'Question 2',
-      prompt:
-          'Do you prefer explaining things in English or your native language? Why?',
-      guidePrompts: ['Choose one preference', 'Explain your reason clearly'],
-      suggestedSeconds: 60,
-    ),
-    _FluencyQuestion(
-      id: 's1_q3',
-      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
-      questionTitle: 'Question 3',
-      prompt:
-          'Explain a simple idea, such as how to learn a new skill, manage time, or stay organized.',
-      guidePrompts: [
-        'Pick one simple idea',
-        'Break it into steps',
-        'Use clear transitions',
-      ],
-      suggestedSeconds: 75,
-    ),
-    _FluencyQuestion(
-      id: 's1_q4',
-      sectionTitle: 'Section 1 - Warm-up / Self-Introduction',
-      questionTitle: 'Question 4',
-      prompt:
-          'While speaking English, what do you find most challenging: fluency, vocabulary, or grammar? Explain with an example.',
-      guidePrompts: ['Choose one challenge', 'Give a real example'],
-      suggestedSeconds: 75,
-    ),
-    _FluencyQuestion(
-      id: 's2_q1',
-      sectionTitle: 'Section 2 - Extended Speaking / Fluency and Organization',
-      questionTitle: 'Question 1',
-      prompt:
-          'Some people believe working remotely requires stronger communication skills than on-site work. Do you agree or disagree? Explain your opinion and give examples.',
-      guidePrompts: [
-        'State your opinion',
-        'Provide at least one example',
-        'Support your reasoning',
-      ],
-      suggestedSeconds: 120,
-    ),
-    _FluencyQuestion(
-      id: 's2_q2',
-      sectionTitle: 'Section 2 - Extended Speaking / Fluency and Organization',
-      questionTitle: 'Question 2',
-      prompt: 'Why do you want to be a medical interpreter?',
-      guidePrompts: ['Motivation', 'Personal values', 'Career goals'],
-      suggestedSeconds: 90,
-    ),
-    _FluencyQuestion(
-      id: 's3_q1',
-      sectionTitle: 'Section 3 - Picture Description',
-      questionTitle: 'Question 1 (Picture 1)',
-      prompt: 'Describe the picture in detail.',
-      guidePrompts: [
-        'Who is in the picture?',
-        'What is the interpreter doing?',
-        'Why is the interpreter important in this situation?',
-      ],
-      suggestedSeconds: 90,
-      imageAsset: ImageAssets.picture1,
-    ),
-    _FluencyQuestion(
-      id: 's3_q2',
-      sectionTitle: 'Section 3 - Picture Description',
-      questionTitle: 'Question 2 (Picture 2)',
       prompt: 'Describe the picture in detail.',
       guidePrompts: [
         'Describe the overall scene and what is happening',
@@ -141,48 +62,92 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
       imageAsset: ImageAssets.picture2,
     ),
     _FluencyQuestion(
-      id: 's4_q1',
-      sectionTitle: 'Section 4 - Listening + Speaking',
-      questionTitle: 'Question 1',
+      id: 's1_q2',
+      sectionTitle: 'Section 1 - Listening & Comprehension Check',
+      questionTitle: 'Question 2',
       prompt: 'Summarize what the speaker said in your own words.',
       guidePrompts: [
         'Listen to the provided audio first',
         'Give a clear summary',
       ],
       suggestedSeconds: 75,
-      listeningAudioAsset: AudioAssets.firstTest,
+      listeningAudioAsset: AudioAssets.test1,
     ),
     _FluencyQuestion(
-      id: 's4_q2',
-      sectionTitle: 'Section 4 - Listening + Speaking',
-      questionTitle: 'Question 2',
+      id: 's2_q1_native',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 1 (Native Language)',
       prompt:
-          'Explain what he is afraid of and what he finds exciting. Then describe what frightens you the most.',
-      guidePrompts: [
-        'Identify his fear',
-        'Identify what excites him',
-        'Share your own fear clearly',
-      ],
-      suggestedSeconds: 90,
-      listeningAudioAsset: AudioAssets.secondTest,
+          'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
+      guidePrompts: ['Listen and take notes', 'Interpret to native language'],
+      suggestedSeconds: 120,
+      listeningAudioAsset: AudioAssets.audioTest1,
     ),
     _FluencyQuestion(
-      id: 's5_q1',
-      sectionTitle: 'Section 5 - Language Control / Advanced',
-      questionTitle: 'Question 1',
+      id: 's2_q1_english',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 1 (English)',
       prompt:
-          'Explain the difference between something that is urgent and something that is important, using examples.',
-      guidePrompts: ['Define urgent vs important', 'Give practical examples'],
-      suggestedSeconds: 90,
+          'Based on the previous recording and your notes, please repeat the message in English.',
+      guidePrompts: ['Repeat in English'],
+      suggestedSeconds: 120,
     ),
     _FluencyQuestion(
-      id: 's5_q2',
-      sectionTitle: 'Section 5 - Language Control / Advanced',
-      questionTitle: 'Question 2',
+      id: 's2_q2_native',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 2 (Native Language)',
       prompt:
-          "Correct the sentence and explain why: 'If he would have listened, the problem didn't happen.'",
-      guidePrompts: ['Say the corrected sentence', 'Explain the grammar rule'],
-      suggestedSeconds: 90,
+          'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
+      guidePrompts: ['Listen and take notes', 'Interpret to native language'],
+      suggestedSeconds: 120,
+      listeningAudioAsset: AudioAssets.audioTest2,
+    ),
+    _FluencyQuestion(
+      id: 's2_q2_english',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 2 (English)',
+      prompt:
+          'Based on the previous recording and your notes, please repeat the message in English.',
+      guidePrompts: ['Repeat in English'],
+      suggestedSeconds: 120,
+    ),
+    _FluencyQuestion(
+      id: 's2_q3_native',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 3 (Native Language)',
+      prompt:
+          'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
+      guidePrompts: ['Listen and take notes', 'Interpret to native language'],
+      suggestedSeconds: 120,
+      listeningAudioAsset: AudioAssets.audioTest3,
+    ),
+    _FluencyQuestion(
+      id: 's2_q3_english',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 3 (English)',
+      prompt:
+          'Based on the previous recording and your notes, please repeat the message in English.',
+      guidePrompts: ['Repeat in English'],
+      suggestedSeconds: 120,
+    ),
+    _FluencyQuestion(
+      id: 's2_q4_native',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 4 (Native Language)',
+      prompt:
+          'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
+      guidePrompts: ['Listen and take notes', 'Interpret to native language'],
+      suggestedSeconds: 120,
+      listeningAudioAsset: AudioAssets.audioTest4,
+    ),
+    _FluencyQuestion(
+      id: 's2_q4_english',
+      sectionTitle: 'Section 2 - Interpretation Simulation',
+      questionTitle: 'Simulation 4 (English)',
+      prompt:
+          'Based on the previous recording and your notes, please repeat the message in English.',
+      guidePrompts: ['Repeat in English'],
+      suggestedSeconds: 120,
     ),
   ];
 
@@ -380,12 +345,10 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
       final usedStarts = _listensUsedForQuestion(questionId);
       if (usedStarts >= _maxListeningPlays) {
         _showMessage(
-          'Listening is locked for this question. You have used both attempts.',
+          'Listening is locked for this question. You have used your only attempt.',
         );
         return;
       }
-
-      await _recordingPlayer.stop();
 
       if (kIsWeb) {
         inline_audio.disposeInlineAudio(_webListeningHandle);

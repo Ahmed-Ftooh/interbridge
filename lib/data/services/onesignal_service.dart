@@ -447,6 +447,12 @@ class OneSignalService {
   /// Manually refresh and register player ID
   /// Call this after login to ensure player ID is registered
   Future<void> refreshPlayerId() async {
+    if (kIsWeb) {
+      // Web path uses Supabase realtime/browser notifications.
+      // No OneSignal push subscription is expected here.
+      return;
+    }
+
     // Telemetry hidden
     _playerId = impl.OneSignal.User.pushSubscription.id;
     // Telemetry hidden

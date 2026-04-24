@@ -20,15 +20,7 @@ class _GovernmentIdUploadWebScreenState
     extends State<GovernmentIdUploadWebScreen> {
   Uint8List? _idBytes;
   String? _fileName;
-  String _selectedIdType = 'national_id';
   bool _isSaving = false;
-
-  static const _idTypes = [
-    ('national_id', 'National ID'),
-    ('passport', 'Passport'),
-    ('drivers_license', "Driver's License"),
-    ('residence_permit', 'Residence Permit'),
-  ];
 
   Future<void> _pickFile() async {
     try {
@@ -144,7 +136,7 @@ class _GovernmentIdUploadWebScreenState
 
           // ID Type selector
           const Text(
-            'Document type',
+            'Document Type',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -153,36 +145,26 @@ class _GovernmentIdUploadWebScreenState
           ),
           const SizedBox(height: 8),
           Container(
+            width: double.infinity,
             decoration: BoxDecoration(
               border: Border.all(color: const Color(0xFFE2E8F0)),
               borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFFF8FAFC),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedIdType,
-                isExpanded: true,
-                icon: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Color(0xFF64748B),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: const Row(
+              children: [
+                Icon(Icons.badge_outlined, color: Color(0xFF64748B), size: 20),
+                SizedBox(width: 10),
+                Text(
+                  'National ID',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                  ),
                 ),
-                style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
-                items:
-                    _idTypes
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t.$1,
-                            child: Text(
-                              t.$2,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _selectedIdType = v);
-                },
-              ),
+              ],
             ),
           ),
           const SizedBox(height: 24),

@@ -117,7 +117,8 @@ Deno.serve(async (req) => {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              from: "Interbridge Admin <noreply@interbridgehub.com>",
+              from: "Interbridge Admin <noreply@interbridge-ling.com>",
+              to: ["noreply@interbridge-ling.com"],
               bcc: emailChunk,
               subject: subject,
               html: `
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
           if (!resendResp.ok) {
             const errBody = await resendResp.text();
             console.error(`Resend API Error (chunk ${i}):`, errBody);
-            errors.push(`Email error chunk ${i}: ${resendResp.status}`);
+            errors.push(`Email error chunk ${i}: ${resendResp.status} - ${errBody}`);
           } else {
             emailsQueued += emailChunk.length;
           }

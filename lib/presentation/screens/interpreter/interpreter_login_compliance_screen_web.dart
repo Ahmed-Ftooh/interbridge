@@ -220,8 +220,13 @@ class _InterpreterLoginComplianceScreenState
   Widget build(BuildContext context) {
     final bool canCapture = !_isUploading && _cameraReady && !_cameraStarting;
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double previewMaxWidth = screenWidth >= 1200 ? 920 : 760;
-    const double previewAspectRatio = 4 / 3;
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final bool compactHeight = screenHeight <= 850;
+    final double previewMaxWidth =
+        compactHeight
+            ? (screenWidth >= 1200 ? 760 : 620)
+            : (screenWidth >= 1200 ? 920 : 760);
+    const double previewAspectRatio = 16 / 9;
 
     return WillPopScope(
       onWillPop: () async => false,
@@ -232,7 +237,10 @@ class _InterpreterLoginComplianceScreenState
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: compactHeight ? 14 : 20,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -266,7 +274,7 @@ class _InterpreterLoginComplianceScreenState
                     style: TextStyle(fontSize: 13.5),
                   ),
                 ),
-                const SizedBox(height: 20),
+                SizedBox(height: compactHeight ? 14 : 20),
                 if (_cameraError != null)
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -388,7 +396,7 @@ class _InterpreterLoginComplianceScreenState
                   ),
                 ),
                 if (_photoBytes != null) ...[
-                  const SizedBox(height: 14),
+                  SizedBox(height: compactHeight ? 10 : 14),
                   Center(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: previewMaxWidth),
@@ -413,7 +421,7 @@ class _InterpreterLoginComplianceScreenState
                     label: const Text('Retake selfie'),
                   ),
                 ],
-                const SizedBox(height: 20),
+                SizedBox(height: compactHeight ? 14 : 20),
                 SizedBox(
                   height: 48,
                   child: ElevatedButton(

@@ -316,20 +316,22 @@ class _InterpreterTrackSelectionWebScreenState
               ? InterpreterTrack.volunteer
               : InterpreterTrack.paid;
 
-      // Update users_profile
+      // Ensure profile is in interpreter mode for portal consistency.
       await Supabase.instance.client
           .from('users_profile')
-          .update({'employment_type': track.name})
-          .eq('user_id', userId);
-
-      // Update interpreter_details status
-      await Supabase.instance.client
-          .from('interpreter_details')
           .update({
-            'onboarding_status': 'track_selected',
+            'role': 'interpreter',
             'employment_type': track.name,
           })
           .eq('user_id', userId);
+
+      // Upsert interpreter details status so onboarding works even when the
+      // row does not exist yet (e.g. recovered requester account).
+      await Supabase.instance.client.from('interpreter_details').upsert({
+        'user_id': userId,
+        'onboarding_status': 'track_selected',
+        'employment_type': track.name,
+      }, onConflict: 'user_id');
 
       if (!mounted) return;
 

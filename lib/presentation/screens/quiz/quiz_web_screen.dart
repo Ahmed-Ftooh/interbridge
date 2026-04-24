@@ -57,6 +57,17 @@ class _QuizWebScreenState extends State<QuizWebScreen>
   int _screenshotAttempts = 0;
   DateTime? _sessionStartAt;
   bool _isFakeRecording = false;
+  String _friendlyQuizSaveError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('401') ||
+        message.contains('403') ||
+        message.contains('jwt') ||
+        message.contains('token') ||
+        message.contains('auth')) {
+      return 'Your session expired. Please sign in again.';
+    }
+    return 'Could not save quiz results right now. Please try again.';
+  }
   bool _cameraActive = false;
   html.MediaStream? _cameraStream;
   html.VideoElement? _videoElement;
@@ -170,7 +181,6 @@ class _QuizWebScreenState extends State<QuizWebScreen>
       final rng = Random();
       questions.shuffle(rng);
 
-      // Prepare per-question option shuffles
       for (int i = 0; i < questions.length; i++) {
         final optIndices = List<int>.generate(
           questions[i].options.length,
@@ -478,46 +488,60 @@ class _QuizWebScreenState extends State<QuizWebScreen>
 
     try {
       final user = _supabase.getCurrentUser();
-      if (user != null) {
-        final answersJson = _selectedAnswers.map(
-          (key, value) => MapEntry(key.toString(), value),
-        );
+      if (user == null) {
+        throw Exception('Not authenticated');
+      }
 
-        // Collect browser info
-        final browserInfo =
-            '${html.window.navigator.userAgent} | ${html.window.screen?.width}x${html.window.screen?.height}';
+      final answersJson = _selectedAnswers.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
 
-        await _supabase.submitQuizAttempt({
-          'user_id': user.id,
-          'quiz_type': widget.quizType,
-          if (widget.medicalSection != null)
-            'medical_section': widget.medicalSection,
-          'total_questions': _questions.length,
-          'correct_answers': correctCount,
-          'score_percentage': score.toDouble(),
-          'time_taken_seconds': _totalTimeSpent,
-          'passed': passed,
-          'answers': answersJson,
-          // Anti-cheat fields
-          'tab_switches': _tabSwitchCount,
-          'copy_paste_attempts': _copyPasteAttempts,
-          'screenshot_attempts': _screenshotAttempts,
-          'session_start_at': _sessionStartAt?.toIso8601String(),
-          'session_end_at': sessionEndAt.toIso8601String(),
-          'browser_info': browserInfo,
-          'is_flagged': isFlagged,
-        });
+      // Collect browser info
+      final browserInfo =
+          '${html.window.navigator.userAgent} | ${html.window.screen?.width}x${html.window.screen?.height}';
 
-        if (passed && !isFlagged) {
-          final badgeType =
-              widget.quizType == 'general'
-                  ? 'general'
-                  : widget.medicalSection ?? 'general_medical';
+      await _supabase.submitQuizAttempt({
+        'user_id': user.id,
+        'quiz_type': widget.quizType,
+        if (widget.medicalSection != null)
+          'medical_section': widget.medicalSection,
+        'total_questions': _questions.length,
+        'correct_answers': correctCount,
+        'score_percentage': score.toDouble(),
+        'time_taken_seconds': _totalTimeSpent,
+        'passed': passed,
+        'answers': answersJson,
+        // Anti-cheat fields
+        'tab_switches': _tabSwitchCount,
+        'copy_paste_attempts': _copyPasteAttempts,
+        'screenshot_attempts': _screenshotAttempts,
+        'session_start_at': _sessionStartAt?.toIso8601String(),
+        'session_end_at': sessionEndAt.toIso8601String(),
+        'browser_info': browserInfo,
+        'is_flagged': isFlagged,
+      });
+
+      if (passed && !isFlagged) {
+        final badgeType =
+            widget.quizType == 'general'
+                ? 'general'
+                : widget.medicalSection ?? 'general_medical';
+        try {
           await _supabase.awardBadge(
             userId: user.id,
             badge: badgeType,
             score: score,
           );
+        } catch (badgeError) {
+          debugPrint('Quiz saved but badge award failed: $badgeError');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Quiz saved, but badge sync is pending.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
       }
     } catch (e) {
@@ -525,7 +549,7 @@ class _QuizWebScreenState extends State<QuizWebScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save quiz results: $e'),
+            content: Text(_friendlyQuizSaveError(e)),
             backgroundColor: Colors.red,
           ),
         );

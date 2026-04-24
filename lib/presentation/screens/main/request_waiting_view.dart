@@ -227,6 +227,13 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
                   requesterId: requesterId,
                   interpreterId: interpreterId,
                   currentScreen: 'call',
+                  callData: {
+                    'call_type':
+                        newRow['call_type']?.toString() ?? widget.callType,
+                    'accepted_at': newRow['accepted_at']?.toString(),
+                    'waiting_started_at': DateTime.now().toIso8601String(),
+                    'remote_joined': false,
+                  },
                 );
 
                 if (mounted) {
@@ -459,7 +466,9 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
       final response =
           await _client
               .from('interpreter_requests')
-              .select('status, accepted_by, requester_id')
+              .select(
+                'status, accepted_by, requester_id, call_type, accepted_at',
+              )
               .eq('id', currentRequest.id)
               .maybeSingle();
 
@@ -482,6 +491,12 @@ class _RequestWaitingViewState extends State<RequestWaitingView>
         requesterId: requesterId,
         interpreterId: interpreterId,
         currentScreen: 'call',
+        callData: {
+          'call_type': response['call_type']?.toString() ?? widget.callType,
+          'accepted_at': response['accepted_at']?.toString(),
+          'waiting_started_at': DateTime.now().toIso8601String(),
+          'remote_joined': false,
+        },
       );
 
       if (!mounted) return;

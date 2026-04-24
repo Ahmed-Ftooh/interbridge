@@ -39,6 +39,17 @@ class _QuizScreenState extends State<QuizScreen> {
   late int _timePerQuestion;
   late int _timeLeft;
   int? _finalScore;
+  String _friendlyQuizSaveError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('401') ||
+        message.contains('403') ||
+        message.contains('jwt') ||
+        message.contains('token') ||
+        message.contains('auth')) {
+      return 'Your session expired. Please sign in again.';
+    }
+    return 'Could not save quiz results right now. Please try again.';
+  }
   int _totalTimeSpent = 0;
 
   @override
@@ -154,44 +165,57 @@ class _QuizScreenState extends State<QuizScreen> {
     // Submit to backend
     try {
       final user = _supabase.getCurrentUser();
-      if (user != null) {
-        debugPrint('Submitting quiz attempt for user: ${user.id}');
+      if (user == null) {
+        throw Exception('Not authenticated');
+      }
 
-        // Convert answers map to have string keys for JSON compatibility
-        final answersJson = _selectedAnswers.map(
-          (key, value) => MapEntry(key.toString(), value),
-        );
+      debugPrint('Submitting quiz attempt for user: ${user.id}');
 
-        // Save quiz attempt
-        await _supabase.submitQuizAttempt({
-          'user_id': user.id,
-          'quiz_type': widget.quizType,
-          if (widget.medicalSection != null)
-            'medical_section': widget.medicalSection,
-          'total_questions': _questions.length,
-          'correct_answers': correctCount,
-          'score_percentage': score.toDouble(),
-          'time_taken_seconds': _totalTimeSpent,
-          'passed': passed,
-          'answers': answersJson,
-        });
-        debugPrint('Quiz attempt saved successfully');
+      // Convert answers map to have string keys for JSON compatibility
+      final answersJson = _selectedAnswers.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
 
-        // Award badge if passed
-        if (passed) {
-          final badgeType =
-              widget.quizType == 'general'
-                  ? 'general'
-                  : widget.medicalSection ?? 'general_medical';
+      // Save quiz attempt
+      await _supabase.submitQuizAttempt({
+        'user_id': user.id,
+        'quiz_type': widget.quizType,
+        if (widget.medicalSection != null)
+          'medical_section': widget.medicalSection,
+        'total_questions': _questions.length,
+        'correct_answers': correctCount,
+        'score_percentage': score.toDouble(),
+        'time_taken_seconds': _totalTimeSpent,
+        'passed': passed,
+        'answers': answersJson,
+      });
+      debugPrint('Quiz attempt saved successfully');
+
+      // Award badge if passed
+      if (passed) {
+        final badgeType =
+            widget.quizType == 'general'
+                ? 'general'
+                : widget.medicalSection ?? 'general_medical';
+        try {
           await _supabase.awardBadge(
             userId: user.id,
             badge: badgeType,
             score: score,
           );
           debugPrint('Badge awarded: $badgeType with score $score');
+        } catch (badgeError) {
+          debugPrint('Quiz saved but badge award failed: $badgeError');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Quiz saved, but badge sync is pending.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
         }
-      } else {
-        debugPrint('No user found - cannot save quiz results');
       }
     } catch (e, stackTrace) {
       debugPrint('Failed to submit quiz attempt: $e');
@@ -199,7 +223,7 @@ class _QuizScreenState extends State<QuizScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save quiz results: $e'),
+            content: Text(_friendlyQuizSaveError(e)),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),

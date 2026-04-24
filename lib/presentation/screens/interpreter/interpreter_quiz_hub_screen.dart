@@ -69,6 +69,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
       'title': 'Dermatology',
       'icon': FontAwesomeIcons.handDots,
     },
+    {'id': 'ear_and_eye', 'title': 'Ear and Eye', 'icon': FontAwesomeIcons.eye},
   ];
 
   // Total number of medical quizzes (all must be completed)
@@ -363,7 +364,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
                 _buildQuizCard(
                   title: advancedFluencyQuizTitle,
                   subtitle:
-                      '$advancedFluencyQuestionCount recorded answers across 5 sections',
+                      '$advancedFluencyQuestionCount recorded answers across 2 sections',
                   icon: Icons.record_voice_over,
                   isPassed: false,
                   onTap: _takeAdvancedFluencyQuiz,

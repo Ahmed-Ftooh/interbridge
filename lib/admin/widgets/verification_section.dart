@@ -4,12 +4,16 @@ import 'package:interbridge/admin/services/admin_service.dart';
 class VerificationSection extends StatefulWidget {
   final String userId;
   final Map details;
+  final String? interpreterEmail;
+  final String? interpreterName;
   final VoidCallback onChanged;
 
   const VerificationSection({
     super.key,
     required this.userId,
     required this.details,
+    this.interpreterEmail,
+    this.interpreterName,
     required this.onChanged,
   });
 
@@ -54,6 +58,24 @@ class _VerificationSectionState extends State<VerificationSection> {
     setState(() => _busy = true);
     try {
       await _service.setInterpreterVerification(widget.userId, verified: value);
+      String? emailWarning;
+
+      if (value) {
+        final email = widget.interpreterEmail?.trim();
+        try {
+          await _service.sendVerificationEmail(
+            userId: widget.userId,
+            to: email,
+            interpreterName:
+                (widget.interpreterName?.trim().isNotEmpty ?? false)
+                    ? widget.interpreterName!.trim()
+                    : 'Interpreter',
+          );
+        } catch (e) {
+          emailWarning = 'Interpreter verified, but email was not sent: $e';
+        }
+      }
+
       widget.onChanged();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -64,6 +86,15 @@ class _VerificationSectionState extends State<VerificationSection> {
             backgroundColor: value ? Colors.green : Colors.orange,
           ),
         );
+
+        if (emailWarning != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(emailWarning),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

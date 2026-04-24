@@ -6,6 +6,7 @@ import 'package:interbridge/admin/services/admin_service.dart';
 import 'package:interbridge/admin/widgets/admin_stats_card.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/call_service.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -314,12 +315,15 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
   }
 
   Widget _buildQuickStatusRow() {
-    final phoneVerified = _phoneVerification?['verified'] == true;
+    final phoneNumber = _phoneVerification?['phone_number']?.toString().trim();
+    final hasPhoneNumber = phoneNumber != null && phoneNumber.isNotEmpty;
     final hasGovId = _governmentIds.isNotEmpty;
-    final govIdStatus =
+    final govIdStatus = _normalizeGovIdStatus(
         hasGovId
             ? (_governmentIds.first['status']?.toString() ?? 'pending')
-            : 'none';
+            : 'none',
+      );
+    final govIdReady = hasGovId && govIdStatus != 'rejected';
     final quizPassed = _quizAttempts.any((q) => q['passed'] == true);
     final hasFlaggedQuiz = _quizAttempts.any((q) => q['is_flagged'] == true);
     final hasVoiceSamples = _voiceSamples.isNotEmpty;
@@ -334,15 +338,15 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
         runSpacing: 12,
         children: [
           _buildProgressChip(
-            'Phone Verified',
-            phoneVerified,
-            phoneVerified ? Icons.check_circle : Icons.phone_disabled,
+            'Phone Provided',
+            hasPhoneNumber,
+            hasPhoneNumber ? Icons.phone : Icons.phone_disabled,
           ),
           _buildProgressChip(
             'Gov ID: ${govIdStatus.toUpperCase()}',
-            govIdStatus == 'approved',
+            govIdReady,
             hasGovId ? Icons.badge : Icons.no_accounts,
-            warning: govIdStatus == 'pending',
+            isError: govIdStatus == 'rejected',
           ),
           _buildProgressChip(
             'Quiz Passed',
@@ -637,6 +641,8 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
   Widget _buildPhoneVerificationCard() {
     final pv = _phoneVerification;
     final phoneVerified = pv?['verified'] == true;
+    final hasPhone =
+        (pv?['phone_number']?.toString().trim().isNotEmpty ?? false);
 
     return _buildSectionCard(
       'Phone Verification',
@@ -653,7 +659,9 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
                   _infoRow('Email', pv['email'] ?? 'N/A'),
                   _infoRow(
                     'Status',
-                    phoneVerified ? 'VERIFIED ✓' : 'NOT VERIFIED',
+                    phoneVerified
+                        ? 'VERIFIED \u2713'
+                        : (hasPhone ? 'RECORDED (OTP not required)' : 'NOT PROVIDED'),
                   ),
                   if (pv['verified_at'] != null)
                     _infoRow(
@@ -680,7 +688,9 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
       child: Column(
         children:
             _governmentIds.map<Widget>((gid) {
-              final status = gid['status']?.toString() ?? 'pending';
+              final status = _normalizeGovIdStatus(
+                gid['status']?.toString() ?? 'pending',
+              );
               final fileName = gid['file_name']?.toString() ?? 'document';
               final uploadedAt =
                   gid['uploaded_at']?.toString().split('T')[0] ?? '';
@@ -691,6 +701,9 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
               switch (status) {
                 case 'approved':
                   statusColor = const Color(0xFF10B981);
+                  break;
+                case 'uploaded':
+                  statusColor = const Color(0xFF2563EB);
                   break;
                 case 'rejected':
                   statusColor = Colors.red;
@@ -796,9 +809,9 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
                         const Spacer(),
                         // Status is read-only — shown as badge above
                         Text(
-                          status == 'pending'
-                              ? 'Awaiting review'
-                              : status == 'approved'
+                          status == 'uploaded'
+                            ? 'Document uploaded'
+                            : status == 'approved'
                               ? 'Document verified'
                               : 'Document rejected',
                           style: TextStyle(
@@ -815,6 +828,13 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
             }).toList(),
       ),
     );
+  }
+
+  String _normalizeGovIdStatus(String? status) {
+    final normalized = (status ?? '').toLowerCase().trim();
+    if (normalized == 'pending') return 'uploaded';
+    if (normalized.isEmpty) return 'none';
+    return normalized;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -1812,20 +1832,20 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
         widget.userId,
         verified: verify,
       );
+      String? emailWarning;
 
       // Send verification email when approving
       if (verify) {
         final email = _profile['email']?.toString();
         final name = _profile['username']?.toString() ?? 'Interpreter';
-        if (email != null && email.isNotEmpty) {
-          try {
-            await _service.sendVerificationEmail(
-              to: email,
-              interpreterName: name,
-            );
-          } catch (_) {
-            // Email is best-effort; don't block verification
-          }
+        try {
+          await _service.sendVerificationEmail(
+            userId: widget.userId,
+            to: email,
+            interpreterName: name,
+          );
+        } catch (e) {
+          emailWarning = 'Interpreter verified, but email was not sent: $e';
         }
       }
 
@@ -1833,6 +1853,11 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
         verify ? 'Interpreter verified' : 'Verification revoked',
         color: verify ? const Color(0xFF10B981) : Colors.orange,
       );
+
+      if (emailWarning != null) {
+        _snack(emailWarning, color: Colors.orange);
+      }
+
       _load();
     } catch (e) {
       _snack('Error: $e', color: Colors.red);
@@ -2013,7 +2038,10 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
 
     if (confirmed == true) {
       try {
-        await Supabase.instance.client.auth.resetPasswordForEmail(email);
+        await SupabaseService().sendPasswordResetEmail(
+          email: email,
+          portalHint: 'interpreter',
+        );
         _snack('Password reset email sent', color: const Color(0xFF10B981));
       } catch (e) {
         _snack('Error: $e', color: Colors.red);

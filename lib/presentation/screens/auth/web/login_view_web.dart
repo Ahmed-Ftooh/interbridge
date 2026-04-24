@@ -66,27 +66,6 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     // Immediate check — session may already be available
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null && user.emailConfirmedAt != null) {
-      try {
-        final profile = await _supabaseService
-            .getUserProfile(user.id)
-            .timeout(const Duration(seconds: 5));
-
-        if (profile?.role == 'interpreter') {
-          await _supabaseService.signOut();
-          await _appPreferences.logout();
-          if (!mounted) return;
-          CustomSnackBar.show(
-            context,
-            message:
-                'For security, interpreters must sign in every time the app opens.',
-            type: SnackBarType.info,
-          );
-          return;
-        }
-      } catch (e) {
-        log('LoginViewWeb: failed role check for existing auth: $e');
-      }
-
       if (_isNavigating) return;
       _isNavigating = true;
       AppInitializer.markInitialAuthHandled();
@@ -209,6 +188,115 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         return Routes.interpreterPortalLoginRoute;
       default:
         return Routes.loginRoute;
+    }
+  }
+
+  Future<String?> _recoverRoleForInterpreterPortal({
+    required String userId,
+    required String? role,
+  }) async {
+    if (role != 'requester' && role != null) return role;
+
+    try {
+      // Do not convert doctors already linked to an organization.
+      final membership = await Supabase.instance.client
+          .from('organization_members')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (membership != null) {
+        return role;
+      }
+
+      await Supabase.instance.client
+          .from('users_profile')
+          .upsert({'user_id': userId, 'role': 'interpreter', 'employment_type': 'volunteer'}, onConflict: 'user_id');
+
+      await Supabase.instance.client.from('interpreter_details').upsert({
+        'user_id': userId,
+        'onboarding_status': 'not_started',
+        'employment_type': 'volunteer',
+      }, onConflict: 'user_id');
+
+      return 'interpreter';
+    } catch (e) {
+      log('Interpreter portal role recovery failed: $e');
+      return role;
+    }
+  }
+
+  String _loginTitleForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'admin':
+        return 'Admin Login';
+      case 'organization':
+        return 'Organization Login';
+      case 'interpreter':
+        return 'Interpreter Login';
+      default:
+        return 'Sign in to InterBridge';
+    }
+  }
+
+  String _loginSubtitleForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'admin':
+        return 'Sign in with your admin account';
+      case 'organization':
+        return 'Sign in to manage your organization';
+      case 'interpreter':
+        return 'Sign in to access your interpreter dashboard';
+      default:
+        return 'Sign in to continue';
+    }
+  }
+
+  bool _canSelfRegisterInPortal(String portalIntent) {
+    return portalIntent != 'admin';
+  }
+
+  String _signupSectionLabelForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        return 'New interpreter?';
+      case 'organization':
+        return 'Need organization access?';
+      default:
+        return 'New to InterBridge?';
+    }
+  }
+
+  String _signupButtonLabelForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        return 'Apply as an Interpreter';
+      case 'organization':
+        return 'Register an Organization';
+      default:
+        return 'Apply to Join The Interpreter Network';
+    }
+  }
+
+  void _handleSignupByPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        Navigator.of(context).pushNamed(
+          Routes.registerRoute,
+          arguments: {'role': 'interpreter'},
+        );
+        return;
+      case 'organization':
+        Navigator.of(context).pushNamed(Routes.organizationRegisterRoute);
+        return;
+      case 'admin':
+        CustomSnackBar.show(
+          context,
+          message: 'Admin accounts are created by system administrators.',
+          type: SnackBarType.info,
+        );
+        return;
+      default:
+        Navigator.of(context).pushNamed(Routes.selectRole);
     }
   }
 
@@ -340,8 +428,50 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           .timeout(const Duration(seconds: 5));
       if (!mounted) return;
 
-      final role = profile?.role;
       final portalIntent = _currentPortalIntent();
+      String? role = profile?.role;
+
+      // Recovery path: if a requester logs in through interpreter portal,
+      // try auto-promoting to interpreter role first.
+      if (portalIntent == 'interpreter') {
+        role = await _recoverRoleForInterpreterPortal(
+          userId: userId,
+          role: role,
+        );
+
+        // If role is still requester or null (for example DB update blocked),
+        // continue to interpreter onboarding instead of hard-blocking login.
+        if (role == 'requester' || role == null) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterTrackSelection,
+            (route) => false,
+            arguments: {
+              'role': 'interpreter',
+              'authContinuationFullScreen': true,
+              'forceInterpreterRoleUpgrade': true,
+            },
+          );
+          return;
+        }
+
+        // Guard against legacy/unknown roles from older builds.
+        // If it's not an admin/organization role, continue with interpreter onboarding.
+        if (role != 'interpreter' &&
+            role != 'organization_admin' &&
+            role != 'admin' &&
+            role != 'superadmin') {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            Routes.interpreterTrackSelection,
+            (route) => false,
+            arguments: {
+              'role': 'interpreter',
+              'authContinuationFullScreen': true,
+              'forceInterpreterRoleUpgrade': true,
+            },
+          );
+          return;
+        }
+      }
 
       if (!_roleMatchesPortal(role, portalIntent)) {
         await _supabaseService.signOut();
@@ -371,17 +501,23 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           (route) => false,
         );
       } else if (role == 'interpreter') {
-        final passedCompliance = await _runInterpreterComplianceCheck();
+        final interpreterDetails = await _supabaseService.getInterpreterDetails(userId);
         if (!mounted) return;
-        if (!passedCompliance) {
-          await _supabaseService.signOut();
-          await _appPreferences.logout();
+
+        // Only enforce compliance picture if they are fully verified
+        if (interpreterDetails?.isVerified == true) {
+          final passedCompliance = await _runInterpreterComplianceCheck();
           if (!mounted) return;
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.interpreterPortalLoginRoute,
-            (route) => false,
-          );
-          return;
+          if (!passedCompliance) {
+            await _supabaseService.signOut();
+            await _appPreferences.logout();
+            if (!mounted) return;
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.interpreterPortalLoginRoute,
+              (route) => false,
+            );
+            return;
+          }
         }
 
         final appPrefs = instance<AppPreferences>();
@@ -539,9 +675,12 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
 
   @override
   Widget build(BuildContext context) {
+    final portalIntent = _currentPortalIntent();
+    final showSignupSection = _canSelfRegisterInPortal(portalIntent);
+
     return AuthWebWrapper(
-      title: 'Interpreter Login',
-      subtitle: 'Sign in to access your interpreter dashboard',
+      title: _loginTitleForPortal(portalIntent),
+      subtitle: _loginSubtitleForPortal(portalIntent),
       child: BlocListener<LoginBloc, LoginState>(
         listener: (context, state) {
           if (!mounted) return;
@@ -739,62 +878,61 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
                       style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                     ),
                   ],
-                  const SizedBox(height: 28),
+                  if (showSignupSection) ...[
+                    const SizedBox(height: 28),
 
-                  // Divider
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Divider(
-                          color: Colors.white.withValues(alpha: 0.1),
+                    // Divider
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Divider(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            _signupSectionLabelForPortal(portalIntent),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Divider(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+
+                    // Create account button
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: () => _handleSignupByPortal(portalIntent),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.2),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
                         child: Text(
-                          'New to InterBridge?',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontSize: 13,
+                          _signupButtonLabelForPortal(portalIntent),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: Divider(
-                          color: Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Create account button
-                  SizedBox(
-                    height: 48,
-                    child: OutlinedButton(
-                      onPressed:
-                          () => Navigator.of(
-                            context,
-                          ).pushNamed(Routes.selectRole),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Apply to Join The Interpreter Network',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             );

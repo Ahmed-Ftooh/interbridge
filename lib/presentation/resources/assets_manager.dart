@@ -18,6 +18,9 @@ class JsonAssets {
 }
 
 class AudioAssets {
-  static const String firstTest = '${audioPath}first_test.mp3';
-  static const String secondTest = '${audioPath}second_test.mpeg';
+  static const String test1 = '${audioPath}Test_1.mp3';
+  static const String audioTest1 = '${audioPath}audio_test_1.mp3';
+  static const String audioTest2 = '${audioPath}audio_test_2.mp3';
+  static const String audioTest3 = '${audioPath}audio_test_3.mp3';
+  static const String audioTest4 = '${audioPath}audio_test_4.mp3';
 }

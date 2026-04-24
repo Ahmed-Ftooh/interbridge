@@ -12,6 +12,7 @@ class AdminService {
     int? offset,
     String? filterStatus, // 'all', 'verified', 'unverified'
     String? filterAccount, // 'all', 'active', 'suspended'
+    bool includeEmail = false,
   }) async {
     final res = await _client.functions.invoke(
       'admin-list-interpreters',
@@ -24,6 +25,7 @@ class AdminService {
           'status': filterStatus,
         if (filterAccount != null && filterAccount != 'all')
           'account': filterAccount,
+        if (includeEmail) 'include_email': true,
       },
     );
     final data = res.data;
@@ -99,13 +101,27 @@ class AdminService {
 
   /// Send a verification-approved email to the interpreter.
   Future<void> sendVerificationEmail({
-    required String to,
+    required String userId,
     required String interpreterName,
+    String? to,
   }) async {
-    await _client.functions.invoke(
+    final response = await _client.functions.invoke(
       'send-verification-email',
-      body: {'to': to, 'interpreterName': interpreterName},
+      headers: _adminPortalHeaders,
+      body: {
+        'userId': userId,
+        'interpreterName': interpreterName,
+        if (to != null && to.isNotEmpty) 'to': to,
+      },
     );
+
+    final data = response.data;
+    if (data is Map && data['success'] == false) {
+      final message =
+          (data['message'] ?? data['error'] ?? 'Failed to send email')
+              .toString();
+      throw Exception(message);
+    }
   }
 
   Future<void> updateGovernmentIdStatus(

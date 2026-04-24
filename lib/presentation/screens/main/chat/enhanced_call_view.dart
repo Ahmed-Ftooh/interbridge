@@ -6,9 +6,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/data/services/session_service.dart';
 import 'package:interbridge/data/services/twilio_call_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
+import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/call_feedback_dialog.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 1. SIMPLIFIED WIDGET: It no longer creates a BLoC
 class EnhancedCallScreen extends StatelessWidget {
@@ -63,6 +65,8 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   // If the call screen is opened but StartCall was never dispatched
   // (e.g. stale session restore), auto-escape to home after this timeout.
   Timer? _idleEscapeTimer;
+  String? _handledRemoteCallEndedMessageId;
+  bool _sessionMarkedRemoteJoined = false;
 
   VideoViewController _getLocalController(RtcEngine engine) {
     if (_localController == null || _cachedEngine != engine) {
@@ -100,6 +104,15 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   @override
   void initState() {
     super.initState();
+
+    // Keep chat realtime subscription alive while on call so remote hangup
+    // markers can end the peer call immediately.
+    try {
+      context.read<ChatBloc>().add(
+        LoadMessages(widget.channelId, silent: true),
+      );
+    } catch (_) {}
+
     // Guard against being stuck on CallIdle (no StartCall dispatched).
     // If state is still idle after 20 seconds, navigate home.
     // 20 s gives enough headroom for first-time Android permission dialogs
@@ -117,6 +130,47 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       }
     });
+  }
+
+  void _notifyRemoteCallEnded() {
+    try {
+      context.read<ChatBloc>().add(
+        SendCallStateMessage(
+          requestId: widget.channelId,
+          callState: '__CALL_ENDED__',
+        ),
+      );
+    } catch (e) {
+      log('Could not publish call ended marker: $e');
+    }
+  }
+
+  void _endCallLocally() {
+    _notifyRemoteCallEnded();
+    context.read<CallBloc>().add(EndCall());
+  }
+
+  void _handleRemoteCallEndedMessage(ChatState state) {
+    if (state is! ChatLoaded || state.messages.isEmpty) return;
+
+    final lastMessage = state.messages.last;
+    final messageId = lastMessage['id']?.toString();
+    final content = lastMessage['content']?.toString();
+    final senderId = lastMessage['sender_id']?.toString();
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (content != '__CALL_ENDED__') return;
+    if (senderId == myId) return;
+    if (messageId == null || _handledRemoteCallEndedMessageId == messageId) {
+      return;
+    }
+
+    _handledRemoteCallEndedMessageId = messageId;
+
+    final callState = context.read<CallBloc>().state;
+    if (callState is CallOngoing || callState is CallConnecting) {
+      context.read<CallBloc>().add(EndCall(isRemote: true));
+    }
   }
 
   @override
@@ -283,6 +337,56 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     );
   }
 
+  Future<void> _markSessionRemoteJoined() async {
+    if (_sessionMarkedRemoteJoined) return;
+
+    try {
+      final session = await SessionService.getSession();
+      if (session == null) return;
+
+      final requestId = session['requestId']?.toString();
+      final requesterId = session['requesterId']?.toString();
+      final interpreterId = session['interpreterId']?.toString();
+      if (requestId == null || requesterId == null || interpreterId == null) {
+        return;
+      }
+      if (requestId != widget.channelId) return;
+
+      final rawCallData = session['callData'];
+      final callData =
+          rawCallData is Map
+              ? Map<String, dynamic>.from(rawCallData)
+              : <String, dynamic>{};
+
+      callData['remote_joined'] = true;
+      callData.putIfAbsent(
+        'call_type',
+        () => widget.isVideoCall ? 'video' : 'voice',
+      );
+
+      await SessionService.saveSession(
+        requestId: requestId,
+        requesterId: requesterId,
+        interpreterId: interpreterId,
+        currentScreen: 'call',
+        callData: callData,
+      );
+
+      _sessionMarkedRemoteJoined = true;
+    } catch (e) {
+      log('Could not persist remote_joined session marker: $e');
+    }
+  }
+
+  Future<void> _endWithoutFeedbackAndNavigateHome(String? reason) async {
+    try {
+      await SessionService.clearSession();
+    } catch (_) {}
+
+    if (!mounted) return;
+    _navigateToHome();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Simplified - no ChatBloc listener needed for call end
@@ -290,11 +394,22 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       listener: (context, callState) {
         // Listen for call state changes
         if (callState is CallEnded) {
-          // Call ended (either by us or remote) - show feedback dialog then navigate home
-          log(
-            'Call ended (isRemote: ${callState.isRemote}). Showing feedback dialog.',
-          );
-          _showFeedbackAndNavigateHome();
+          if (callState.shouldCollectFeedback) {
+            // Call ended after at least one joined participant - show feedback.
+            log(
+              'Call ended (isRemote: ${callState.isRemote}). Showing feedback dialog.',
+            );
+            _showFeedbackAndNavigateHome();
+          } else {
+            // No remote participant ever joined - skip feedback and exit quickly.
+            log(
+              'Call ended without joined remote participant (reason: ${callState.reason ?? 'unknown'}).',
+            );
+            _endWithoutFeedbackAndNavigateHome(callState.reason);
+          }
+        } else if (callState is CallOngoing &&
+            callState.remoteUids.isNotEmpty) {
+          _markSessionRemoteJoined();
         } else if (callState is CallError) {
           // Show error dialog and then navigate to home
           showDialog(
@@ -320,8 +435,10 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                   ),
                   actions: [
                     TextButton(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.of(dialogContext).pop(); // Close dialog
+                        await SessionService.clearSession();
+                        if (!mounted) return;
                         _navigateToHome(); // Navigate to home
                       },
                       child: const Text('OK'),
@@ -332,66 +449,74 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
         }
       },
       builder: (context, callState) {
-        return Scaffold(
-          backgroundColor: ColorManager.primary2Dark,
-          body: Stack(
-            children: [
-              // Main call interface
-              _buildCallInterface(callState),
+        return BlocListener<ChatBloc, ChatState>(
+          listener: (context, chatState) {
+            _handleRemoteCallEndedMessage(chatState);
+          },
+          child: Scaffold(
+            backgroundColor: ColorManager.primary2Dark,
+            body: Stack(
+              children: [
+                // Main call interface
+                _buildCallInterface(callState),
 
-              // Top controls
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.arrow_back, color: ColorManager.white),
-                        onPressed: () {
-                          final callState = context.read<CallBloc>().state;
-                          if (callState is CallOngoing) {
-                            // Ongoing call: pop to background (PiP-like behaviour).
-                            Navigator.of(context).maybePop();
-                          } else {
-                            // Stuck in Connecting/Idle/Ended: end any Agora setup
-                            // and force-navigate home so the user isn't trapped.
-                            context.read<CallBloc>().add(EndCall());
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              Routes.mainRoute,
-                              (route) => false,
-                            );
-                          }
-                        },
-                      ),
+                // Top controls
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.arrow_back,
+                            color: ColorManager.white,
+                          ),
+                          onPressed: () {
+                            final callState = context.read<CallBloc>().state;
+                            if (callState is CallOngoing) {
+                              // Ongoing call: pop to background (PiP-like behaviour).
+                              Navigator.of(context).maybePop();
+                            } else {
+                              // Stuck in Connecting/Idle/Ended: end any Agora setup
+                              // and force-navigate home so the user isn't trapped.
+                              _endCallLocally();
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                Routes.mainRoute,
+                                (route) => false,
+                              );
+                            }
+                          },
+                        ),
 
-                      // End Session button
-                      // PopupMenuButton<String>(
-                      //   icon: Icon(Icons.more_vert, color: ColorManager.white),
-                      //   onSelected: (value) {
-                      //     if (value == 'end_session') {
-                      //       _showEndSessionDialog(context);
-                      //     }
-                      //   },
-                      //   itemBuilder:
-                      //       (context) => [
-                      //         const PopupMenuItem(
-                      //           value: 'end_session',
-                      //           child: Row(
-                      //             children: [
-                      //               Icon(Icons.exit_to_app, color: Colors.red),
-                      //               SizedBox(width: 8),
-                      //               Text('End Session'),
-                      //             ],
-                      //           ),
-                      //         ),
-                      //       ],
-                      // ),
-                    ],
+                        // End Session button
+                        // PopupMenuButton<String>(
+                        //   icon: Icon(Icons.more_vert, color: ColorManager.white),
+                        //   onSelected: (value) {
+                        //     if (value == 'end_session') {
+                        //       _showEndSessionDialog(context);
+                        //     }
+                        //   },
+                        //   itemBuilder:
+                        //       (context) => [
+                        //         const PopupMenuItem(
+                        //           value: 'end_session',
+                        //           child: Row(
+                        //             children: [
+                        //               Icon(Icons.exit_to_app, color: Colors.red),
+                        //               SizedBox(width: 8),
+                        //               Text('End Session'),
+                        //             ],
+                        //           ),
+                        //         ),
+                        //       ],
+                        // ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -892,7 +1017,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 color: ColorManager.error,
                 onTap: () {
                   // End the call and let the listener handle navigation
-                  context.read<CallBloc>().add(EndCall());
+                  _endCallLocally();
                 },
               ),
               // Call Patient button

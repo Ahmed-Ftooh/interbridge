@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Completing sign-in...</title>
+  <script>
+    (function () {
+      var path = window.location.pathname || '/';
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+      var firstSegment = path.split('/').filter(Boolean)[0] || '';
+      var target = '/login';
+
+      if (firstSegment === 'interpreter' || firstSegment === 'organization' || firstSegment === 'admin') {
+        target = '/' + firstSegment + '/login';
+      }
+
+      var targetUrl = target + search + hash;
+      var payload = {
+        type: 'interbridge-auth-callback',
+        target: targetUrl,
+        ts: Date.now()
+      };
+
+      try {
+        localStorage.setItem('interbridge_auth_handoff', JSON.stringify(payload));
+      } catch (_) {}
+
+      try {
+        if ('BroadcastChannel' in window) {
+          var channel = new BroadcastChannel('interbridge_auth_handoff');
+          channel.postMessage(payload);
+          channel.close();
+        }
+      } catch (_) {}
+
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(payload, window.location.origin);
+        }
+      } catch (_) {}
+
+      setTimeout(function () {
+        try {
+          window.close();
+        } catch (_) {}
+      }, 100);
+
+      setTimeout(function () {
+        window.location.replace(targetUrl);
+      }, 900);
+    })();
+  </script>
+</head>
+<body>
+  Completing sign-in...
+</body>
+</html>

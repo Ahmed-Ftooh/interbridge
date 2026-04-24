@@ -1,0 +1,2818 @@
+{
+  "neurology": [
+    {
+      "number": 1,
+      "questionText": "What does “syncope” mean?",
+      "options": [
+        "Muscle twitching",
+        "loss of consciousness",
+        "Memory loss",
+        "Nerve inflammation"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 2,
+      "questionText": "Which condition involves sudden, uncontrolled electrical activity in the brain?",
+      "options": [
+        "Epilepsy",
+        "ALS",
+        "Parkinson’s disease",
+        "Vertigo"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 3,
+      "questionText": "“Hemiparesis” means:",
+      "options": [
+        "Complete body paralysis",
+        "Weakness on one side of the body",
+        "Paralysis of both legs",
+        "Loss of coordination"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 4,
+      "questionText": "Which test measures electrical activity in the brain?",
+      "options": [
+        "EMG",
+        "EEG",
+        "ECG",
+        "MRI"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "A “ruptured aneurysm” most commonly leads to:",
+      "options": [
+        "Ischemic stroke",
+        "Hemorrhagic stroke",
+        "Dementia",
+        "Multiple sclerosis"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 6,
+      "questionText": "The part of the brain responsible for balance and coordination is:",
+      "options": [
+        "Cerebrum",
+        "Brainstem",
+        "Cerebellum",
+        "Thalamus"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 7,
+      "questionText": "Which condition is characterized by progressive muscle weakness due to nerve degeneration?",
+      "options": [
+        "Parkinson’s disease",
+        "ALS",
+        "Epilepsy",
+        "Stroke"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "“Vertigo” refers to:",
+      "options": [
+        "Severe headache",
+        "The sensation of spinning",
+        "Losing memory",
+        "Tingling in hands"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 9,
+      "questionText": "Which nerve disorder is caused by uncontrolled diabetes?",
+      "options": [
+        "Peripheral neuropathy",
+        "Myopathy",
+        "Neuralgia",
+        "Hydrocephalus"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 10,
+      "questionText": "What is “hydrocephalus”?",
+      "options": [
+        "Infection of the brain",
+        "Fluid buildup in the brain",
+        "Brain tumor",
+        "Nerve damage in the legs"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "Medical procedure in which a needle is inserted into the spinal canal, most commonly to collect cerebrospinal fluid",
+      "options": [
+        "Epidural",
+        "Nerve block",
+        "Lumbar puncture",
+        "Ct scan"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 12,
+      "questionText": "Traumatic brain injury that affects your brain function; can include headaches and problems with concentration, memory, balance and coordination is called:",
+      "options": [
+        "Vertigo",
+        "Concussion",
+        "Epilepsy",
+        "Parkinson’s"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 13,
+      "questionText": "Which term describes sharp, stabbing nerve pain along the course of a nerve?",
+      "options": [
+        "Neuropathy",
+        "Neuralgia",
+        "Myelopathy",
+        "Aphasia"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 14,
+      "questionText": "Which term refers to spinal cord dysfunction?",
+      "options": [
+        "Neuropathy",
+        "Myelopathy",
+        "Neuralgia",
+        "Encephalopathy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Which condition is described as sudden weakness on one side of the body with facial drooping and slurred speech?",
+      "options": [
+        "Migraine",
+        "Stroke",
+        "Epilepsy",
+        "Neuralgia"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 16,
+      "questionText": "Which condition is characterized by progressive cognitive decline affecting memory, judgment, and behavior?",
+      "options": [
+        "Aphasia",
+        "Dementia",
+        "Ataxia",
+        "Neuralgia"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 17,
+      "questionText": "A patient has resting tremor, rigidity, and slow movements. Which disease is most likely?",
+      "options": [
+        "Alzheimer’s disease",
+        "Parkinson’s disease",
+        "Multiple sclerosis",
+        "Stroke"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 18,
+      "questionText": "An elderly patient presents with progressive memory loss, confusion, and personality changes. Most likely diagnosis?",
+      "options": [
+        "Parkinson’s disease",
+        "Alzheimer’s disease",
+        "Stroke",
+        "Epilepsy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 19,
+      "questionText": "A patient develops loss of movement and sensation in both legs after trauma. What is the condition?",
+      "options": [
+        "Neuropathy",
+        "Paraplegia",
+        "Hemiplegia",
+        "Myopathy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 20,
+      "questionText": "A patient has brief weakness and speech difficulty that resolves within one hour. What is the most likely diagnosis?",
+      "options": [
+        "Stroke",
+        "Transient ischemic attack (TIA)",
+        "Migraine",
+        "Seizure"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 21,
+      "questionText": "The term for surgical operation of a portion of the skull:",
+      "options": [
+        "Craniotomy",
+        "Lobotomy",
+        "Neurotomy",
+        "Hematotomy"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 22,
+      "questionText": "Which specialist treats brain and nerve disorders?",
+      "options": [
+        "Cardiologist",
+        "Neurologist",
+        "Pulmonologist",
+        "Endocrinologist"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 23,
+      "questionText": "Which term refers to a partial or complete loss of sensation in a part of the body?",
+      "options": [
+        "Tingling",
+        "Burning pain",
+        "Weakness",
+        "Numbness"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 24,
+      "questionText": "Which symptom describes a “pins and needles” sensation?",
+      "options": [
+        "Numbness",
+        "Weakness",
+        "Tingling",
+        "Paralysis"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 25,
+      "questionText": "Which term refers to inability to coordinate voluntary muscle movements?",
+      "options": [
+        "Tremor",
+        "Ataxia",
+        "Paralysis",
+        "Neuralgia"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "cardiology": [
+    {
+      "number": 1,
+      "questionText": "Which of the following refers to chest pain caused by reduced blood flow to the heart?",
+      "options": [
+        "Myocarditis",
+        "Angina pectoris",
+        "Arrhythmia",
+        "Endocarditis"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 2,
+      "questionText": "The medical term for a heart attack is:",
+      "options": [
+        "CHF",
+        "MI",
+        "CAD",
+        "CVA"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "Which test records the electrical activity of the heart?",
+      "options": [
+        "MRI",
+        "Echo",
+        "ECG/EKG",
+        "CT scan"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 4,
+      "questionText": "Which artery supplies blood to the heart muscle?",
+      "options": [
+        "Femoral artery",
+        "Coronary artery",
+        "Carotid artery",
+        "Aortic arch"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "“Atherosclerosis” refers to:",
+      "options": [
+        "Thickening of lung tissue",
+        "Hardening of the arteries",
+        "Kidney failure",
+        "Liver enlargement"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 6,
+      "questionText": "Which procedure opens blocked coronary arteries using a balloon?",
+      "options": [
+        "CABG",
+        "Angioplasty",
+        "Pacemaker",
+        "Cardioversion"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 7,
+      "questionText": "CABG stands for:",
+      "options": [
+        "Coronary Artery Bypass Graft",
+        "Cardiac Artery Broken Gland",
+        "Coronary Balloon Guide",
+        "Cardio Arrhythmia Base Gate"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 8,
+      "questionText": "A patient with “irregular heartbeat” most likely has:",
+      "options": [
+        "Atherosclerosis",
+        "Arrhythmia",
+        "Pericardial effusion",
+        "MI"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 9,
+      "questionText": "Which valve separates the left atrium from the left ventricle?",
+      "options": [
+        "Aortic valve",
+        "Pulmonic valve",
+        "Mitral valve",
+        "Tricuspid valve"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 10,
+      "questionText": "Which diagnostic test uses ultrasound to visualize heart movement?",
+      "options": [
+        "Echocardiogram",
+        "ECG",
+        "X-ray",
+        "Stress test"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 11,
+      "questionText": "A patient reports:",
+      "options": [
+        "“I feel dizzy and almost faint when I stand up quickly.”",
+        "This may indicate:",
+        "Hypertensive crisis",
+        "Orthostatic hypotension Tachycardia Hyperglycemia"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 12,
+      "questionText": "We may need to place a stent to keep the artery open.” A stent is best described as:",
+      "options": [
+        "A medication",
+        "A surgical stitch",
+        "A small mesh tube inserted into an artery",
+        "A heart valve replacement"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 13,
+      "questionText": "“Atrial fibrillation” is best described as:",
+      "options": [
+        "A blockage in coronary arteries",
+        "Inflammation of the heart muscle",
+        "An irregular, often rapid heart rhythm",
+        "A valve infection"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 14,
+      "questionText": "The term “ischemia” means:",
+      "options": [
+        "Complete tissue death",
+        "Reduced blood flow to tissue",
+        "Increased oxygen supply",
+        "Heart enlargement"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Congestive heart failure (CHF)” refers to:",
+      "options": [
+        "Sudden cardiac arrest",
+        "Infection of the heart valves",
+        "Hardening of arteries",
+        "The heart’s inability to pump blood effectively"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 16,
+      "questionText": "“Heart murmur” usually refers to:",
+      "options": [
+        "Abnormal heart sound",
+        "Irregular heartbeat",
+        "Blocked artery",
+        "Heart enlargement"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 17,
+      "questionText": "Which condition refers to “narrowing of a heart valve”?",
+      "options": [
+        "Regurgitation",
+        "Stenosis",
+        "Prolapse",
+        "Occlusion"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 18,
+      "questionText": "“Tachycardia” is defined as:",
+      "options": [
+        "Heart rate below 60 bpm",
+        "Irregular rhythm",
+        "Heart rate above 100 bpm",
+        "Weak pulse"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 19,
+      "questionText": "he provider says:",
+      "options": [
+        "“The patient has fluid buildup in the lungs due to heart failure.”",
+        "This condition is called:",
+        "Pleural effusion",
+        "Pulmonary edema Pneumonia Bronchitis"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 20,
+      "questionText": "The term “cyanosis” refers to:",
+      "options": [
+        "Blue discoloration due to poor oxygen",
+        "Yellow skin",
+        "Red rash",
+        "Severe swelling"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 21,
+      "questionText": "“Edema” means:",
+      "options": [
+        "Chest tightness",
+        "Fluid retention/swelling",
+        "Fainting",
+        "Excess sweating"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 22,
+      "questionText": "A patient says:",
+      "options": [
+        "“I feel like my heart is skipping beats and then racing all of a sudden.”",
+        "This most likely refers to:",
+        "Stable angina",
+        "Heart murmur Cardiac arrest Palpitations"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 23,
+      "questionText": "Which chamber of the heart pumps oxygenated blood to the body?",
+      "options": [
+        "Right atrium",
+        "Right ventricle",
+        "Left ventricle",
+        "Left atrium"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 24,
+      "questionText": "What does “bradycardia” mean?",
+      "options": [
+        "Fast heart rate",
+        "Irregular heart rhythm",
+        "Slow heart rate",
+        "Weak heartbeat"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 25,
+      "questionText": "Which of the following medications is used to thin the blood?",
+      "options": [
+        "Insulin",
+        "Anticoagulants",
+        "Beta-blockers",
+        "Steroids"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "respiratory": [
+    {
+      "number": 1,
+      "questionText": "A patient with “shortness of breath” most likely has:",
+      "options": [
+        "Dyspnea",
+        "Apnea",
+        "Hemoptysis",
+        "Cyanosis"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 2,
+      "questionText": "Which of the following describes sudden collapse of a lung?",
+      "options": [
+        "Pleural effusion",
+        "Atelectasis",
+        "Emphysema",
+        "Pneumothorax"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 3,
+      "questionText": "Which condition is characterized by reversible airway obstruction, wheezing, and shortness of breath?",
+      "options": [
+        "Asthma",
+        "COPD",
+        "Pneumonia",
+        "Tuberculosis"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 4,
+      "questionText": "Which imaging test is best for detecting fluid in the lungs?",
+      "options": [
+        "ECG",
+        "Chest X-ray",
+        "MRI",
+        "Ultrasound"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "Which of the following is a common symptom of COPD?",
+      "options": [
+        "Night sweats",
+        "Chest pain radiating to arm",
+        "Chronic cough & shortness of breath",
+        "Numbness in legs"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 6,
+      "questionText": "A patient with sleep apnea experiences:",
+      "options": [
+        "Continuous low oxygen during sleep",
+        "Coughing up blood",
+        "Chest tightness only",
+        "Muscle weakness"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 7,
+      "questionText": "Which condition is characterized by progressive destruction of alveoli and difficulty exhaling?",
+      "options": [
+        "Asthma",
+        "Emphysema",
+        "Pneumonia",
+        "Pulmonary edema"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "“Bronchoscopy” is a procedure used to:",
+      "options": [
+        "Check heart valves",
+        "Visualize airways",
+        "Measure oxygen",
+        "Remove fluid from pleura"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 9,
+      "questionText": "A patient has a positive Mantoux test. This indicates:",
+      "options": [
+        "Tuberculosis exposure",
+        "Pneumonia",
+        "Lung cancer",
+        "Asthma"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 10,
+      "questionText": "“Orthopnea” is difficulty breathing when:",
+      "options": [
+        "Sitting",
+        "Exercising",
+        "Lying down",
+        "Standing"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 11,
+      "questionText": "Which test measures oxygen saturation in the blood?",
+      "options": [
+        "ECG",
+        "Pulse oximetry",
+        "Spirometry",
+        "Chest X-ray"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 12,
+      "questionText": "“COPD” stands for:",
+      "options": [
+        "Chronic obstructive pulmonary disease",
+        "Chronic oxygen pulmonary disorder",
+        "Cardiac obstructive pulmonary disease",
+        "Chronic obstructive perfusion defect"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 13,
+      "questionText": "“Wheezing” is best described as:",
+      "options": [
+        "A crackling sound in the lungs",
+        "Complete absence of breath sounds",
+        "A whistling sound during breathing",
+        "Pain during breathing"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 14,
+      "questionText": "“Pneumonia” is:",
+      "options": [
+        "Air in the pleural space",
+        "Infection of the lungs",
+        "Chronic airway narrowing",
+        "Fluid around the heart"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Which test measures lung function and volume?",
+      "options": [
+        "ECG",
+        "Echocardiogram",
+        "Spirometry",
+        "Blood culture"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 16,
+      "questionText": "Which of the following is a symptom of pulmonary embolism?",
+      "options": [
+        "Sudden shortness of breath",
+        "Gradual cough for months",
+        "Night sweats",
+        "Fever only"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 17,
+      "questionText": "“Bronchodilator” medications are used to:",
+      "options": [
+        "Reduce fluid in lungs",
+        "Open the airways",
+        "Treat infection",
+        "Thin the blood"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 18,
+      "questionText": "“Intubation” means:",
+      "options": [
+        "Removing fluid from lungs",
+        "Measuring lung capacity",
+        "Giving oxygen through a mask",
+        "Placing a tube into the airway to assist breathing"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 19,
+      "questionText": "“Hypoxia” refers to:",
+      "options": [
+        "High oxygen levels",
+        "Low oxygen levels in tissues",
+        "High carbon dioxide",
+        "Normal breathing"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 20,
+      "questionText": "Which condition refers to “fluid in the lungs”?",
+      "options": [
+        "Pulmonary edema",
+        "Asthma",
+        "Bronchitis",
+        "Pneumothorax"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 21,
+      "questionText": "A patient reports coughing up blood. The medical term is:",
+      "options": [
+        "Hemoptysis",
+        "Hematemesis",
+        "Epistaxis",
+        "Hematuria"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 22,
+      "questionText": "A patient producing “thick mucus when coughing” is describing:",
+      "options": [
+        "Hemoptysis",
+        "Sputum",
+        "Edema",
+        "Aspiration"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 23,
+      "questionText": "“Tachypnea” refers to:",
+      "options": [
+        "Slow breathing",
+        "Painful breathing",
+        "Rapid breathing",
+        "Irregular breathing"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 24,
+      "questionText": ", A patient who “inhales food or liquid into the airway” is experiencing:",
+      "options": [
+        "Aspiration",
+        "Inhalation therapy",
+        "Ventilation",
+        "Perfusion"
+      ],
+      "correctOption": "A"
+    }
+  ],
+  "gastrointestinal": [
+    {
+      "number": 5,
+      "questionText": "Hepatitis",
+      "options": [
+        "Which procedure uses a camera to examine the upper GI tract?",
+        "Colonoscopy",
+        "CT scan",
+        "Ultrasound Endoscopy (EGD)"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 6,
+      "questionText": "Which organ is affected in cholecystitis?",
+      "options": [
+        "Gallbladder",
+        "Pancreas",
+        "Liver",
+        "Appendix"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 7,
+      "questionText": "“Ascites” refers to:",
+      "options": [
+        "Gas in the stomach",
+        "Fluid buildup in the abdomen",
+        "Liver infection",
+        "Intestinal blockage"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "“Hepatitis” is:",
+      "options": [
+        "Inflammation of the liver",
+        "Infection of the stomach",
+        "Colon inflammation",
+        "Pancreatic failure"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 9,
+      "questionText": "“Jaundice” refers to:",
+      "options": [
+        "Red skin",
+        "Swelling of the abdomen",
+        "Yellowing of the skin and eyes",
+        "Dark urine only"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 10,
+      "questionText": "“Dysphagia” refers to:",
+      "options": [
+        "Painful swallowing",
+        "Difficulty swallowing",
+        "Vomiting blood",
+        "Loss of appetite"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "“Proton pump inhibitors (PPIs)” are used to:",
+      "options": [
+        "Treat diarrhea",
+        "Reduce stomach acid",
+        "Increase bile production",
+        "Treat constipation"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 12,
+      "questionText": "“Laxatives” are medications used to:",
+      "options": [
+        "Stop vomiting",
+        "Reduce stomach acid",
+        "Treat liver disease",
+        "Soften stool and relieve constipation"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 13,
+      "questionText": "“Nasogastric (NG) tube” is used to:",
+      "options": [
+        "Remove fluid or deliver nutrition to the stomach",
+        "Measure lung capacity",
+        "Deliver oxygen",
+        "Test heart rhythm"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 14,
+      "questionText": "“Colonic polyp removal” is a procedure done during:",
+      "options": [
+        "Endoscopy",
+        "Colonoscopy",
+        "ERCP",
+        "Gastroscopy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "“Antacids” are used to:",
+      "options": [
+        "Relieve stomach acid symptoms",
+        "Increase bile production",
+        "Stop diarrhea",
+        "Treat pancreatic inflammation"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 16,
+      "questionText": "“H. pylori test” is done to:",
+      "options": [
+        "Check colon polyps",
+        "Measure bile production",
+        "Test for liver disease",
+        "Detect bacteria causing stomach ulcers"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 17,
+      "questionText": "“Endoscopic biopsy” means:",
+      "options": [
+        "Taking tissue samples through an endoscope",
+        "Removing polyps surgically",
+        "Measuring stomach acid",
+        "Administering IV medication"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 18,
+      "questionText": "“Cirrhosis” refers to:",
+      "options": [
+        "Inflammation of the pancreas",
+        "Stomach ulcer",
+        "Scarring of the liver",
+        "Intestinal blockage"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 19,
+      "questionText": "“Bowel prep” before a colonoscopy means:",
+      "options": [
+        "Patient fasts completely",
+        "Cleaning out the intestines",
+        "Administering IV fluids",
+        "Taking antibiotics"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 20,
+      "questionText": "“Antiemetics” are medications that:",
+      "options": [
+        "Stop nausea and vomiting",
+        "Reduce stomach acid",
+        "Relieve constipation",
+        "Treat liver disease"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 21,
+      "questionText": "Which organ produces bile?",
+      "options": [
+        "Pancreas",
+        "Liver",
+        "Stomach",
+        "Small intestine"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 22,
+      "questionText": "“Crohn’s disease” is a type of:",
+      "options": [
+        "Liver disease",
+        "Inflammatory bowel disease",
+        "Stomach ulcer",
+        "Pancreatic disorder"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 23,
+      "questionText": "Which of the following symptoms is considered an emergency in GI conditions?",
+      "options": [
+        "Severe abdominal pain with vomiting blood",
+        "Mild bloating",
+        "Occasional diarrhea",
+        "Constipation"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 24,
+      "questionText": "Which imaging test is most commonly used to detect gallstones?",
+      "options": [
+        "Ultrasound",
+        "CT scan",
+        "MRI",
+        "ECG"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 25,
+      "questionText": "“Lithotripsy” is a procedure to:",
+      "options": [
+        "Remove liver cysts",
+        "Break stones into smaller pieces",
+        "Place a stent",
+        "Treat ulcers"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 26,
+      "questionText": "“Steatorrhea” refers to:",
+      "options": [
+        "Fatty stools",
+        "Bloody stools",
+        "Diarrhea",
+        "Vomiting"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 27,
+      "questionText": "Hematemesis refers to:",
+      "options": [
+        "Blood in stool",
+        "Blood in vomit",
+        "Yellow skin",
+        "Abdominal swelling"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 28,
+      "questionText": "“Probiotics” are used to:",
+      "options": [
+        "Treat liver disease",
+        "Reduce stomach acid",
+        "Treat constipation only",
+        "Restore healthy gut bacteria"
+      ],
+      "correctOption": "D"
+    }
+  ],
+  "endocrinology": [
+    {
+      "number": 1,
+      "questionText": "“Hyperglycemia” refers to:",
+      "options": [
+        "Low blood sugar",
+        "High blood sugar",
+        "Low hormone levels",
+        "High cholesterol"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 2,
+      "questionText": "“Insulin” is a hormone that:",
+      "options": [
+        "Raises blood sugar",
+        "Lowers blood sugar",
+        "Controls blood pressure",
+        "Regulates calcium"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "“Thyroid gland” is located in the:",
+      "options": [
+        "Neck",
+        "Chest",
+        "Abdomen",
+        "Brain"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 4,
+      "questionText": "“Hypothyroidism” means:",
+      "options": [
+        "Overactive thyroid",
+        "Underactive thyroid",
+        "Thyroid infection",
+        "Thyroid cancer"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "“A1C test” measures:",
+      "options": [
+        "Daily blood sugar",
+        "Insulin levels only",
+        "Average blood sugar over time",
+        "Kidney function"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 6,
+      "questionText": "“Metformin” is primarily used to:",
+      "options": [
+        "Lower blood glucose",
+        "Treat hypothyroidism",
+        "Increase insulin resistance",
+        "Treat adrenal disorders"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 7,
+      "questionText": "“Retinopathy” in diabetes affects the:",
+      "options": [
+        "Kidneys",
+        "Eyes",
+        "Nerves",
+        "Heart"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "“TSH” is a lab test used to evaluate:",
+      "options": [
+        "Pancreatic function",
+        "Kidney function",
+        "Liver enzymes",
+        "Thyroid function"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 9,
+      "questionText": "“Adrenal insufficiency” means:",
+      "options": [
+        "Excess cortisol",
+        "Inadequate cortisol production",
+        "High insulin",
+        "Low thyroid hormone"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 10,
+      "questionText": "“Acromegaly” is caused by excess:",
+      "options": [
+        "Cortisol",
+        "Insulin",
+        "Growth hormone",
+        "Thyroid hormone"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 11,
+      "questionText": "“Prolactinoma” is a tumor of the:",
+      "options": [
+        "Adrenal gland",
+        "Pituitary gland",
+        "Thyroid gland",
+        "Pancreas"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 12,
+      "questionText": "“Graves’ ophthalmopathy” affects the:",
+      "options": [
+        "Eyes",
+        "Kidneys",
+        "Lungs",
+        "Liver"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 13,
+      "questionText": "“Thyroidectomy” is:",
+      "options": [
+        "Removal of the thyroid gland",
+        "Removal of adrenal glands",
+        "Biopsy of pancreas",
+        "Removal of pituitary"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 14,
+      "questionText": "“Moon face” and “central obesity” are signs of:",
+      "options": [
+        "Addison’s disease",
+        "Cushing’s syndrome",
+        "Hyperthyroidism",
+        "Hypoglycemia"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Which hormone is produced by the adrenal cortex and helps in stress response?",
+      "options": [
+        "Cortisol",
+        "Epinephrine",
+        "Insulin",
+        "Thyroxine"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 16,
+      "questionText": "“Hyperkalemia” means:",
+      "options": [
+        "Low potassium",
+        "High potassium",
+        "Low sodium",
+        "High calcium"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 17,
+      "questionText": "“Glycosuria” refers to:",
+      "options": [
+        "Sugar in urine",
+        "Protein in urine",
+        "Blood in urine",
+        "Ketones in urine"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 18,
+      "questionText": "Which endocrine gland is located above the kidneys?",
+      "options": [
+        "Pituitary",
+        "Thyroid",
+        "Adrenal",
+        "Pancreas"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 19,
+      "questionText": "A patient with polyuria, polydipsia, and weight loss likely has:",
+      "options": [
+        "Diabetes mellitus",
+        "Hypothyroidism",
+        "Addison’s disease",
+        "Cushing’s syndrome"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 20,
+      "questionText": "“ACTH” is a hormone produced by the:",
+      "options": [
+        "Thyroid",
+        "Adrenal gland",
+        "Pancreas",
+        "Pituitary gland"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 21,
+      "questionText": "“Radioactive iodine therapy” is used to treat:",
+      "options": [
+        "Hypothyroidism",
+        "Hyperthyroidism",
+        "Diabetes",
+        "Adrenal insufficiency"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 22,
+      "questionText": "The term “fasting blood glucose” means:",
+      "options": [
+        "Blood sugar after eating",
+        "Blood sugar after exercise",
+        "Blood sugar after not eating for several hours",
+        "Random blood sugar"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 23,
+      "questionText": "A doctor who specializes in diagnosing and treating hormonal disorders is called a:",
+      "options": [
+        "Cardiologist",
+        "Endocrinologist",
+        "Pulmonologist",
+        "Gastroenterologist"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 24,
+      "questionText": "“Polyuria” refers to:",
+      "options": [
+        "Frequent urination",
+        "Painful urination",
+        "Blood in urine",
+        "Low urine output"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 25,
+      "questionText": "A patient with “weight gain, fatigue, and cold intolerance” may have:",
+      "options": [
+        "Hyperthyroidism",
+        "Hypothyroidism",
+        "Diabetes",
+        "Hypertension"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "renal": [
+    {
+      "number": 1,
+      "questionText": "“Hematuria” refers to:",
+      "options": [
+        "Blood in urine",
+        "Painful urination",
+        "Excess urine",
+        "Cloudy urine"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 2,
+      "questionText": "“Pyelonephritis” is:",
+      "options": [
+        "Inflammation of bladder",
+        "Infection of kidney",
+        "Kidney stones",
+        "Urethral obstruction"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "A patient who “wakes up multiple times at night to urinate” has:",
+      "options": [
+        "Polyuria",
+        "Nocturia",
+        "Dysuria",
+        "Retention"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 4,
+      "questionText": "Which procedure is used to remove excess fluid and waste in kidney failure?",
+      "options": [
+        "Catheterization",
+        "Ultrasound",
+        "Cystoscopy",
+        "Dialysis"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 5,
+      "questionText": "“Hydronephrosis” refers to:",
+      "options": [
+        "Swelling of the kidneys due to urine buildup",
+        "Infection of the bladder",
+        "Kidney stones",
+        "Urethral obstruction"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 6,
+      "questionText": "Which test detects urinary tract infections?",
+      "options": [
+        "ECG",
+        "Chest X-ray",
+        "Urine culture",
+        "Blood glucose"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 7,
+      "questionText": "“Uremia” refers to:",
+      "options": [
+        "Excess potassium in blood",
+        "Accumulation of waste in blood",
+        "Low sodium",
+        "High glucose"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "Which imaging test is commonly used to detect kidney stones?",
+      "options": [
+        "Ultrasound",
+        "MRI",
+        "CT angiogram",
+        "ECG"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 9,
+      "questionText": "“UTI” stands for:",
+      "options": [
+        "Ureteral tissue inflammation",
+        "Urinary toxin imbalance",
+        "Urinary tract infection",
+        "Urethral tract injury"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 10,
+      "questionText": "A patient who “cannot empty their bladder” may have:",
+      "options": [
+        "Incontinence",
+        "Urinary retention",
+        "Polyuria",
+        "Hematuria"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "“Foley catheter” is used to:",
+      "options": [
+        "Measure blood pressure",
+        "Deliver oxygen",
+        "Drain urine from the bladder",
+        "Remove kidney stones"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 12,
+      "questionText": "“Cystoscopy” is a procedure to:",
+      "options": [
+        "Examine the bladder",
+        "Remove the kidney",
+        "Measure urine output",
+        "Treat infection"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 13,
+      "questionText": "Which specialist treats urinary system disorders?",
+      "options": [
+        "Nephrologist",
+        "Urologist",
+        "Endocrinologist",
+        "Pulmonologist"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 14,
+      "questionText": "BPH (benign prostatic hyperplasia)” refers to:",
+      "options": [
+        "Prostate cancer",
+        "Enlarged prostate",
+        "Kidney infection",
+        "Bladder stones"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Lithotripsy” in urology is used to:",
+      "options": [
+        "Remove the bladder",
+        "Treat infection",
+        "Insert a catheter",
+        "Break kidney stones"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 16,
+      "questionText": "A patient with “loss of bladder control” is experiencing:",
+      "options": [
+        "Urinary retention",
+        "Incontinence",
+        "Dysuria",
+        "Hematuria"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 17,
+      "questionText": "Oliguria” refers to:",
+      "options": [
+        "Reduced urine output",
+        "Excessive urination",
+        "Painful urination",
+        "Night urination"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 18,
+      "questionText": "“Creatinine” is a lab test used to assess:",
+      "options": [
+        "Liver function",
+        "Kidney function",
+        "Heart enzymes",
+        "Blood sugar"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 19,
+      "questionText": "“Diuretics” are medications that:",
+      "options": [
+        "Reduce urine production",
+        "Increase urine production",
+        "Treat infection",
+        "Dissolve stones"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 20,
+      "questionText": "“Cystitis” refers to:",
+      "options": [
+        "Kidney infection",
+        "Bladder inflammation",
+        "Prostate enlargement",
+        "Ureter blockage"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 21,
+      "questionText": "Anuria” means:",
+      "options": [
+        "No urine output",
+        "Low urine output",
+        "Painful urination",
+        "Blood in urine"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 22,
+      "questionText": "Which condition can cause “foamy urine” due to high protein content?",
+      "options": [
+        "Nephrotic syndrome",
+        "Kidney stones",
+        "Pyelonephritis",
+        "Urethritis"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 23,
+      "questionText": "“Dysuria” refers to:",
+      "options": [
+        "Excess urine",
+        "Blood in urine",
+        "Painful urination",
+        "Incomplete emptying"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 24,
+      "questionText": "PSA test” is used to:",
+      "options": [
+        "Measure kidney function",
+        "Screen prostate conditions",
+        "Detect bladder infection",
+        "Measure urine output"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 25,
+      "questionText": "“Urine culture” is performed to:",
+      "options": [
+        "Measure kidney size",
+        "Identify bacteria causing infection",
+        "Check blood sugar",
+        "Detect stones only"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "ob_gyn": [
+    {
+      "number": 1,
+      "questionText": "A procedure that involves collecting cells from your cervix to test for cervical cancer in women.",
+      "options": [
+        "Pap smear",
+        "CBC",
+        "Hysteroscopy",
+        "Otoscopy"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 2,
+      "questionText": "Disease that is most often -- but not exclusively -- spread by sexual intercourse",
+      "options": [
+        "STD",
+        "GAD",
+        "PPI",
+        "IBS"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 3,
+      "questionText": "A condition where tissue similar to the lining of the womb starts to grow in other places, such as the ovaries and fallopian tubes",
+      "options": [
+        "Uterine fibroids",
+        "Menopause",
+        "Endometriosis",
+        "Uterine polyps"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 4,
+      "questionText": "A condition in which the ovaries produce an abnormal amount of androgen producing numerous small cysts (fluid-filled sacs) that form in the ovaries",
+      "options": [
+        "GAD",
+        "PCOS",
+        "GERD",
+        "PTSD"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "Condition when a fertilized egg implants itself outside of the womb, usually in one of the fallopian tubes:",
+      "options": [
+        "Placenta previa",
+        "Ectopic pregnancy",
+        "Pre-eclampsia",
+        "Miscarriage"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 6,
+      "questionText": "All the following are types of STDs except:",
+      "options": [
+        "Chlamydia",
+        "Gonorrhea",
+        "Eclampsia",
+        "Syphilis"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 7,
+      "questionText": "The time in a woman's life when her period stops; usually occurs naturally after age 45",
+      "options": [
+        "Early menarche",
+        "Menopause",
+        "Dysmenorrhea",
+        "Menorrhagia"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "High blood sugar (glucose) that develops during pregnancy and usually disappears after giving birth.",
+      "options": [
+        "Insulin resistant diabetes",
+        "Diabetes type 2",
+        "Gestational diabetes",
+        "Pregnancy toxicity"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 9,
+      "questionText": "Condition when your uterus can sag out of position",
+      "options": [
+        "Uterine fibroids",
+        "Uterine cancer",
+        "Uterine prolapse",
+        "Uterine hyperplasia"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 10,
+      "questionText": "Surgical procedure by which one or more babies are delivered through an incision in the mother's abdomen",
+      "options": [
+        "Vaginal birth",
+        "Hysterectomy",
+        "Cesarean section",
+        "Assisted birth"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 11,
+      "questionText": "Making a cut in the area between the vagina and anus during childbirth is called:",
+      "options": [
+        "Tracheotomy",
+        "Episiotomy",
+        "Hysterectomy",
+        "Lobectomy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 12,
+      "questionText": "A surgical procedure in which the cervix is opened, and a thin instrument is inserted into the uterus. This instrument is used to remove tissue from the inside of the uterus",
+      "options": [
+        "Tubal ligation",
+        "Pap smear",
+        "Colposcopy",
+        "Dilation and curettage"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 13,
+      "questionText": "Exercises made to strengthen the pelvic floor muscles are called:",
+      "options": [
+        "Heimlich maneuver",
+        "Braxton hicks",
+        "Cardio exercise",
+        "Kegel’s exercise"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 14,
+      "questionText": "Which hormone triggers ovulation?",
+      "options": [
+        "FSH",
+        "LH",
+        "Estrogen",
+        "Progesterone"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Which imaging test is first-line for evaluating ovarian cysts?",
+      "options": [
+        "Ultrasound ‘",
+        "MRI",
+        "CT scan",
+        "X-ray"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 16,
+      "questionText": "Which condition involves non-cancerous growths in the uterus?",
+      "options": [
+        "Fibroids",
+        "Endometriosis",
+        "Ovarian cysts",
+        "PID"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 17,
+      "questionText": "Which procedure removes the uterus?",
+      "options": [
+        "Hysterectomy",
+        "Oophorectomy",
+        "Salpingectomy",
+        "Dilation & curettage"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 18,
+      "questionText": "Which pregnancy complication involves high blood pressure and organ damage?",
+      "options": [
+        "Ectopic pregnancy",
+        "Preeclampsia",
+        "Gestational diabetes",
+        "Placenta previa"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 19,
+      "questionText": "A procedure in which a small amount of amniotic fluid is removed from around the fetus to test for genetic disorders, infections, or fetal lung maturity is called:",
+      "options": [
+        "Ultrasound",
+        "Chorionic villus sampling (CVS)",
+        "Amniocentesis",
+        "Non-stress test"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 20,
+      "questionText": "Which hormone is primarily responsible for maintaining pregnancy?",
+      "options": [
+        "Progesterone",
+        "Estrogen",
+        "LH",
+        "FSH"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 21,
+      "questionText": "Which test measures fetal heart rate and contractions?",
+      "options": [
+        "Ultrasound",
+        "Non-stress test (NST)",
+        "Pap smear",
+        "Amniocentesis"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 22,
+      "questionText": "“Polyhydramnios” means:",
+      "options": [
+        "Excess amniotic fluid",
+        "Low amniotic fluid",
+        "Premature rupture of membranes",
+        "Placental abruption"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 23,
+      "questionText": "Which hormone stimulates milk production after birth?",
+      "options": [
+        "Oxytocin",
+        "Prolactin",
+        "Estrogen",
+        "Progesterone"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 24,
+      "questionText": ", A patient presents with sudden abdominal pain and vaginal bleeding in late pregnancy. Most likely diagnosis:",
+      "options": [
+        "Placental abruption",
+        "Ectopic pregnancy",
+        "Fibroids",
+        "PID"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 25,
+      "questionText": "A test that uses X-rays to examine breast tissue for early detection of cancer or other abnormalities is called:",
+      "options": [
+        "Ultrasound",
+        "Mammogram",
+        "MRI",
+        "Pap smear"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "oncology": [
+    {
+      "number": 1,
+      "questionText": "Neoplasm” refers to:",
+      "options": [
+        "Infection",
+        "Inflammation",
+        "New and abnormal growth of tissue",
+        "Cyst"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 2,
+      "questionText": "Which imaging test is commonly used for breast cancer screening?",
+      "options": [
+        "Mammography",
+        "MRI",
+        "CT scan",
+        "Ultrasound"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 3,
+      "questionText": "“Metastasis” means:",
+      "options": [
+        "Initial tumor growth",
+        "Spread of cancer from one site to another",
+        "Benign tumor",
+        "Infection"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 4,
+      "questionText": "“Biopsy” is:",
+      "options": [
+        "Surgical removal of tissue for examination",
+        "Radiation therapy",
+        "Chemotherapy",
+        "Blood test"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 5,
+      "questionText": "“Hematologic malignancy” refers to:",
+      "options": [
+        "Skin cancer",
+        "Bone cancer",
+        "Blood cancers",
+        "Brain tumor"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 6,
+      "questionText": "Which tumor marker is associated with prostate cancer?",
+      "options": [
+        "PSA",
+        "CEA",
+        "CA-125",
+        "AFP"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 7,
+      "questionText": "“Remission” in cancer means:",
+      "options": [
+        "Cancer is worse",
+        "Symptoms reduced or gone",
+        "Cancer is cured",
+        "Cancer spread"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "“Palliative care” aims to:",
+      "options": [
+        "Improve quality of life, relieve symptoms",
+        "Cure cancer",
+        "Prevent cancer",
+        "Diagnose cancer"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 9,
+      "questionText": "“Cachexia” in cancer patients means:",
+      "options": [
+        "Nausea only",
+        "Fatigue",
+        "Pain",
+        "Severe weight loss and muscle wasting"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 10,
+      "questionText": "The word “benign” means:",
+      "options": [
+        "Aggressive cancer",
+        "Non-cancerous growth",
+        "Metastatic disease",
+        "Infectious tumor"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "Adjuvant therapy” refers to:",
+      "options": [
+        "First-line emergency treatment",
+        "Alternative medicine",
+        "Treatment after primary therapy to reduce recurrence",
+        "Diagnostic procedure"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 12,
+      "questionText": "What is “chemotherapy” ?",
+      "options": [
+        "Radiation treatment",
+        "Surgical technique",
+        "Diagnostic imaging",
+        "Drug treatment to kill cancer cells"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 13,
+      "questionText": "“Radiation therapy” uses:",
+      "options": [
+        "Antibiotics",
+        "High-energy rays",
+        "Hormones only",
+        "Physical therapy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 14,
+      "questionText": "The term “oncologist” refers to:",
+      "options": [
+        "Cancer specialist physician",
+        "Radiologist",
+        "Surgeon only",
+        "Pathologist"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 15,
+      "questionText": "14, “Leukemia” affects primarily:",
+      "options": [
+        "Skin",
+        "Blood and bone marrow",
+        "Lungs",
+        "Liver"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 16,
+      "questionText": "What does “prognosis” refer to?",
+      "options": [
+        "Diagnosis of disease",
+        "Treatment plan",
+        "Expected outcome or course of disease",
+        "Lab result"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 17,
+      "questionText": "Recurrence” means:",
+      "options": [
+        "Initial diagnosis",
+        "Cancer returning after treatment",
+        "Complete cure",
+        "Side effect of drugs"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 18,
+      "questionText": "partial or complete removal of a limb is :",
+      "options": [
+        "Amputation",
+        "Hip replacement",
+        "Chiropractor",
+        "internal fixation"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 19,
+      "questionText": "A rapidly enlarging neck mass could suggest:",
+      "options": [
+        "Thyroid cancer",
+        "Tonsillitis only",
+        "Skin allergy",
+        "Simple dehydration"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 20,
+      "questionText": "“Carcinoma” originates from:",
+      "options": [
+        "Connective tissue",
+        "Bone",
+        "Epithelial cells",
+        "Nerve cells"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 21,
+      "questionText": "Which symptom is common in colorectal cancer?",
+      "options": [
+        "Blood in stool",
+        "Rash",
+        "Fever",
+        "Shortness of breath"
+      ],
+      "correctOption": "A"
+    }
+  ],
+  "dermatology": [
+    {
+      "number": 1,
+      "questionText": "“Psoriasis” is characterized by:",
+      "options": [
+        "Red, scaly patches on the skin",
+        "Fluid-filled blisters",
+        "Pustules with pus",
+        "Skin necrosis"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 2,
+      "questionText": "“Urticaria” is also known as:",
+      "options": [
+        "Psoriasis",
+        "Hives",
+        "Eczema",
+        "Rosacea"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "Vitiligo” is a condition of:",
+      "options": [
+        "Hair loss",
+        "Red rash",
+        "Skin depigmentation",
+        "Blistering"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 4,
+      "questionText": "Hair loss that can affect just your scalp or your entire body, and it can be temporary or permanent",
+      "options": [
+        "Vitiligo",
+        "Lupus",
+        "Alopecia",
+        "Acne"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 5,
+      "questionText": "A thickened, hardened area of skin that develops due to repeated friction, pressure, or irritation.",
+      "options": [
+        "Callus",
+        "Moles",
+        "Vitiligo",
+        "Warts"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 6,
+      "questionText": "A painful, pus-filled bump that forms under your skin when bacteria infect and inflame one or more of your hair follicles",
+      "options": [
+        "Rash",
+        "Eczema",
+        "Boil",
+        "Hives"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 7,
+      "questionText": "What is cauterization?",
+      "options": [
+        "Surgical removal",
+        "Burning of part of a body to remove or close off a part of it",
+        "Application of extreme cold to freeze and destroy abnormal tissue",
+        "Grafting"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 8,
+      "questionText": "A localized collection of pus that forms due to infection..",
+      "options": [
+        "Abscess",
+        "Callus",
+        "Inflammation of the skin",
+        "Scar"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 9,
+      "questionText": "A medical doctor who specializes in diagnosing and treating conditions of the skin, hair, and nails .",
+      "options": [
+        "Neurologist",
+        "Cardiologist",
+        "Dermatologist",
+        "Podiatrist"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 10,
+      "questionText": "Shingles is caused by:",
+      "options": [
+        "Herpes simplex",
+        "Varicella zoster",
+        "HPV",
+        "Gonorrhea"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "What is eczema?",
+      "options": [
+        "Bacterial skin infection",
+        "C hronic inflammation of the skin",
+        "Skin cancer",
+        "Viral disease"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 12,
+      "questionText": "Fluid-filled pocket on the skin refers to:",
+      "options": [
+        "Solid lump",
+        "Dry patch",
+        "Blister",
+        "Scar tissue"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 13,
+      "questionText": "A genetic condition with little or no pigment in skin, hair, and eyes refers to:",
+      "options": [
+        "Skin infection",
+        "Albinism",
+        "Cancer",
+        "Allergy Answer: B"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 14,
+      "questionText": "What is a mole (nevus)?",
+      "options": [
+        "Malignant tumor",
+        "Benign growth of pigmented skin cells",
+        "Infection",
+        "Rash Answer: B"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 15,
+      "questionText": "Application of extreme cold to freeze and destroy abnormal tissue refers to:",
+      "options": [
+        "Surgical removal",
+        "Burning of part of a body to remove or close off a part of it",
+        "Cryotherapy",
+        "Grafting"
+      ],
+      "correctOption": "C"
+    }
+  ],
+  "emergency": [
+    {
+      "number": 1,
+      "questionText": "A patient arrives with sudden chest pain radiating to the left arm. Likely diagnosis:",
+      "options": [
+        "Myocardial infarction",
+        "Asthma",
+        "Stroke",
+        "Pneumonia"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 2,
+      "questionText": "“Dyspnea” means:",
+      "options": [
+        "Chest pain",
+        "Shortness of breath",
+        "Dizziness",
+        "Cough"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "A patient presents with a severe allergic reaction, swelling of face and throat. Immediate action:",
+      "options": [
+        "Giving epinephrine",
+        "Give acetaminophen",
+        "Apply ice",
+        "Start IV fluids"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 4,
+      "questionText": "Hemorrhage” refers to:",
+      "options": [
+        "Infection",
+        "Swelling",
+        "Fracture",
+        "Excessive bleeding"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 5,
+      "questionText": "Tachycardia” means:",
+      "options": [
+        "Fast heart rate",
+        "Slow heart rate",
+        "Chest pain",
+        "Shortness of breath"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 6,
+      "questionText": "Sepsis” is defined as:",
+      "options": [
+        "Heart attack",
+        "Stroke",
+        "Life-threatening organ dysfunction due to infection",
+        "Asthma"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 7,
+      "questionText": "Hypoxia” means:",
+      "options": [
+        "Low oxygen in the blood",
+        "High blood pressure",
+        "Low heart rate",
+        "Fever"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 8,
+      "questionText": "Cardiac arrest” is:",
+      "options": [
+        "Heart rate too fast",
+        "Heart stops beating effectively",
+        "Chest pain only",
+        "Shortness of breath"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 9,
+      "questionText": "Hypovolemic shock” results from:",
+      "options": [
+        "Severe blood or fluid loss",
+        "Heart failure",
+        "Infection",
+        "Allergic reaction"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 10,
+      "questionText": "CPR” stands for:",
+      "options": [
+        "Cardiac Pulmonary Resuscitation",
+        "Cardiopulmonary Resuscitation",
+        "Central Pulse Response",
+        "Critical Patient Rescue"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "Anaphylaxis” is:",
+      "options": [
+        "Mild allergic reaction",
+        "Heart attack",
+        "Seizure",
+        "Severe, potentially life-threatening allergic reaction"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 12,
+      "questionText": "“Tachypnea” means:",
+      "options": [
+        "Slow breathing",
+        "Fast breathing",
+        "Irregular heartbeat",
+        "Low blood pressure"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 13,
+      "questionText": "Asthma attack” emergency treatment includes:",
+      "options": [
+        "Inhaled bronchodilator",
+        "Antibiotics",
+        "Surgery",
+        "Insulin"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 14,
+      "questionText": "Syncope” is:",
+      "options": [
+        "Fainting",
+        "Seizure",
+        "Stroke",
+        "Heart attack"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 15,
+      "questionText": "In emergency interpreting, the MOST important principle is:",
+      "options": [
+        "Paraphrasing freely",
+        "Adding explanations from your own knowledge",
+        "Accuracy and completeness",
+        "Shortening the message"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 16,
+      "questionText": "Bluish discoloration of lips or skin due to lack of oxygen refers to:",
+      "options": [
+        "Redness",
+        "Cyanosis",
+        "Rash",
+        "Burn"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 17,
+      "questionText": "Persistent vomiting and inability to keep fluids refers to:",
+      "options": [
+        "Hunger",
+        "Dehydration",
+        "Allergy",
+        "Fatigue"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 18,
+      "questionText": "Involuntary shaking or convulsions refers to:",
+      "options": [
+        "Tremor",
+        "Seizure",
+        "Fatigue",
+        "Paralysis"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 19,
+      "questionText": "Complete inability to move a part of the body refers to:",
+      "options": [
+        "Weakness",
+        "Pain",
+        "Swelling",
+        "Paralysis"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 20,
+      "questionText": "Sudden severe headache (worst ever) refers to:",
+      "options": [
+        "Tension headache",
+        "Subarachnoid Hemorrhage",
+        "Migraine",
+        "Sinusitis"
+      ],
+      "correctOption": "B"
+    }
+  ],
+  "ear_and_eye": [
+    {
+      "number": 1,
+      "questionText": "Sudden loss of vision in one eye refers to:",
+      "options": [
+        "Conjunctivitis",
+        "Retinal Detachment",
+        "Dry eye",
+        "Headache"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 2,
+      "questionText": "Red eye with itching and discharge is most likely:",
+      "options": [
+        "Glaucoma",
+        "Conjunctivitis",
+        "Cataract",
+        "Migraine"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 3,
+      "questionText": "A condition where the optic nerve is damaged due to high intraocular pressure is:",
+      "options": [
+        "Cataract",
+        "Glaucoma",
+        "Conjunctivitis",
+        "Strabismus"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 4,
+      "questionText": "Gradual loss of vision with cloudy lens refers to:",
+      "options": [
+        "Conjunctivitis",
+        "Cataract",
+        "Retinal detachment",
+        "Stroke"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 5,
+      "questionText": "Foreign body sensation in the eye most likely indicates:",
+      "options": [
+        "Migraine",
+        "Cataract",
+        "Glaucoma",
+        "Corneal Abrasion"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 6,
+      "questionText": "Sudden ear pain with fever suggests:",
+      "options": [
+        "Allergy",
+        "Otitis Media",
+        "Tinnitus",
+        "Dry eye"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 7,
+      "questionText": "Ringing in the ear without external sound is:",
+      "options": [
+        "Tinnitus",
+        "Vertigo",
+        "Infection",
+        "Headache"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 8,
+      "questionText": "Spinning sensation and imbalance indicates:",
+      "options": [
+        "Migraine",
+        "Vertigo",
+        "Fever",
+        "Rash"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 9,
+      "questionText": "Ear discharge with pain usually indicates:",
+      "options": [
+        "Allergy",
+        "Otitis Externa",
+        "Stroke",
+        "Diabetes"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 10,
+      "questionText": "Surgical repair of the small bones in the middle ear to improve hearing is:",
+      "options": [
+        "Myringoplasty",
+        "Ossiculoplasty",
+        "Cochlear implant",
+        "Ophthalmoscopy"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 11,
+      "questionText": "Eye pain with redness and sensitivity to light may indicate:",
+      "options": [
+        "Conjunctivitis",
+        "Cataract",
+        "Uveitis",
+        "Dry eye"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 12,
+      "questionText": "Excessive tearing and itchy eyes suggest:",
+      "options": [
+        "Glaucoma",
+        "Allergic Conjunctivitis",
+        "Stroke",
+        "Cataract"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 13,
+      "questionText": "Surgical removal of the cloudy lens in the eye and replacement with an artificial lens is called:",
+      "options": [
+        "Cataract Surgery",
+        "Strabismus correction",
+        "Tympanoplasty",
+        "Vitrectomy"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 14,
+      "questionText": "A test used to measure hearing ability using sound tones at different frequencies is:",
+      "options": [
+        "Otoscopy",
+        "Audiometry",
+        "Fundoscopy",
+        "Tympanoplasty"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 15,
+      "questionText": "Blurred vision with headache may indicate:",
+      "options": [
+        "Allergy",
+        "Migraine",
+        "Infection",
+        "Earwax"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 16,
+      "questionText": "Feeling of pressure in the ear is often due to:",
+      "options": [
+        "Eustachian Tube Dysfunction",
+        "Stroke",
+        "Cataract",
+        "Rash"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 17,
+      "questionText": "Diagnostic procedure that employs the use of mydriatic eye drops to dilate or enlarge the pupil in order to obtain a better view of the fundus of the eye",
+      "options": [
+        "Angiopathy",
+        "Otoscopy",
+        "Fundus examination",
+        "EEG"
+      ],
+      "correctOption": "C"
+    },
+    {
+      "number": 18,
+      "questionText": "Painful swelling of eyelid is:",
+      "options": [
+        "Cataract",
+        "Stye",
+        "Glaucoma",
+        "Migraine"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 19,
+      "questionText": "Specialist who treats eye diseases and perform eye surgeries :",
+      "options": [
+        "Optometrist",
+        "Ophthalmologist",
+        "Pulmonologist",
+        "Neurologist"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 20,
+      "questionText": "Sudden dizziness with hearing changes suggests:",
+      "options": [
+        "Stroke",
+        "Meniere Disease",
+        "Rash",
+        "Fever"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 21,
+      "questionText": "What is the medical term for crossed eyes?",
+      "options": [
+        "Strabismus",
+        "Cataract",
+        "Glaucoma",
+        "Cauterization"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 22,
+      "questionText": "A medical condition which may result in blurred or no vision in the center of the visual field",
+      "options": [
+        "Macular degeneration",
+        "Strabismus",
+        "Retinal detachment",
+        "Sty"
+      ],
+      "correctOption": "A"
+    },
+    {
+      "number": 23,
+      "questionText": "Condition in which you can see objects near to you clearly, but objects farther away are blurry:",
+      "options": [
+        "Hypermetropia",
+        "Myopia",
+        "Cataract",
+        "Blurry vision"
+      ],
+      "correctOption": "B"
+    },
+    {
+      "number": 24,
+      "questionText": "Define myringoplasty?",
+      "options": [
+        "Surgical repair of an aneurysm",
+        "Surgical repair of blood vessels",
+        "Surgical repair of heart valve",
+        "Surgical repair of eardrum"
+      ],
+      "correctOption": "D"
+    },
+    {
+      "number": 25,
+      "questionText": "What is a cochlear implant?",
+      "options": [
+        "A battery-powered electronic device designed to improve your hearing",
+        "A small electronic device that electrically stimulates the auditory nerve for hearing",
+        "Device used to maintain the rhythm of the heart",
+        "Device used for visual examination of the ear"
+      ],
+      "correctOption": "B"
+    }
+  ]
+}

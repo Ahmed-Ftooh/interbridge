@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:interbridge/data/models/interpreter_badge.dart';
 import 'package:interbridge/data/models/language.dart';
 import 'package:interbridge/data/models/skill.dart';
 import 'package:interbridge/data/models/specialization.dart';
@@ -130,6 +131,8 @@ class _ProfileViewState extends State<ProfileView> {
                 const SizedBox(height: AppSize.s20),
                 _buildSnapshotCard(state),
                 if (state.isInterpreter) ...[
+                  const SizedBox(height: AppSize.s20),
+                  _buildBadgesCard(state),
                   const SizedBox(height: AppSize.s20),
                   _buildSkillsCard(state),
                 ],
@@ -853,6 +856,92 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
+  Widget _buildBadgesCard(ProfileLoaded state) {
+    return _SectionCard(
+      title: 'Earned badges',
+      subtitle: 'Recognition from passed interpreter quiz sections.',
+      child:
+          state.interpreterBadges.isEmpty
+              ? Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: ColorManager.backgroundPrimary,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: ColorManager.primary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Text(
+                  'No badges earned yet. Complete quiz sections to unlock them.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: ColorManager.textSecondary,
+                  ),
+                ),
+              )
+              : Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children:
+                    state.interpreterBadges.map((badge) {
+                      final accent = _badgeCardColor(badge);
+                      return Container(
+                        width: 220,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.emoji_events,
+                                  size: 20,
+                                  color: accent,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _badgeName(badge),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelLarge?.copyWith(
+                                      color: ColorManager.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              '${_formatBadgeScore(badge.scorePercentage)}%',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleMedium?.copyWith(
+                                color: accent,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Earned ${_formatBadgeDate(badge.earnedAt)}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: ColorManager.textSecondary),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+              ),
+    );
+  }
+
   Widget _buildLanguageSkillMatrix(ProfileLoaded state) {
     if (state.interpreterLanguages.isEmpty) {
       return Padding(
@@ -1113,6 +1202,41 @@ class _ProfileViewState extends State<ProfileView> {
     );
     return match.level;
   }
+
+  Color _badgeCardColor(InterpreterBadge badge) {
+    if (badge.scorePercentage >= 95) {
+      return const Color(0xFFD97706);
+    }
+    if (badge.scorePercentage >= 85) {
+      return ColorManager.primary;
+    }
+    return const Color(0xFF0F766E);
+  }
+
+  String _badgeName(InterpreterBadge badge) {
+    final source =
+        badge.displayName.trim().isNotEmpty
+            ? badge.displayName
+            : badge.badgeType;
+    return source
+        .split(RegExp(r'[_\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join(' ');
+  }
+
+  String _formatBadgeScore(double score) {
+    if (score % 1 == 0) {
+      return score.toStringAsFixed(0);
+    }
+    return score.toStringAsFixed(1);
+  }
+
+  String _formatBadgeDate(DateTime value) {
+    return '${value.year}-${_twoDigits(value.month)}-${_twoDigits(value.day)}';
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
   String _capitalize(String value) {
     if (value.isEmpty) return value;

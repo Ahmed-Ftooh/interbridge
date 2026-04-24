@@ -102,12 +102,59 @@ Deno.serve(async (req) => {
       .eq("user_id", id)
       .order("uploaded_at", { ascending: false });
 
-    // Get phone verification status
-    const phoneVerification = await svc
+    // Get phone verification status.
+    // There may be multiple rows over time, so do not use maybeSingle().
+    const phoneVerificationRows = await svc
       .from("phone_verifications")
       .select("id, phone_number, verified, verified_at, email")
       .eq("user_id", id)
-      .maybeSingle();
+      .order("verified", { ascending: false })
+      .order("verified_at", { ascending: false })
+      .limit(5);
+
+    // Optional fallback from profile/details in case phone_verifications is empty.
+    let fallbackPhoneNumber: string | null = null;
+    let fallbackPhoneVerified = false;
+
+    try {
+      const profilePhone = await svc
+        .from("users_profile")
+        .select("phone_number, phone_verified")
+        .eq("user_id", id)
+        .maybeSingle();
+
+      if (!profilePhone.error && profilePhone.data) {
+        fallbackPhoneNumber = profilePhone.data.phone_number ?? null;
+        fallbackPhoneVerified = profilePhone.data.phone_verified === true;
+      }
+    } catch (_) {
+      // Ignore environments where these optional columns do not exist.
+    }
+
+    if (!fallbackPhoneNumber && details.data && typeof details.data === "object") {
+      const d = details.data as Record<string, unknown>;
+      const detailsPhone = (d.phone_number ?? d.phone) as string | null | undefined;
+      if (typeof detailsPhone === "string" && detailsPhone.trim().length > 0) {
+        fallbackPhoneNumber = detailsPhone;
+      }
+      if (d.phone_verified === true) {
+        fallbackPhoneVerified = true;
+      }
+    }
+
+    let phoneVerificationData: Record<string, unknown> | null = null;
+    if (!phoneVerificationRows.error && Array.isArray(phoneVerificationRows.data) && phoneVerificationRows.data.length > 0) {
+      phoneVerificationData = phoneVerificationRows.data[0] as Record<string, unknown>;
+    } else if (fallbackPhoneNumber) {
+      phoneVerificationData = {
+        id: null,
+        phone_number: fallbackPhoneNumber,
+        verified: fallbackPhoneVerified,
+        verified_at: null,
+        email,
+        source: "profile_fallback",
+      };
+    }
 
     // Get all earned badges
     const badges = await svc
@@ -182,7 +229,7 @@ Deno.serve(async (req) => {
       quizAttempts: dedupedQuizAttempts,
       badges: badges.data ?? [],
       governmentIds: governmentIds.data ?? [],
-      phoneVerification: phoneVerification.data ?? null,
+      phoneVerification: phoneVerificationData,
     });
   } catch (e) {
     return json({ error: e?.message ?? String(e) }, 500);

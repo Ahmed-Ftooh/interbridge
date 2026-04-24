@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_initializer.dart';
@@ -85,7 +86,7 @@ class _SplashViewState extends State<SplashView> {
       // Re-check immediately in case the event fired between our first check
       // and the subscription.
       final recheck = Supabase.instance.client.auth.currentSession;
-      if (recheck != null && recheck.user.emailConfirmedAt != null) {
+      if (recheck != null) {
         _authSub?.cancel();
         await _finalizeAndNavigate(recheck.user.id);
         return;
@@ -139,6 +140,17 @@ class _SplashViewState extends State<SplashView> {
       log('SplashView: Error finalizing pending registration: $e');
     }
     if (!mounted) return;
+
+    // On web, always hand off to LoginViewWeb for role + onboarding routing.
+    // This avoids diverging logic where splash may send interpreters directly
+    // to dashboard before onboarding checks run.
+    if (kIsWeb) {
+      _navigateOnce(() {
+        Navigator.pushReplacementNamed(context, _loginRouteForPortal());
+      });
+      return;
+    }
+
     await _navigateBasedOnRole(userId);
   }
 
@@ -159,7 +171,13 @@ class _SplashViewState extends State<SplashView> {
       if (isViewed) {
         final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
-          await _navigateBasedOnRole(user.id);
+          if (kIsWeb) {
+            _navigateOnce(() {
+              Navigator.pushReplacementNamed(context, _loginRouteForPortal());
+            });
+          } else {
+            await _navigateBasedOnRole(user.id);
+          }
         } else {
           _navigateOnce(() {
             Navigator.pushReplacementNamed(context, Routes.loginRoute);
@@ -180,6 +198,26 @@ class _SplashViewState extends State<SplashView> {
         });
       }
     });
+  }
+
+  String _loginRouteForPortal() {
+    if (!kIsWeb) return Routes.loginRoute;
+
+    final path = Uri.base.path.toLowerCase();
+    final host = Uri.base.host.toLowerCase();
+
+    if (path.startsWith('/admin') || host.startsWith('admin.')) {
+      return Routes.adminPortalLoginRoute;
+    }
+    if (path.startsWith('/organization') ||
+        host.startsWith('organization.')) {
+      return Routes.organizationPortalLoginRoute;
+    }
+    if (path.startsWith('/interpreter') || host.startsWith('interpreter.')) {
+      return Routes.interpreterPortalLoginRoute;
+    }
+
+    return Routes.loginRoute;
   }
 
   // ─────────────────── Role-based navigation ───────────────────
@@ -208,16 +246,11 @@ class _SplashViewState extends State<SplashView> {
           );
         });
       } else if (profile?.role == 'interpreter') {
-        log(
-          'SplashView: Interpreter session found at startup, forcing re-login',
-        );
-        await _supabaseService.signOut();
-        await _appPreferences.logout();
-        if (!mounted) return;
+        log('SplashView: Navigating to interpreter dashboard');
         _navigateOnce(() {
           Navigator.pushReplacementNamed(
             context,
-            Routes.interpreterPortalLoginRoute,
+            Routes.interpreterPortalDashboardRoute,
           );
         });
       } else {

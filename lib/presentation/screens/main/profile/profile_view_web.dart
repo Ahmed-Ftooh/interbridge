@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:interbridge/data/models/interpreter_badge.dart';
 import 'package:interbridge/data/models/language.dart';
 import 'package:interbridge/presentation/screens/main/profile/bloc/profile_bloc.dart';
 import 'package:interbridge/presentation/screens/main/profile/bloc/profile_event.dart';
@@ -141,6 +142,12 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
                 // Stats Card
                 _buildStatsCard(state),
                 const SizedBox(height: 24),
+
+                // Badges Card (for interpreters)
+                if (state.isInterpreter) ...[
+                  _buildBadgesCard(state),
+                  const SizedBox(height: 24),
+                ],
 
                 // Languages Card (for interpreters)
                 if (state.isInterpreter) ...[
@@ -418,6 +425,157 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
       ),
     );
   }
+
+  Widget _buildBadgesCard(ProfileLoaded state) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.emoji_events,
+                color: Color(0xFFD97706),
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Earned Badges',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  state.interpreterBadges.length.toString(),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (state.interpreterBadges.isEmpty)
+            const Text(
+              'No badges earned yet. Complete quiz sections to unlock them.',
+              style: TextStyle(color: Color(0xFF64748B)),
+            )
+          else
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children:
+                  state.interpreterBadges.map((badge) {
+                    final accent = _badgeAccentColor(badge.scorePercentage);
+                    return Container(
+                      width: 220,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.09),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: accent.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.verified, size: 18, color: accent),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _badgeName(badge),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '${_formatBadgeScore(badge.scorePercentage)}%',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: accent,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatBadgeDate(badge.earnedAt),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color _badgeAccentColor(double scorePercentage) {
+    if (scorePercentage >= 95) {
+      return const Color(0xFFD97706);
+    }
+    if (scorePercentage >= 85) {
+      return const Color(0xFF0955FA);
+    }
+    return const Color(0xFF0F766E);
+  }
+
+  String _badgeName(InterpreterBadge badge) {
+    final source =
+        badge.displayName.trim().isNotEmpty
+            ? badge.displayName
+            : badge.badgeType;
+    return source
+        .split(RegExp(r'[_\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join(' ');
+  }
+
+  String _formatBadgeScore(double score) {
+    if (score % 1 == 0) {
+      return score.toStringAsFixed(0);
+    }
+    return score.toStringAsFixed(1);
+  }
+
+  String _formatBadgeDate(DateTime value) {
+    return '${value.year}-${_twoDigits(value.month)}-${_twoDigits(value.day)}';
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
   Widget _buildLanguagesCard(ProfileLoaded state) {
     return Container(

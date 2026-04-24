@@ -72,6 +72,26 @@ class CallService {
     }
   }
 
+  /// Best-effort cleanup for requester-side no-show scenarios.
+  ///
+  /// If the call request is still accepted and belongs to the current
+  /// requester, mark it cancelled so stale sessions are not restored.
+  Future<void> cancelAcceptedRequestAsRequester({
+    required String requestId,
+  }) async {
+    try {
+      final userId = requireUserId();
+      await _supabase
+          .from('interpreter_requests')
+          .update({'status': 'cancelled'})
+          .eq('id', requestId)
+          .eq('requester_id', userId)
+          .eq('status', 'accepted');
+    } catch (e) {
+      log('Error cancelling accepted request on no-show timeout: $e');
+    }
+  }
+
   /// Record call duration to database
   Future<void> recordCallDuration({
     required String channelId,

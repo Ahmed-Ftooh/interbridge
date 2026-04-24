@@ -27,8 +27,9 @@ class StartCall extends CallEvent {
 
 class EndCall extends CallEvent {
   final bool isRemote;
+  final String? reason;
   // Default to false, meaning it's a local hangup unless specified otherwise
-  EndCall({this.isRemote = false});
+  EndCall({this.isRemote = false, this.reason});
 }
 
 class ToggleMute extends CallEvent {}
@@ -166,7 +167,13 @@ class CallOngoing extends CallState {
 
 class CallEnded extends CallState {
   final bool isRemote;
-  CallEnded({this.isRemote = false});
+  final bool shouldCollectFeedback;
+  final String? reason;
+  CallEnded({
+    this.isRemote = false,
+    this.shouldCollectFeedback = true,
+    this.reason,
+  });
 }
 
 /// ===== BLoC =====
@@ -185,10 +192,19 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   final Map<int, Timer> _remoteVideoUnavailableTimers = {};
   final Map<int, Timer> _remoteVideoReadyFallbackTimers = {};
   final Map<int, int> _remoteReadyFallbackAttempts = {};
+  Timer? _doctorAbsentTimer;
+  Timer? _requesterNoJoinTimeoutTimer;
+
+  String? _localUserId;
+  int? _requesterUid;
+  int? _interpreterUid;
+  bool _isLocalInterpreter = false;
 
   static const Duration _kRemoteUnavailableGrace = Duration(milliseconds: 1200);
   static const Duration _kRemoteReadyFallback = Duration(seconds: 3);
   static const int _kMaxRemoteReadyFallbackAttempts = 4;
+  static const Duration _kDoctorPresenceGrace = Duration(seconds: 12);
+  static const Duration _kRequesterNoJoinTimeout = Duration(seconds: 40);
   static const String _kRuntimeMarker = 'CALL_BLOC_MARKER_20260329_A';
 
   /// Expose engine for video rendering in UI
@@ -241,6 +257,11 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         '$_kRuntimeMarker: StartCall channel=${e.channelId}, video=${e.isVideoCall}, localUid=$resolvedLocalUid',
       );
 
+      await _resolveCallRoleContext(
+        channelId: e.channelId,
+        localUid: resolvedLocalUid,
+      );
+
       // Notify global call state immediately so chat banner updates
       CallStateManager().startCall(e.channelId);
 
@@ -252,6 +273,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       _cancelAllPendingRemoteUnavailable();
       _cancelAllPendingRemoteReadyFallback();
       _remoteReadyFallbackAttempts.clear();
+      _cancelDoctorAbsentTimer();
+      _cancelRequesterNoJoinTimeout();
 
       // 1) Request microphone/camera permission
       if (!kIsWeb) {
@@ -764,6 +787,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     log('Ending call... (isRemote: ${e.isRemote})');
     _timer?.cancel();
     _timer = null;
+    _cancelRequesterNoJoinTimeout();
+
+    final shouldCollectFeedback = _startedAt != null;
 
     // Record call duration before clearing
     Duration? callDuration;
@@ -785,6 +811,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _cancelAllPendingRemoteUnavailable();
     _cancelAllPendingRemoteReadyFallback();
     _remoteReadyFallbackAttempts.clear();
+    _cancelDoctorAbsentTimer();
+    _clearCallRoleContext();
 
     // Stop local camera capture/preview deterministically on all platforms,
     // specifically web where browser camera indicator can otherwise remain on.
@@ -828,7 +856,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // Ensure global call banner clears for everyone
       CallStateManager().endCall();
       log('Emitting CallEnded state');
-      emit(CallEnded(isRemote: e.isRemote));
+      emit(
+        CallEnded(
+          isRemote: e.isRemote,
+          shouldCollectFeedback: shouldCollectFeedback,
+          reason: e.reason,
+        ),
+      );
     }
   }
 
@@ -921,12 +955,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   }
 
   void _onRemoteUserJoined(_RemoteUserJoined e, Emitter<CallState> emit) {
+    _cancelRequesterNoJoinTimeout();
     _remoteUids.add(e.uid);
     _remoteVideoReadyUids.remove(e.uid);
     _remoteVideoStartingUids.remove(e.uid);
     _remoteReadyFallbackAttempts.remove(e.uid);
     _cancelPendingRemoteUnavailable(e.uid);
     _scheduleRemoteReadyFallback(e.uid, requirePublishSignal: true);
+
+    if (_isLocalInterpreter && _isDoctorPresentInAgora()) {
+      _cancelDoctorAbsentTimer();
+    }
 
     // On web, explicitly unmute / subscribe to the remote video stream.
     // autoSubscribeVideo in ChannelMediaOptions may not be sufficient on
@@ -979,10 +1018,21 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     _cancelPendingRemoteUnavailable(e.uid);
     _cancelPendingRemoteReadyFallback(e.uid);
 
-    if (wasTracked && _remoteUids.isEmpty && state is CallOngoing) {
-      log('Remote user left and no more participants - ending call');
-      add(EndCall(isRemote: true));
-      return;
+    if (state is CallOngoing) {
+      if (_isLocalInterpreter) {
+        // For interpreter users, only doctor (requester) presence keeps the
+        // call alive. This prevents staying in channel when a Twilio patient
+        // call is active but no doctor is in Agora.
+        if (_isDoctorPresentInAgora()) {
+          _cancelDoctorAbsentTimer();
+        } else {
+          _scheduleDoctorAbsentHangup();
+        }
+      } else if (wasTracked && _remoteUids.isEmpty) {
+        log('Remote user left and no more participants - ending call');
+        add(EndCall(isRemote: true, reason: 'remote_left'));
+        return;
+      }
     }
 
     if (state is CallOngoing) {
@@ -1141,6 +1191,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         videoEnabled: _videoEnabled,
       ),
     );
+
+    _scheduleRequesterNoJoinTimeout(e.channelId);
   }
 
   Future<void> _onJoinChannelSuccess(
@@ -1173,6 +1225,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         videoEnabled: _videoEnabled,
       ),
     );
+
+    _scheduleRequesterNoJoinTimeout(e.channelId);
     log('CallOngoing state emitted successfully');
   }
 
@@ -1202,6 +1256,132 @@ class CallBloc extends Bloc<CallEvent, CallState> {
         ),
       ),
     );
+  }
+
+  Future<void> _resolveCallRoleContext({
+    required String channelId,
+    required int localUid,
+  }) async {
+    _clearCallRoleContext();
+
+    try {
+      _localUserId = service.requireUserId();
+    } catch (e) {
+      log('Role context: unable to resolve local user id: $e');
+      return;
+    }
+
+    final participants = await service.lookupCallParticipants(channelId);
+    if (participants == null) {
+      log('Role context: no interpreter_requests row for $channelId');
+      return;
+    }
+
+    final requesterId = participants['requester_id'] as String?;
+    final interpreterId = participants['accepted_by'] as String?;
+
+    if (requesterId != null && requesterId.isNotEmpty) {
+      _requesterUid = uidFromUuid(requesterId);
+    }
+    if (interpreterId != null && interpreterId.isNotEmpty) {
+      _interpreterUid = uidFromUuid(interpreterId);
+    }
+
+    _isLocalInterpreter =
+        (_localUserId != null && interpreterId == _localUserId) ||
+        (_interpreterUid != null && _interpreterUid == localUid);
+
+    log(
+      'Role context resolved: local=${_localUserId ?? 'unknown'}, '
+      'requesterUid=${_requesterUid ?? -1}, interpreterUid=${_interpreterUid ?? -1}, '
+      'localIsInterpreter=$_isLocalInterpreter',
+    );
+  }
+
+  void _clearCallRoleContext() {
+    _localUserId = null;
+    _requesterUid = null;
+    _interpreterUid = null;
+    _isLocalInterpreter = false;
+  }
+
+  bool _isDoctorPresentInAgora() {
+    if (_requesterUid == null) {
+      // Fallback to legacy behavior if role metadata is unavailable.
+      return _remoteUids.isNotEmpty;
+    }
+
+    if (!_isLocalInterpreter) {
+      // If local user is requester, doctor is present by definition.
+      return true;
+    }
+
+    return _remoteUids.contains(_requesterUid);
+  }
+
+  void _scheduleDoctorAbsentHangup() {
+    if (_doctorAbsentTimer != null) return;
+
+    log(
+      'Doctor absent from Agora. Waiting ${_kDoctorPresenceGrace.inSeconds}s before ending interpreter call.',
+    );
+
+    _doctorAbsentTimer = Timer(_kDoctorPresenceGrace, () {
+      _doctorAbsentTimer = null;
+
+      if (!_isLocalInterpreter || state is! CallOngoing) {
+        return;
+      }
+
+      if (_isDoctorPresentInAgora()) {
+        return;
+      }
+
+      log('Doctor still absent after grace period - ending interpreter call');
+      add(EndCall(isRemote: true));
+    });
+  }
+
+  void _cancelDoctorAbsentTimer() {
+    _doctorAbsentTimer?.cancel();
+    _doctorAbsentTimer = null;
+  }
+
+  void _scheduleRequesterNoJoinTimeout(String channelId) {
+    if (_isLocalInterpreter) return;
+    if (_remoteUids.isNotEmpty) {
+      _cancelRequesterNoJoinTimeout();
+      return;
+    }
+    if (_requesterNoJoinTimeoutTimer != null) return;
+
+    log(
+      'Requester waiting for remote join. Starting no-join timeout (${_kRequesterNoJoinTimeout.inSeconds}s).',
+    );
+
+    _requesterNoJoinTimeoutTimer = Timer(_kRequesterNoJoinTimeout, () async {
+      _requesterNoJoinTimeoutTimer = null;
+
+      if (_isLocalInterpreter ||
+          state is! CallOngoing ||
+          _remoteUids.isNotEmpty) {
+        return;
+      }
+
+      try {
+        await service.cancelAcceptedRequestAsRequester(requestId: channelId);
+      } catch (e) {
+        log('No-join timeout cleanup failed: $e');
+      }
+
+      log('No remote participant joined in time. Ending requester call.');
+      add(EndCall(isRemote: true, reason: 'remote_join_timeout'));
+    });
+  }
+
+  void _cancelRequesterNoJoinTimeout() {
+    _requesterNoJoinTimeoutTimer?.cancel();
+    _requesterNoJoinTimeoutTimer = null;
   }
 
   Future<void> _recordCallDuration(
@@ -1319,6 +1499,9 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   Future<void> close() async {
     _timer?.cancel();
     _timer = null;
+    _cancelDoctorAbsentTimer();
+    _cancelRequesterNoJoinTimeout();
+    _clearCallRoleContext();
     _remoteVideoStartingUids.clear();
     _cancelAllPendingRemoteUnavailable();
     _cancelAllPendingRemoteReadyFallback();

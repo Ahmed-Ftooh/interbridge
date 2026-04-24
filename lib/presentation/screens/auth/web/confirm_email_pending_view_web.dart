@@ -217,7 +217,7 @@ class _ConfirmEmailPendingViewWebState
                             const SizedBox(height: 12),
                             _buildStep(2, 'Click the confirmation link'),
                             const SizedBox(height: 12),
-                            _buildStep(3, 'You\'ll be automatically signed in'),
+                            _buildStep(3, 'Login to continue your process'),
                           ],
                         ),
                       ),

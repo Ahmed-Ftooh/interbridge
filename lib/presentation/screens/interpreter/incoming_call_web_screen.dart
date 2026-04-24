@@ -242,6 +242,12 @@ class _IncomingCallWebScreenState extends State<IncomingCallWebScreen>
         requesterId: widget.request.requesterId,
         interpreterId: currentUserId,
         currentScreen: 'call',
+        callData: {
+          'call_type': acceptedRequest.callType,
+          'accepted_at': acceptedRequest.acceptedAt?.toIso8601String(),
+          'waiting_started_at': DateTime.now().toIso8601String(),
+          'remote_joined': false,
+        },
       );
 
       if (!mounted) return;

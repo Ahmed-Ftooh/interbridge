@@ -163,6 +163,34 @@ class RouteGenerator {
             : routeName?.split('?').first;
     final String? host = parsedUri?.host;
     final String scheme = parsedUri?.scheme ?? '';
+    final Map<String, String> queryParams = parsedUri?.queryParameters ?? const {};
+    final Map<String, String> webQueryParams =
+      kIsWeb ? Uri.base.queryParameters : const {};
+    final String webFragment = kIsWeb ? Uri.base.fragment : '';
+
+    // Handle auth callbacks even when hosting rewrites callback URLs to
+    // a different path (for example /login?code=...).
+    final bool hasAuthQueryParams =
+        queryParams.containsKey('code') ||
+        queryParams.containsKey('token_hash') ||
+        queryParams.containsKey('access_token') ||
+      queryParams.containsKey('refresh_token') ||
+      webQueryParams.containsKey('code') ||
+      webQueryParams.containsKey('token_hash') ||
+      webQueryParams.containsKey('access_token') ||
+      webQueryParams.containsKey('refresh_token');
+    final bool hasAuthFragmentToken =
+        (parsedUri?.fragment.contains('access_token=') ?? false) ||
+      (parsedUri?.fragment.contains('refresh_token=') ?? false) ||
+      webFragment.contains('access_token=') ||
+      webFragment.contains('refresh_token=');
+
+    if (hasAuthQueryParams || hasAuthFragmentToken) {
+      log('RouteGenerator: Matched auth callback via query/fragment');
+      return MaterialPageRoute(
+        builder: (_) => const _AuthCallbackLoadingScreen(),
+      );
+    }
 
     // Debug logging to track deep link routing
     log(
@@ -470,11 +498,7 @@ class RouteGenerator {
         if (kIsWeb) {
           return MaterialPageRoute(
             builder:
-                (_) => const _PortalRoleGateWeb(
-                  allowedRoles: {'interpreter'},
-                  unauthenticatedRoute: Routes.interpreterPortalLoginRoute,
-                  child: MainViewWeb(),
-                ),
+                (_) => const _InterpreterPortalGateWeb(child: MainViewWeb()),
           );
         }
         return MaterialPageRoute(builder: (_) => const MainView());
@@ -585,6 +609,8 @@ class RouteGenerator {
         if (settings.name?.contains('://') == true ||
             settings.name?.contains('code=') == true ||
             settings.name?.contains('token=') == true ||
+          settings.name?.contains('token_hash=') == true ||
+          settings.name?.contains('type=magiclink') == true ||
             settings.name?.contains('access_token=') == true) {
           log(
             'RouteGenerator: Detected URL-like or auth route, treating as auth callback',
@@ -635,7 +661,7 @@ class _UnknownRouteRecoveryScreenState
         final role = profile?.role;
         final route =
             role == 'interpreter'
-                ? Routes.interpreterPortalDashboardRoute
+            ? Routes.interpreterPortalLoginRoute
                 : role == 'organization_admin'
                 ? Routes.organizationPortalDashboardRoute
                 : role == 'admin' || role == 'superadmin'
@@ -730,7 +756,7 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
   String _routeForRole(String? role) {
     switch (role) {
       case 'interpreter':
-        return Routes.interpreterPortalDashboardRoute;
+        return Routes.interpreterPortalLoginRoute;
       case 'organization_admin':
         return Routes.organizationPortalDashboardRoute;
       case 'admin':
@@ -744,6 +770,177 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
   void _redirect(String route) {
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isChecking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (!_isAllowed) {
+      return const SizedBox.shrink();
+    }
+    return widget.child;
+  }
+}
+
+class _InterpreterPortalGateWeb extends StatefulWidget {
+  const _InterpreterPortalGateWeb({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_InterpreterPortalGateWeb> createState() =>
+      _InterpreterPortalGateWebState();
+}
+
+class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
+  bool _isAllowed = false;
+  bool _isChecking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAccess();
+  }
+
+  Map<String, dynamic> _buildInterpreterResumeArgs(String employmentType) {
+    final isPaid = employmentType == 'paid';
+    return {
+      'role': 'interpreter',
+      'track': employmentType,
+      'interpreterTrack': employmentType,
+      'interpreterLevel': employmentType,
+      'requiresMedicalDocs': isPaid,
+      'authContinuationFullScreen': true,
+    };
+  }
+
+  Future<void> _checkAccess() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        _redirect(Routes.interpreterPortalLoginRoute);
+        return;
+      }
+
+      final profile = await SupabaseService().getUserProfile(user.id);
+      final role = profile?.role;
+
+      if (role != 'interpreter') {
+        _redirect(_routeForRole(role));
+        return;
+      }
+
+      final client = Supabase.instance.client;
+      final profileData =
+          await client
+              .from('users_profile')
+              .select('employment_type')
+              .eq('user_id', user.id)
+              .maybeSingle();
+      final detailsData =
+          await client
+              .from('interpreter_details')
+              .select('onboarding_status, is_verified')
+              .eq('user_id', user.id)
+              .maybeSingle();
+
+      final employmentType =
+          profileData?['employment_type'] as String? ?? 'volunteer';
+      final onboardingStatus =
+          detailsData?['onboarding_status'] as String? ?? 'not_started';
+      final isVerified = detailsData?['is_verified'] == true;
+
+      if (isVerified || onboardingStatus == 'under_review') {
+        if (!mounted) return;
+        setState(() {
+          _isAllowed = true;
+          _isChecking = false;
+        });
+        return;
+      }
+
+      final resumeArgs = _buildInterpreterResumeArgs(employmentType);
+
+      switch (onboardingStatus) {
+        case 'not_started':
+          _redirect(Routes.interpreterTrackSelection, arguments: resumeArgs);
+          return;
+        case 'track_selected':
+          _redirect(Routes.selectLanguage, arguments: resumeArgs);
+          return;
+        case 'languages_selected':
+          try {
+            final rows = await client
+                .from('interpreter_languages')
+                .select('language_id')
+                .eq('user_id', user.id);
+            final languageIds =
+                (rows as List)
+                    .map((row) => row['language_id'])
+                    .whereType<num>()
+                    .map((id) => id.toInt())
+                    .toList();
+            if (languageIds.isNotEmpty) {
+              resumeArgs['languages'] = languageIds;
+            }
+          } catch (_) {
+            // Keep fallback route to language selection.
+          }
+
+          if ((resumeArgs['languages'] as List?)?.isNotEmpty == true) {
+            _redirect(Routes.languageFluencyScreen, arguments: resumeArgs);
+          } else {
+            _redirect(Routes.selectLanguage, arguments: resumeArgs);
+          }
+          return;
+        case 'fluency_selected':
+          _redirect(Routes.interpreterFieldScreen, arguments: resumeArgs);
+          return;
+        case 'specialization_selected':
+          _redirect(Routes.voiceSampleRoute, arguments: resumeArgs);
+          return;
+        case 'voice_sample_uploaded':
+          _redirect(Routes.phoneOtpRoute, arguments: resumeArgs);
+          return;
+        case 'phone_entered':
+          _redirect(Routes.governmentIdUploadRoute, arguments: resumeArgs);
+          return;
+        case 'government_id_uploaded':
+          _redirect(Routes.certificateUploadRoute, arguments: resumeArgs);
+          return;
+        case 'document_uploaded':
+          _redirect(Routes.interpreterQuizHubRoute);
+          return;
+        default:
+          _redirect(Routes.interpreterTrackSelection, arguments: resumeArgs);
+          return;
+      }
+    } catch (e) {
+      log('InterpreterPortalGate error: $e');
+      _redirect(Routes.interpreterPortalLoginRoute);
+    }
+  }
+
+  String _routeForRole(String? role) {
+    switch (role) {
+      case 'organization_admin':
+        return Routes.organizationPortalDashboardRoute;
+      case 'admin':
+      case 'superadmin':
+        return Routes.adminPortalDashboardRoute;
+      case 'interpreter':
+      default:
+        return Routes.interpreterPortalLoginRoute;
+    }
+  }
+
+  void _redirect(String route, {Object? arguments}) {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(route, (r) => false, arguments: arguments);
   }
 
   @override
@@ -783,14 +980,10 @@ class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
       return;
     }
 
-    // Keep current interpreter policy: always require fresh sign-in.
-    if (widget.kind == _WebPortalKind.interpreter) {
-      _redirect(targetLogin);
-      return;
-    }
-
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null || user.emailConfirmedAt == null) {
+    // Allow users to skip email confirmation check if they were already authenticated
+    // Some older accounts or specific flows might not have emailConfirmedAt set.
+    if (user == null) {
       _redirect(targetLogin);
       return;
     }
@@ -801,15 +994,19 @@ class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
       final allowed =
           (widget.kind == _WebPortalKind.organization &&
               role == 'organization_admin') ||
+          (widget.kind == _WebPortalKind.interpreter &&
+              role == 'interpreter') ||
           (widget.kind == _WebPortalKind.admin &&
               (role == 'admin' || role == 'superadmin'));
 
       if (allowed) {
-        _redirect(
-          widget.kind == _WebPortalKind.organization
-              ? Routes.organizationPortalDashboardRoute
-              : Routes.adminPortalDashboardRoute,
-        );
+        if (widget.kind == _WebPortalKind.interpreter) {
+          _redirect(Routes.interpreterPortalLoginRoute);
+        } else if (widget.kind == _WebPortalKind.organization) {
+          _redirect(Routes.organizationPortalDashboardRoute);
+        } else {
+          _redirect(Routes.adminPortalDashboardRoute);
+        }
         return;
       }
 

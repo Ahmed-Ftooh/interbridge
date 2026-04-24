@@ -118,27 +118,70 @@ class _MainViewState extends State<MainView> {
       final response =
           await Supabase.instance.client
               .from('interpreter_requests')
-              .select('status, accepted_by, requester_id, call_type')
+              .select(
+                'status, accepted_by, requester_id, call_type, accepted_at',
+              )
               .eq('id', requestId)
               .single();
 
       final dbStatus = response['status'] as String?;
-      if (dbStatus != 'accepted') {
+      final acceptedBy = response['accepted_by'] as String?;
+      if (dbStatus != 'accepted' || acceptedBy == null || acceptedBy.isEmpty) {
         // Call is no longer active — discard stale session
         log(
-          'Session request $requestId has status $dbStatus — clearing stale session',
+          'Session request $requestId is not restorable (status=$dbStatus, accepted_by=$acceptedBy) — clearing stale session',
         );
         await SessionService.clearSession();
         return;
+      }
+
+      final sessionCallDataRaw = session['callData'];
+      final sessionCallData =
+          sessionCallDataRaw is Map
+              ? Map<String, dynamic>.from(sessionCallDataRaw)
+              : <String, dynamic>{};
+      final remoteJoined = sessionCallData['remote_joined'] == true;
+
+      if (!remoteJoined) {
+        final waitingStartedAtRaw =
+            sessionCallData['waiting_started_at']?.toString();
+        final waitingStartedAt =
+            waitingStartedAtRaw == null
+                ? null
+                : DateTime.tryParse(waitingStartedAtRaw)?.toUtc();
+
+        final acceptedAtRaw = response['accepted_at']?.toString();
+        final acceptedAt =
+            acceptedAtRaw == null
+                ? null
+                : DateTime.tryParse(acceptedAtRaw)?.toUtc();
+
+        final staleAnchor = waitingStartedAt ?? acceptedAt;
+        if (staleAnchor != null &&
+            DateTime.now().toUtc().difference(staleAnchor) >
+                const Duration(seconds: 40)) {
+          log(
+            'Session request $requestId timed out waiting for remote join — clearing stale session',
+          );
+          await SessionService.clearSession();
+          return;
+        }
       }
 
       // Call is still in-progress — refresh session data and restore
       await SessionService.saveSession(
         requestId: requestId,
         requesterId: response['requester_id'] as String,
-        interpreterId: response['accepted_by'] as String,
+        interpreterId: acceptedBy,
         currentScreen: 'call',
-        callData: {'call_type': response['call_type'] ?? 'voice'},
+        callData: {
+          'call_type': response['call_type'] ?? 'voice',
+          'accepted_at': response['accepted_at']?.toString(),
+          'waiting_started_at':
+              sessionCallData['waiting_started_at']?.toString() ??
+              DateTime.now().toIso8601String(),
+          'remote_joined': remoteJoined,
+        },
       );
 
       await _restoreSession();

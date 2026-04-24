@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/theme/theme_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -47,7 +48,9 @@ class MyAppState extends State<MyApp> {
         navigatorKey: MyApp.navigatorKey,
         debugShowCheckedModeBanner: false,
         onGenerateRoute: RouteGenerator.getRoute,
-        initialRoute: Routes.splashRoute,
+        // On web, preserve browser URL on refresh (step routes, auth callback).
+        // For mobile, keep splash as the explicit entry route.
+        initialRoute: kIsWeb ? null : Routes.splashRoute,
         theme: getApplicationTheme(),
       ),
     );

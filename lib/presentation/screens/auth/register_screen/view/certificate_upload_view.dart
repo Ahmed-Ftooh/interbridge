@@ -226,6 +226,7 @@ class _CertificateUploadScreenState extends State<CertificateUploadScreen> {
                   'Professional Details',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
+                    color: Colors.white
                   ),
                 ),
                 const SizedBox(height: 16),

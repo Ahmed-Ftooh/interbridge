@@ -211,33 +211,57 @@ class InterpreterRequestService {
 
       log('Matching user IDs by languages: ${matchingUserIds.length}');
 
+      // Determine currently online interpreters from interpreter_details,
+      // then classify paid/volunteer from users_profile (source of truth).
+      final onlineInterpreterRows = await _client
+          .from('interpreter_details')
+          .select('user_id')
+          .eq('is_online', true)
+          .inFilter('user_id', matchingUserIds);
+
+      final onlineInterpreterIds =
+          onlineInterpreterRows.map((u) => u['user_id'] as String).toList();
+
+      if (onlineInterpreterIds.isEmpty) {
+        log('No online interpreters found matching both languages');
+        return [];
+      }
+
+      final onlineProfiles = await _client
+          .from('users_profile')
+          .select('user_id, username, role, employment_type')
+          .inFilter('user_id', onlineInterpreterIds)
+          .eq('role', 'interpreter');
+
+      final profileRows = List<Map<String, dynamic>>.from(onlineProfiles);
+
+      final paidIds =
+          profileRows
+              .where((p) => (p['employment_type'] as String?) == 'paid')
+              .map((p) => p['user_id'] as String)
+              .toList();
+
+      final volunteerIds =
+          profileRows
+              .where((p) => (p['employment_type'] as String?) != 'paid')
+              .map((p) => p['user_id'] as String)
+              .toList();
+
+      log(
+        'Online profile split => volunteers: ${volunteerIds.length}, paid: ${paidIds.length}',
+      );
+
       // === GENERAL INTERPRETER TYPE ===
       // Only return volunteer/entry-level interpreters who are ONLINE
       if (type == 'general') {
         log('Finding GENERAL (volunteer) interpreters who are ONLINE');
-
-        // Get volunteer interpreters from interpreter_details who are online
-        final volunteerInterpreters = await _client
-            .from('interpreter_details')
-            .select('user_id')
-            .eq('employment_type', 'volunteer')
-            .eq('is_online', true) // Only online interpreters
-            .inFilter('user_id', matchingUserIds);
-
-        final volunteerIds =
-            volunteerInterpreters.map((u) => u['user_id'] as String).toList();
         log('Found ${volunteerIds.length} volunteer interpreters');
 
         if (volunteerIds.isEmpty) return [];
 
-        // Get profiles for volunteer interpreters
-        final userProfiles = await _client
-            .from('users_profile')
-            .select('user_id, username, role, employment_type')
-            .inFilter('user_id', volunteerIds)
-            .eq('role', 'interpreter');
-
-        return List<Map<String, dynamic>>.from(userProfiles);
+        return profileRows
+            .where((p) => volunteerIds.contains(p['user_id']))
+            .toList();
       }
 
       // === SPECIALIST INTERPRETER TYPE ===
@@ -246,16 +270,6 @@ class InterpreterRequestService {
         'Finding SPECIALIST (paid) interpreters for section: $section, Tier: $tier',
       );
 
-      // Get paid interpreters from interpreter_details who are ONLINE
-      final paidInterpreters = await _client
-          .from('interpreter_details')
-          .select('user_id')
-          .eq('employment_type', 'paid')
-          .eq('is_online', true) // Only online interpreters
-          .inFilter('user_id', matchingUserIds);
-
-      final paidIds =
-          paidInterpreters.map((u) => u['user_id'] as String).toList();
       log('Found ${paidIds.length} paid interpreters');
 
       List<String> tierInterpreterIds = [];

@@ -7,6 +7,7 @@ import 'package:interbridge/admin/widgets/certificate_tile.dart';
 import 'package:interbridge/admin/widgets/verification_section.dart';
 import 'package:interbridge/app/di.dart';
 import 'package:interbridge/data/services/call_service.dart';
+import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AdminDetailsScreen extends StatelessWidget {
@@ -193,6 +194,8 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
                   VerificationSection(
                     userId: widget.userId,
                     details: details,
+                    interpreterEmail: profile['email']?.toString(),
+                    interpreterName: profile['username']?.toString(),
                     onChanged: _load,
                   ),
                   const SizedBox(height: 24),
@@ -938,7 +941,10 @@ class _AdminDetailsLoaderState extends State<_AdminDetailsLoader> {
 
     if (confirmed == true) {
       try {
-        await Supabase.instance.client.auth.resetPasswordForEmail(email);
+        await SupabaseService().sendPasswordResetEmail(
+          email: email,
+          portalHint: 'interpreter',
+        );
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

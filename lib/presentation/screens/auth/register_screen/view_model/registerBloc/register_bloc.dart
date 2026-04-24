@@ -77,6 +77,11 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
+        data: {
+          'role': 'organization_admin',
+          'username': event.username,
+        },
+        portalHint: 'organization',
       );
 
       // Persist pending registration locally (organization data included)
@@ -139,6 +144,10 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
+        data: {
+          'role': 'requester',
+          'username': event.username,
+        },
       );
       await supabase.sendMagicLink(event.email);
 
@@ -205,6 +214,13 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
+        data: {
+          'role': event.role,
+          'username': event.username,
+          'gender': event.gender,
+          'country': event.country,
+        },
+        portalHint: event.role == 'interpreter' ? 'interpreter' : null,
       );
       // await supabase.sendMagicLink(event.email); // Redundant
 
@@ -299,9 +315,16 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
   Future<void> _signUpAllowingPendingConfirmation({
     required String email,
     required String password,
+    Map<String, dynamic>? data,
+    String? portalHint,
   }) async {
     try {
-      await supabase.signUp(email: email, password: password);
+      await supabase.signUp(
+        email: email,
+        password: password,
+        data: data,
+        portalHint: portalHint,
+      );
     } on AuthException catch (e) {
       // If the error is just that email is not confirmed, we can proceed
       // because we want to show the confirmation screen anyway.
@@ -372,6 +395,11 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
       await _signUpAllowingPendingConfirmation(
         email: event.email,
         password: event.password,
+        data: {
+          'role': 'requester', // Doctors are requesters internally inside an organization
+          'username': event.username,
+        },
+        portalHint: 'organization',
       );
 
       // Persist pending registration locally with organization data

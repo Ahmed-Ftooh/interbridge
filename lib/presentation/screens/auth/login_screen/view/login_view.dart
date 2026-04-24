@@ -69,18 +69,24 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
-        final passedCompliance = await _runInterpreterComplianceCheck();
+        final interpreterDetails = await _supabaseService.getInterpreterDetails(userId);
         if (!mounted) return;
 
-        if (!passedCompliance) {
-          await _supabaseService.signOut();
-          await _appPreferences.logout();
+        // Only enforce compliance picture if they are fully verified
+        if (interpreterDetails?.isVerified == true) {
+          final passedCompliance = await _runInterpreterComplianceCheck();
           if (!mounted) return;
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.interpreterPortalLoginRoute,
-            (route) => false,
-          );
-          return;
+
+          if (!passedCompliance) {
+            await _supabaseService.signOut();
+            await _appPreferences.logout();
+            if (!mounted) return;
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              Routes.interpreterPortalLoginRoute,
+              (route) => false,
+            );
+            return;
+          }
         }
 
         Navigator.of(context).pushNamedAndRemoveUntil(

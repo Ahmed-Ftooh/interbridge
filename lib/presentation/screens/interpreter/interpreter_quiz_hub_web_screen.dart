@@ -92,6 +92,12 @@ class _InterpreterQuizHubWebScreenState
       'icon': FontAwesomeIcons.handDots,
       'color': Colors.orangeAccent,
     },
+    {
+      'id': 'ear_and_eye',
+      'title': 'Ear and Eye',
+      'icon': FontAwesomeIcons.eye,
+      'color': Colors.indigo,
+    },
   ];
 
   int get _totalMedicalQuizzes => _medicalSections.length;

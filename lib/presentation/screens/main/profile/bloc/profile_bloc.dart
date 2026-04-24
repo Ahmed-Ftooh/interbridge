@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:interbridge/data/models/interpreter_badge.dart';
 import 'package:interbridge/data/models/interpreter_language.dart';
 import 'package:interbridge/data/models/interpreter_specialization.dart';
 import 'package:interbridge/data/models/user_profile.dart';
@@ -65,6 +66,11 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         return;
       }
 
+      final interpreterBadges =
+          profile.role?.toLowerCase() == 'interpreter'
+              ? await _loadInterpreterBadges(userId)
+              : const <InterpreterBadge>[];
+
       // Build language skill map from entries
       final languageSkillEntries = results[5] as List;
       final languageSkillMap = <int, Set<int>>{};
@@ -79,6 +85,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
           profile: profile,
           userEmail: user.email,
           interpreterDetails: results[1] as dynamic,
+          interpreterBadges: interpreterBadges,
           interpreterLanguages: List.from(results[2] as List),
           interpreterSpecializations: List.from(results[3] as List),
           interpreterSkills: List.from(results[4] as List),
@@ -480,6 +487,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         _supabaseService.getInterpreterSkills(user.id),
         _supabaseService.getInterpreterLanguageSkills(user.id),
       ]);
+      final badges = await _loadInterpreterBadges(user.id);
 
       // Build language skill map
       final languageSkillEntries = results[3] as List;
@@ -492,6 +500,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
 
       emit(
         currentState.copyWith(
+          interpreterBadges: badges,
           interpreterLanguages: List.from(results[0] as List),
           interpreterSpecializations: List.from(results[1] as List),
           interpreterSkills: List.from(results[2] as List),
@@ -510,6 +519,19 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
           isError: true,
         ),
       );
+    }
+  }
+
+  Future<List<InterpreterBadge>> _loadInterpreterBadges(String userId) async {
+    try {
+      final rawBadges = await _supabaseService.getUserBadges(userId);
+      final badges =
+          rawBadges.map((badge) => InterpreterBadge.fromJson(badge)).toList();
+      badges.sort((a, b) => b.earnedAt.compareTo(a.earnedAt));
+      return badges;
+    } catch (e) {
+      log('ProfileBloc._loadInterpreterBadges warning: $e');
+      return const <InterpreterBadge>[];
     }
   }
 }

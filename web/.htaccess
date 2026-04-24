@@ -1,0 +1,10 @@
+RewriteEngine On
+RewriteBase /
+
+# Keep existing files and folders as-is.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Send all other requests to Flutter entrypoint.
+RewriteRule ^ index.html [L]

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
 
@@ -14,61 +15,157 @@ class SelectRoleScreenWeb extends StatefulWidget {
 class _SelectRoleScreenWebState extends State<SelectRoleScreenWeb> {
   String? _hoveredRole;
 
+  String _currentPortalIntent() {
+    if (!kIsWeb) return 'shared';
+
+    final path = Uri.base.path.toLowerCase();
+    final host = Uri.base.host.toLowerCase();
+
+    if (path.startsWith('/admin') || host.startsWith('admin.')) {
+      return 'admin';
+    }
+    if (path.startsWith('/organization') || host.startsWith('organization.')) {
+      return 'organization';
+    }
+    if (path.startsWith('/interpreter') || host.startsWith('interpreter.')) {
+      return 'interpreter';
+    }
+
+    return 'shared';
+  }
+
+  String _titleForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        return 'Apply As Interpreter';
+      case 'organization':
+        return 'Organization Access';
+      case 'admin':
+        return 'Admin Portal';
+      default:
+        return 'Select Your Role';
+    }
+  }
+
+  String _subtitleForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        return 'Create an interpreter account to join the network';
+      case 'organization':
+        return 'Register your organization or join via invite';
+      case 'admin':
+        return 'Account creation is disabled in the admin portal';
+      default:
+        return 'Choose how you want to use Interbridge';
+    }
+  }
+
+  String _loginRouteForPortal(String portalIntent) {
+    switch (portalIntent) {
+      case 'interpreter':
+        return Routes.interpreterPortalLoginRoute;
+      case 'organization':
+        return Routes.organizationPortalLoginRoute;
+      case 'admin':
+        return Routes.adminPortalLoginRoute;
+      default:
+        return Routes.loginRoute;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final portalIntent = _currentPortalIntent();
+    final showJoinOrganization =
+        portalIntent == 'shared' || portalIntent == 'organization';
+    final showInterpreter =
+        portalIntent == 'shared' || portalIntent == 'interpreter';
+    final showOrganization =
+        portalIntent == 'shared' || portalIntent == 'organization';
+
     return AuthWebWrapper(
-      title: 'Select Your Role',
-      subtitle: 'Choose how you want to use Interbridge',
+      title: _titleForPortal(portalIntent),
+      subtitle: _subtitleForPortal(portalIntent),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Join Organization (for doctors with invite code)
-          _buildRoleCard(
-            role: 'doctor_join',
-            icon: Icons.group_add,
-            iconColor: const Color(0xFF0955FA),
-            title: 'Join Organization',
-            subtitle: 'Join as a doctor with an invite code',
-            onTap:
-                () => Navigator.of(
-                  context,
-                ).pushNamed(Routes.doctorJoinOrganizationRoute),
-          ),
-          const SizedBox(height: 16),
+          if (showJoinOrganization) ...[
+            // Join Organization (for doctors with invite code)
+            _buildRoleCard(
+              role: 'doctor_join',
+              icon: Icons.group_add,
+              iconColor: const Color(0xFF0955FA),
+              title: 'Join Organization',
+              subtitle: 'Join as a doctor with an invite code',
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).pushNamed(Routes.doctorJoinOrganizationRoute),
+            ),
+            const SizedBox(height: 16),
+          ],
 
-          // I am an Interpreter
-          _buildRoleCard(
-            role: 'interpreter',
-            icon: Icons.translate,
-            iconColor: const Color(0xFF6366F1),
-            title: 'I am an Interpreter',
-            subtitle: 'Offer your interpretation services',
-            onTap:
-                () => Navigator.of(context).pushNamed(
-                  Routes.registerRoute,
-                  arguments: {'role': 'interpreter'},
+          if (showInterpreter) ...[
+            // I am an Interpreter
+            _buildRoleCard(
+              role: 'interpreter',
+              icon: Icons.translate,
+              iconColor: const Color(0xFF6366F1),
+              title: 'I am an Interpreter',
+              subtitle: 'Offer your interpretation services',
+              onTap:
+                  () => Navigator.of(context).pushNamed(
+                    Routes.registerRoute,
+                    arguments: {'role': 'interpreter'},
+                  ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (showOrganization) ...[
+            // Organization
+            _buildRoleCard(
+              role: 'organization',
+              icon: Icons.business,
+              iconColor: const Color(0xFFF59E0B),
+              title: 'Organization',
+              subtitle:
+                  'Register your organization to manage doctors and calls',
+              onTap:
+                  () => Navigator.of(
+                    context,
+                  ).pushNamed(Routes.organizationRegisterRoute),
+            ),
+            const SizedBox(height: 32),
+          ],
+
+          if (!showJoinOrganization && !showInterpreter && !showOrganization)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Text(
+                'Self registration is not available in the admin portal. Please contact your system administrator if you need access.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF475569),
                 ),
-          ),
-          const SizedBox(height: 16),
-
-          // Organization
-          _buildRoleCard(
-            role: 'organization',
-            icon: Icons.business,
-            iconColor: const Color(0xFFF59E0B),
-            title: 'Organization',
-            subtitle: 'Register your organization to manage doctors and calls',
-            onTap:
-                () => Navigator.of(
-                  context,
-                ).pushNamed(Routes.organizationRegisterRoute),
-          ),
-          const SizedBox(height: 32),
+              ),
+            ),
+          if (!showJoinOrganization && !showInterpreter && !showOrganization)
+            const SizedBox(height: 24),
 
           // Back to login
           Center(
             child: TextButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed:
+                  () => Navigator.of(context).pushNamedAndRemoveUntil(
+                    _loginRouteForPortal(portalIntent),
+                    (route) => false,
+                  ),
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Back to Login'),
               style: TextButton.styleFrom(

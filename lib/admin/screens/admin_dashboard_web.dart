@@ -27,6 +27,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   final _supabaseService = SupabaseService();
   final _appPreferences = instance<AppPreferences>();
   final _searchCtrl = TextEditingController();
+  final _callLogsSearchCtrl = TextEditingController();
 
   List<dynamic> _items = [];
   bool _isLoading = false;
@@ -178,58 +179,131 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
       final client = Supabase.instance.client;
 
       // Fetch recent call logs
-      final logs = await client
-          .from('call_logs')
-          .select('*')
-          .order('started_at', ascending: false)
-          .limit(100);
+      List<dynamic> logs = const [];
+      try {
+        logs = await client
+            .from('call_logs')
+            .select('*')
+            .order('started_at', ascending: false)
+            .limit(100);
+      } catch (e) {
+        debugPrint('Error loading call_logs: $e');
+      }
 
       // We had stale active calls because some older accepted requests
       // never got marked as completed correctly if someone disconnected unexpectedly.
       // We only consider requests created in the last 2 hours as 'active'.
       final twoHoursAgo =
-          DateTime.now().toUtc().subtract(const Duration(hours: 2)).toIso8601String();
+          DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 2))
+              .toIso8601String();
 
-      final active = await client
-          .from('interpreter_requests')
-          .select('*')
-          .eq('status', 'accepted')
-          .gte('created_at', twoHoursAgo)
-          .order('created_at', ascending: false);
+      List<dynamic> active = const [];
+      try {
+        active = await client
+            .from('interpreter_requests')
+            .select('*')
+            .eq('status', 'accepted')
+            .gte('created_at', twoHoursAgo)
+            .order('created_at', ascending: false);
+      } catch (e) {
+        // Active calls are optional for this tab. Do not block call history.
+        debugPrint('Error loading active interpreter requests: $e');
+      }
 
       // Resolve user profiles for all unique user IDs
       final allLogs = List<Map<String, dynamic>>.from(logs);
       final allActive = List<Map<String, dynamic>>.from(active);
 
       final userIds = <String>{};
+      final interpreterIds = <String>{};
+      final feedbackLookupKeys = <String>{};
       for (final log in allLogs) {
-        if (log['requester_id'] != null) userIds.add(log['requester_id']);
-        if (log['interpreter_id'] != null) userIds.add(log['interpreter_id']);
+        final requesterId = log['requester_id']?.toString();
+        final interpreterId = log['interpreter_id']?.toString();
+        final requestId = log['request_id']?.toString();
+        final callRequestId = log['call_request_id']?.toString();
+
+        if (requesterId != null && requesterId.isNotEmpty) {
+          userIds.add(requesterId);
+        }
+        if (interpreterId != null && interpreterId.isNotEmpty) {
+          userIds.add(interpreterId);
+          interpreterIds.add(interpreterId);
+        }
+        if (requestId != null && requestId.isNotEmpty) {
+          feedbackLookupKeys.add(requestId);
+        }
+        if (callRequestId != null && callRequestId.isNotEmpty) {
+          feedbackLookupKeys.add(callRequestId);
+        }
       }
       for (final call in allActive) {
-        if (call['requester_id'] != null) userIds.add(call['requester_id']);
-        if (call['accepted_by'] != null) userIds.add(call['accepted_by']);
+        final requesterId = call['requester_id']?.toString();
+        final acceptedBy = call['accepted_by']?.toString();
+
+        if (requesterId != null && requesterId.isNotEmpty) {
+          userIds.add(requesterId);
+        }
+        if (acceptedBy != null && acceptedBy.isNotEmpty) {
+          userIds.add(acceptedBy);
+          interpreterIds.add(acceptedBy);
+        }
       }
 
       Map<String, Map<String, dynamic>> profileMap = {};
       if (userIds.isNotEmpty) {
-        final profiles = await client
-            .from('users_profile')
-            .select('user_id, username, role')
-            .inFilter('user_id', userIds.toList());
-        for (final p in profiles) {
-          profileMap[p['user_id'] as String] = Map<String, dynamic>.from(p);
+        try {
+          final profiles = await client
+              .from('users_profile')
+              .select('user_id, username, role')
+              .inFilter('user_id', userIds.toList());
+          for (final p in profiles) {
+            profileMap[p['user_id'] as String] = Map<String, dynamic>.from(p);
+          }
+        } catch (e) {
+          debugPrint('Error loading users_profile for call logs: $e');
         }
       }
 
+      final interpreterEmailMap = await _fetchInterpreterEmails(interpreterIds);
+      final feedbackMap = await _fetchCallFeedbackByChannel(feedbackLookupKeys);
+
       // Attach profiles to logs
       for (final log in allLogs) {
-        log['_requester'] = profileMap[log['requester_id']];
-        log['_interpreter'] = profileMap[log['interpreter_id']];
+        final requesterId = log['requester_id']?.toString();
+        final interpreterId = log['interpreter_id']?.toString();
+        final requestId = log['request_id']?.toString();
+        final callRequestId = log['call_request_id']?.toString();
+
+        log['_requester'] =
+            requesterId == null ? null : profileMap[requesterId];
+        log['_interpreter'] =
+            interpreterId == null ? null : profileMap[interpreterId];
+        log['_interpreter_email'] =
+            interpreterId == null ? null : interpreterEmailMap[interpreterId];
+
+        final feedbackRows = _feedbackRowsForLog(
+          feedbackMap,
+          requestId: requestId,
+          callRequestId: callRequestId,
+        );
+        log['_feedback'] = _pickFeedbackForCall(
+          feedbackRows: feedbackRows,
+          requesterId: requesterId,
+        );
       }
       for (final call in allActive) {
-        call['_requester'] = profileMap[call['requester_id']];
-        call['_interpreter'] = profileMap[call['accepted_by']];
+        final requesterId = call['requester_id']?.toString();
+        final acceptedBy = call['accepted_by']?.toString();
+
+        call['_requester'] =
+            requesterId == null ? null : profileMap[requesterId];
+        call['_interpreter'] =
+            acceptedBy == null ? null : profileMap[acceptedBy];
+        call['_interpreter_email'] =
+            acceptedBy == null ? null : interpreterEmailMap[acceptedBy];
       }
 
       if (mounted) {
@@ -240,17 +314,185 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading call logs: $e');
+      debugPrint('Fatal error loading call logs tab: $e');
       if (mounted) {
         setState(() => _isLoadingCalls = false);
       }
     }
   }
 
+  Future<Map<String, String>> _fetchInterpreterEmails(
+    Set<String> interpreterIds,
+  ) async {
+    final emails = <String, String>{};
+    if (interpreterIds.isEmpty) return emails;
+
+    try {
+      final remaining = Set<String>.from(interpreterIds);
+      var offset = 0;
+      const pageSize = 100;
+
+      while (remaining.isNotEmpty) {
+        List<dynamic> batch;
+        try {
+          batch = await _adminService.listInterpreters(
+            search: '',
+            limit: pageSize,
+            offset: offset,
+            filterStatus: 'all',
+            filterAccount: 'all',
+            includeEmail: true,
+          );
+        } catch (e) {
+          debugPrint('Error loading interpreter emails for call logs: $e');
+          break;
+        }
+
+        if (batch.isEmpty) break;
+
+        for (final raw in batch) {
+          if (raw is! Map) continue;
+          final item = Map<String, dynamic>.from(raw);
+          final userId = item['user_id']?.toString();
+          if (userId == null || userId.isEmpty || !remaining.contains(userId)) {
+            continue;
+          }
+
+          final email = item['email']?.toString();
+          if (email != null && email.isNotEmpty) {
+            emails[userId] = email;
+          }
+          remaining.remove(userId);
+        }
+
+        if (batch.length < pageSize) break;
+        offset += batch.length;
+      }
+    } catch (e) {
+      debugPrint('Interpreter email enrichment failed: $e');
+    }
+
+    return emails;
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>> _fetchCallFeedbackByChannel(
+    Set<String> channelIds,
+  ) async {
+    final feedbackByChannel = <String, List<Map<String, dynamic>>>{};
+    if (channelIds.isEmpty) return feedbackByChannel;
+
+    try {
+      final rows = await Supabase.instance.client
+          .from('call_feedback')
+          .select('channel_id, user_id, rating, comments, created_at')
+          .inFilter('channel_id', channelIds.toList());
+
+      for (final row in rows) {
+        final item = Map<String, dynamic>.from(row);
+        final channelId = item['channel_id']?.toString();
+        if (channelId == null || channelId.isEmpty) continue;
+
+        feedbackByChannel.putIfAbsent(channelId, () => []).add(item);
+      }
+
+      for (final rows in feedbackByChannel.values) {
+        rows.sort((a, b) {
+          final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
+          final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading call feedback for admin logs: $e');
+    }
+
+    return feedbackByChannel;
+  }
+
+  List<Map<String, dynamic>> _feedbackRowsForLog(
+    Map<String, List<Map<String, dynamic>>> feedbackMap, {
+    String? requestId,
+    String? callRequestId,
+  }) {
+    final merged = <Map<String, dynamic>>[];
+
+    if (requestId != null && requestId.isNotEmpty) {
+      merged.addAll(feedbackMap[requestId] ?? const []);
+    }
+    if (callRequestId != null &&
+        callRequestId.isNotEmpty &&
+        callRequestId != requestId) {
+      merged.addAll(feedbackMap[callRequestId] ?? const []);
+    }
+
+    if (merged.length <= 1) return merged;
+
+    merged.sort((a, b) {
+      final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
+      final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      return bDate.compareTo(aDate);
+    });
+
+    return merged;
+  }
+
+  Map<String, dynamic>? _pickFeedbackForCall({
+    List<Map<String, dynamic>>? feedbackRows,
+    String? requesterId,
+  }) {
+    if (feedbackRows == null || feedbackRows.isEmpty) return null;
+
+    if (requesterId != null && requesterId.isNotEmpty) {
+      for (final row in feedbackRows) {
+        final userId = row['user_id']?.toString();
+        if (userId == requesterId) return row;
+      }
+    }
+
+    return feedbackRows.first;
+  }
+
+  String _shortInterpreterId(String? userId) {
+    if (userId == null || userId.isEmpty) return '';
+    final idNum = uidFromUuid(userId).toString();
+    return idNum.length > 5 ? idNum.substring(0, 5) : idNum;
+  }
+
+  List<Map<String, dynamic>> _filteredCallLogs() {
+    final query = _callLogsSearchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) return _callLogs;
+
+    return _callLogs.where((call) {
+      final interpreterRaw = call['_interpreter'];
+      final interpreter =
+          interpreterRaw is Map<String, dynamic>
+              ? interpreterRaw
+              : interpreterRaw is Map
+              ? Map<String, dynamic>.from(interpreterRaw)
+              : null;
+
+      final interpreterId = call['interpreter_id']?.toString() ?? '';
+      final interpreterId5 = _shortInterpreterId(interpreterId);
+      final username = interpreter?['username']?.toString() ?? '';
+      final email = call['_interpreter_email']?.toString() ?? '';
+
+      final searchable =
+          '$interpreterId $interpreterId5 $username $email'.toLowerCase();
+      return searchable.contains(query);
+    }).toList();
+  }
+
   @override
   void dispose() {
     _stopListening();
     _searchCtrl.dispose();
+    _callLogsSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -627,19 +869,17 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
           elevation: 1,
           title: const Text(
             'Admin Portal',
-            style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.black87,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-        drawer: Drawer(
-          child: _buildSidebar(),
-        ),
+        drawer: Drawer(child: _buildSidebar()),
         body: Stack(
           children: [
             Column(
-              children: [
-                _buildTopBar(),
-                Expanded(child: _buildMainContent()),
-              ],
+              children: [_buildTopBar(), Expanded(child: _buildMainContent())],
             ),
             if (_isListening) _buildListenPanel(),
           ],
@@ -853,6 +1093,9 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
 
   // ──────── TOP BAR ────────
   Widget _buildTopBar() {
+    final isCallLogsTab = _selectedNav == 2;
+    final activeSearchCtrl = isCallLogsTab ? _callLogsSearchCtrl : _searchCtrl;
+
     return Container(
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -873,10 +1116,16 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 380),
               child: TextField(
-                controller: _searchCtrl,
+                controller: activeSearchCtrl,
                 decoration: InputDecoration(
-                  hintText: 'Search interpreters by name or 5-digit ID...',
-                  hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  hintText:
+                      isCallLogsTab
+                          ? 'Search call logs by interpreter ID, username, or email...'
+                          : 'Search interpreters by name or 5-digit ID...',
+                  hintStyle: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontSize: 14,
+                  ),
                   prefixIcon: Icon(
                     Icons.search,
                     color: Colors.grey.shade400,
@@ -893,50 +1142,62 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                     vertical: 12,
                   ),
                 ),
-                onSubmitted: (_) => _load(reset: true),
+                onChanged: (_) {
+                  if (isCallLogsTab) {
+                    setState(() {});
+                  }
+                },
+                onSubmitted: (_) {
+                  if (isCallLogsTab) {
+                    setState(() {});
+                  } else {
+                    _load(reset: true);
+                  }
+                },
               ),
             ),
           ),
           const SizedBox(width: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip(
-                  label: _filterStatusLabel(),
-                  icon: Icons.verified_user,
-                  items: [
-                    {'label': 'All Status', 'value': 'all'},
-                    {'label': 'Verified', 'value': 'verified'},
-                    {'label': 'Unverified', 'value': 'unverified'},
-                  ],
-                  value: _filterStatus,
-                  onChanged: (val) {
-                    setState(() => _filterStatus = val);
-                    _load(reset: true);
-                  },
-                ),
-                const SizedBox(width: 8),
-                _buildFilterChip(
-                  label: _filterAccountLabel(),
-                  icon: Icons.manage_accounts,
-                  items: [
-                    {'label': 'All Accounts', 'value': 'all'},
-                    {'label': 'Active', 'value': 'active'},
-                    {'label': 'Suspended', 'value': 'suspended'},
-                  ],
-                  value: _filterAccount,
-                  onChanged: (val) {
-                    setState(() => _filterAccount = val);
-                    _load(reset: true);
-                  },
-                ),
-              ],
+          if (!isCallLogsTab)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildFilterChip(
+                    label: _filterStatusLabel(),
+                    icon: Icons.verified_user,
+                    items: [
+                      {'label': 'All Status', 'value': 'all'},
+                      {'label': 'Verified', 'value': 'verified'},
+                      {'label': 'Unverified', 'value': 'unverified'},
+                    ],
+                    value: _filterStatus,
+                    onChanged: (val) {
+                      setState(() => _filterStatus = val);
+                      _load(reset: true);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip(
+                    label: _filterAccountLabel(),
+                    icon: Icons.manage_accounts,
+                    items: [
+                      {'label': 'All Accounts', 'value': 'all'},
+                      {'label': 'Active', 'value': 'active'},
+                      {'label': 'Suspended', 'value': 'suspended'},
+                    ],
+                    value: _filterAccount,
+                    onChanged: (val) {
+                      setState(() => _filterAccount = val);
+                      _load(reset: true);
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
           const Spacer(),
           IconButton(
-            onPressed: () => _load(reset: true),
+            onPressed: isCallLogsTab ? _loadCallLogs : () => _load(reset: true),
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             style: IconButton.styleFrom(
@@ -1158,12 +1419,18 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final tableWidth =
+                      constraints.maxWidth > 900 ? constraints.maxWidth : 900.0;
+                  final tableHeight =
+                      constraints.maxHeight.isFinite
+                          ? constraints.maxHeight
+                          : 520.0;
+
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: constraints.maxWidth > 900 ? constraints.maxWidth : 900,
-                      ),
+                    child: SizedBox(
+                      width: tableWidth,
+                      height: tableHeight,
                       child: Column(
                         children: [
                           // Table header
@@ -1258,7 +1525,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                                       ),
                                     )
                                     : ListView.builder(
-                                      itemCount: _items.length + (_hasMore ? 1 : 0),
+                                      itemCount:
+                                          _items.length + (_hasMore ? 1 : 0),
                                       itemBuilder: (context, index) {
                                         if (index == _items.length) {
                                           return _buildLoadMore();
@@ -1555,6 +1823,9 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
 
   // ──────── CALL LOGS CONTENT ────────
   Widget _buildCallLogsContent() {
+    final filteredLogs = _filteredCallLogs();
+    final hasSearchQuery = _callLogsSearchCtrl.text.trim().isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1622,7 +1893,9 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${_callLogs.length}',
+                  hasSearchQuery
+                      ? '${filteredLogs.length}/${_callLogs.length}'
+                      : '${_callLogs.length}',
                   style: TextStyle(
                     color: ColorManager.primary,
                     fontWeight: FontWeight.w600,
@@ -1659,12 +1932,20 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final tableWidth =
+                      constraints.maxWidth > 1500
+                          ? constraints.maxWidth
+                          : 1500.0;
+                  final tableHeight =
+                      constraints.maxHeight.isFinite
+                          ? constraints.maxHeight
+                          : 520.0;
+
                   return SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: constraints.maxWidth > 900 ? constraints.maxWidth : 900,
-                      ),
+                    child: SizedBox(
+                      width: tableWidth,
+                      height: tableHeight,
                       child: Column(
                         children: [
                           // Table header
@@ -1696,7 +1977,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                                   ),
                                 ),
                                 Expanded(
-                                  flex: 2,
+                                  flex: 3,
                                   child: Text(
                                     'Interpreter',
                                     style: TextStyle(
@@ -1738,6 +2019,27 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                                   ),
                                 ),
                                 Expanded(
+                                  child: Text(
+                                    'Rating',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'Feedback',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
                                   flex: 2,
                                   child: Text(
                                     'Date / Time',
@@ -1755,8 +2057,10 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                           Expanded(
                             child:
                                 _isLoadingCalls
-                                    ? const Center(child: CircularProgressIndicator())
-                                    : _callLogs.isEmpty
+                                    ? const Center(
+                                      child: CircularProgressIndicator(),
+                                    )
+                                    : filteredLogs.isEmpty
                                     ? Center(
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
@@ -1768,7 +2072,9 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                                           ),
                                           const SizedBox(height: 12),
                                           Text(
-                                            'No call logs yet',
+                                            _callLogs.isEmpty
+                                                ? 'No call logs yet'
+                                                : 'No call logs matched your search',
                                             style: TextStyle(
                                               color: Colors.grey.shade500,
                                             ),
@@ -1777,10 +2083,10 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                                       ),
                                     )
                                     : ListView.builder(
-                                      itemCount: _callLogs.length,
+                                      itemCount: filteredLogs.length,
                                       itemBuilder: (context, index) {
                                         return _buildCallLogRow(
-                                          _callLogs[index],
+                                          filteredLogs[index],
                                           index,
                                         );
                                       },
@@ -1999,15 +2305,58 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   }
 
   Widget _buildCallLogRow(Map<String, dynamic> call, int index) {
-    final requester = call['_requester'] as Map<String, dynamic>?;
-    final interpreter = call['_interpreter'] as Map<String, dynamic>?;
-    final metadata = call['metadata'] as Map<String, dynamic>?;
+    final requesterRaw = call['_requester'];
+    final requester =
+        requesterRaw is Map<String, dynamic>
+            ? requesterRaw
+            : requesterRaw is Map
+            ? Map<String, dynamic>.from(requesterRaw)
+            : null;
+
+    final interpreterRaw = call['_interpreter'];
+    final interpreter =
+        interpreterRaw is Map<String, dynamic>
+            ? interpreterRaw
+            : interpreterRaw is Map
+            ? Map<String, dynamic>.from(interpreterRaw)
+            : null;
+
+    final metadataRaw = call['metadata'];
+    final metadata =
+        metadataRaw is Map<String, dynamic>
+            ? metadataRaw
+            : metadataRaw is Map
+            ? Map<String, dynamic>.from(metadataRaw)
+            : null;
+
+    final feedbackRaw = call['_feedback'];
+    final feedback =
+        feedbackRaw is Map<String, dynamic>
+            ? feedbackRaw
+            : feedbackRaw is Map
+            ? Map<String, dynamic>.from(feedbackRaw)
+            : null;
+
     final fromLang = _getLanguageName(metadata?['from_language']);
     final toLang = _getLanguageName(metadata?['to_language']);
-    final durationSec = (call['duration_seconds'] as int?) ?? 0;
+    final durationSec = (call['duration_seconds'] as num?)?.toInt() ?? 0;
     final cost = (call['cost'] as num?)?.toDouble() ?? 0.0;
-    final startedAt = DateTime.tryParse(call['started_at'] ?? '');
-    final endedAt = DateTime.tryParse(call['ended_at'] ?? '');
+    final startedAt = DateTime.tryParse(call['started_at']?.toString() ?? '');
+    final endedAt = DateTime.tryParse(call['ended_at']?.toString() ?? '');
+    final rating = (feedback?['rating'] as num?)?.toInt();
+    final feedbackText = feedback?['comments']?.toString().trim() ?? '';
+    final interpreterId = call['interpreter_id']?.toString() ?? '';
+    final interpreterId5 = _shortInterpreterId(interpreterId);
+    final interpreterEmail = call['_interpreter_email']?.toString() ?? '';
+
+    final interpreterMetaParts = <String>[];
+    if (interpreterId5.isNotEmpty) {
+      interpreterMetaParts.add('ID $interpreterId5');
+    }
+    if (interpreterEmail.isNotEmpty) {
+      interpreterMetaParts.add(interpreterEmail);
+    }
+
     final minutes = durationSec ~/ 60;
     final seconds = durationSec % 60;
 
@@ -2066,7 +2415,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
           ),
           // Interpreter
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Row(
               children: [
                 CircleAvatar(
@@ -2083,15 +2432,29 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    interpreter?['full_name'] ??
-                        interpreter?['username'] ??
-                        'Unknown',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        interpreter?['full_name'] ??
+                            interpreter?['username'] ??
+                            'Unknown',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (interpreterMetaParts.isNotEmpty)
+                        Text(
+                          interpreterMetaParts.join(' • '),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -2133,6 +2496,52 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                 fontWeight: FontWeight.w600,
                 color: cost > 0 ? const Color(0xFFEF4444) : Colors.grey,
               ),
+            ),
+          ),
+          // Rating
+          Expanded(
+            child:
+                rating == null
+                    ? Text(
+                      '—',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                      ),
+                    )
+                    : Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 16,
+                          color: Color(0xFFF59E0B),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$rating/5',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+          ),
+          // Feedback text
+          Expanded(
+            flex: 3,
+            child: Text(
+              feedbackText.isEmpty ? '—' : feedbackText,
+              style: TextStyle(
+                fontSize: 12,
+                color:
+                    feedbackText.isEmpty
+                        ? Colors.grey.shade500
+                        : Colors.black87,
+                height: 1.3,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           // Date
@@ -2347,12 +2756,16 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                       CheckboxListTile(
                         title: const Text('Send Email (Resend)'),
                         value: sendEmail,
-                        onChanged: (val) => setDialogState(() => sendEmail = val ?? false),
+                        onChanged:
+                            (val) =>
+                                setDialogState(() => sendEmail = val ?? false),
                       ),
                       CheckboxListTile(
                         title: const Text('Send Push Notification (OneSignal)'),
                         value: sendPush,
-                        onChanged: (val) => setDialogState(() => sendPush = val ?? false),
+                        onChanged:
+                            (val) =>
+                                setDialogState(() => sendPush = val ?? false),
                       ),
                       if (isSending)
                         const Padding(
@@ -2369,68 +2782,84 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: isSending
-                      ? null
-                      : () async {
-                          final subject = titleCtrl.text.trim();
-                          final message = messageCtrl.text.trim();
-                          if (subject.isEmpty || message.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Subject and message are required')),
-                            );
-                            return;
-                          }
-                          if (!sendEmail && !sendPush) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Select at least one delivery method')),
-                            );
-                            return;
-                          }
+                  onPressed:
+                      isSending
+                          ? null
+                          : () async {
+                            final subject = titleCtrl.text.trim();
+                            final message = messageCtrl.text.trim();
+                            if (subject.isEmpty || message.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Subject and message are required',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            if (!sendEmail && !sendPush) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Select at least one delivery method',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
 
-                          setDialogState(() => isSending = true);
+                            setDialogState(() => isSending = true);
 
-                          try {
-                            final result = await _adminService.sendAdminBroadcast(
-                              subject: subject,
-                              message: message,
-                              sendEmail: sendEmail,
-                              sendPush: sendPush,
-                            );
+                            try {
+                              final result = await _adminService
+                                  .sendAdminBroadcast(
+                                    subject: subject,
+                                    message: message,
+                                    sendEmail: sendEmail,
+                                    sendPush: sendPush,
+                                  );
 
-                            if (ctx.mounted) {
-                              Navigator.of(ctx).pop();
-                              final delivered = result['deliveredToCounts'];
-                              final errors = result['errors'];
-                              if (errors != null) {
+                              if (ctx.mounted) {
+                                Navigator.of(ctx).pop();
+                                final delivered = result['deliveredToCounts'];
+                                final errors = result['errors'];
+                                if (errors != null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Warning - partially failed: $errors\nSent to: ${delivered?['emails']} emails.',
+                                      ),
+                                      duration: const Duration(seconds: 10),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Broadcast sent successfully!',
+                                      ),
+                                      duration: Duration(seconds: 5),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              }
+                            } catch (e) {
+                              setDialogState(() => isSending = false);
+                              if (ctx.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Warning - partially failed: $errors\nSent to: ${delivered?['emails']} emails.'),
-                                    duration: const Duration(seconds: 10),
-                                    backgroundColor: Colors.orange,
-                                  ),
-                                );
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Broadcast sent successfully!'),
-                                    duration: Duration(seconds: 5),
-                                    backgroundColor: Colors.green,
+                                    content: Text(
+                                      'Failed to send broadcast: $e',
+                                    ),
+                                    backgroundColor: Colors.red,
                                   ),
                                 );
                               }
                             }
-                          } catch (e) {
-                            setDialogState(() => isSending = false);
-                            if (ctx.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Failed to send broadcast: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          }
-                        },
+                          },
                   child: const Text('Send Broadcast'),
                 ),
               ],

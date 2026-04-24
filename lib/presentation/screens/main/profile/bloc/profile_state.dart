@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:interbridge/data/models/fluency_level.dart';
 import 'package:interbridge/data/models/interpreter_details.dart';
+import 'package:interbridge/data/models/interpreter_badge.dart';
 import 'package:interbridge/data/models/interpreter_language.dart';
 import 'package:interbridge/data/models/interpreter_skill.dart';
 import 'package:interbridge/data/models/interpreter_specialization.dart';
@@ -30,6 +31,7 @@ class ProfileLoaded extends ProfileState {
 
   // Interpreter-specific data (null for non-interpreters)
   final InterpreterDetails? interpreterDetails;
+  final List<InterpreterBadge> interpreterBadges;
   final List<InterpreterLanguage> interpreterLanguages;
   final List<InterpreterSpecialization> interpreterSpecializations;
   final List<InterpreterSkill> interpreterSkills;
@@ -50,6 +52,7 @@ class ProfileLoaded extends ProfileState {
     required this.profile,
     this.userEmail,
     this.interpreterDetails,
+    this.interpreterBadges = const [],
     this.interpreterLanguages = const [],
     this.interpreterSpecializations = const [],
     this.interpreterSkills = const [],
@@ -84,6 +87,7 @@ class ProfileLoaded extends ProfileState {
     profile,
     userEmail,
     interpreterDetails,
+    interpreterBadges,
     interpreterLanguages,
     interpreterSpecializations,
     interpreterSkills,
@@ -101,6 +105,7 @@ class ProfileLoaded extends ProfileState {
     UserProfile? profile,
     String? userEmail,
     InterpreterDetails? interpreterDetails,
+    List<InterpreterBadge>? interpreterBadges,
     List<InterpreterLanguage>? interpreterLanguages,
     List<InterpreterSpecialization>? interpreterSpecializations,
     List<InterpreterSkill>? interpreterSkills,
@@ -117,6 +122,7 @@ class ProfileLoaded extends ProfileState {
       profile: profile ?? this.profile,
       userEmail: userEmail ?? this.userEmail,
       interpreterDetails: interpreterDetails ?? this.interpreterDetails,
+      interpreterBadges: interpreterBadges ?? this.interpreterBadges,
       interpreterLanguages: interpreterLanguages ?? this.interpreterLanguages,
       interpreterSpecializations:
           interpreterSpecializations ?? this.interpreterSpecializations,

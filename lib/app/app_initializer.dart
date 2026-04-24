@@ -366,7 +366,10 @@ class AppInitializer {
         uri.host == 'login-callback' ||
         uri.toString().contains('login-callback') ||
         uri.queryParameters.containsKey('code') ||
+      uri.queryParameters.containsKey('token_hash') ||
+      uri.queryParameters.containsKey('refresh_token') ||
         uri.queryParameters.containsKey('token') ||
+      uri.queryParameters.containsKey('type') ||
         uri.fragment.contains('access_token');
 
     if (isAuthCallback) {

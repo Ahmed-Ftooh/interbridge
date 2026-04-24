@@ -185,12 +185,12 @@ class _CertificateUploadWebScreenState
             const SizedBox(height: 24),
 
             // Professional details
-            const Text(
+             const Text(
               'Professional details',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF0F172A),
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 12),

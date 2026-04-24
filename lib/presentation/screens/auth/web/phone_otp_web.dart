@@ -131,6 +131,95 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
   String get _fullPhoneNumber =>
       '$_selectedCountryCode${_phoneController.text.trim()}';
 
+  Future<void> _showCountryPicker() async {
+    final searchController = TextEditingController();
+    String? result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final query = searchController.text.toLowerCase();
+            final filtered = _countryCodes.where((c) {
+              return c.$2.toLowerCase().contains(query) || c.$1.contains(query);
+            }).toList();
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Container(
+                width: 350,
+                height: 500,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Select Country Code',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
+                        hintText: 'Search country or code...',
+                        filled: true,
+                        fillColor: const Color(0xFFF1F5F9),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                        itemBuilder: (context, index) {
+                          final c = filtered[index];
+                          return InkWell(
+                            onTap: () => Navigator.of(context).pop(c.$1),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    c.$2,
+                                    style: const TextStyle(fontSize: 15, color: Color(0xFF334155)),
+                                  ),
+                                  Text(
+                                    c.$1,
+                                    style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      if (mounted) setState(() => _selectedCountryCode = result);
+    }
+  }
+
   Future<void> _saveAndContinue() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty || phone.length < 7) {
@@ -151,6 +240,18 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
             .from('users_profile')
             .update({'phone_number': _fullPhoneNumber, 'phone_verified': false})
             .eq('user_id', userId);
+
+        try {
+          await Supabase.instance.client.from('phone_verifications').insert({
+            'user_id': userId,
+            'phone_number': _fullPhoneNumber,
+            'verified': false,
+            if (Supabase.instance.client.auth.currentUser?.email != null)
+              'email': Supabase.instance.client.auth.currentUser!.email,
+          });
+        } catch (_) {
+          // Keep onboarding flow moving even if this supplemental write fails.
+        }
 
         await Supabase.instance.client
             .from('interpreter_details')
@@ -222,33 +323,31 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Country code dropdown
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCountryCode,
-                    items:
-                        _countryCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c.$1,
-                                child: Text(
-                                  c.$2,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                    onChanged: (v) => setState(() => _selectedCountryCode = v),
+              // Country code selector
+              InkWell(
+                onTap: _showCountryPicker,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 52, // Match typical TextFormField height
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        _selectedCountryCode ?? '+1',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.keyboard_arrow_down, color: Color(0xFF94A3B8)),
+                    ],
                   ),
                 ),
               ),

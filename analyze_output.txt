@@ -1,0 +1,9 @@
+Analyzing interpreter_home_web.dart...
+
+  error - interpreter_home_web.dart:397:39 - Undefined name 'WrapCrossAxisAlignment'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - interpreter_home_web.dart:423:45 - Undefined name 'WrapCrossAxisAlignment'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+warning - interpreter_home_web.dart:40:11 - The value of the field '_employmentType' isn't used. Try removing the field, or using it. - unused_field
+warning - interpreter_home_web.dart:167:11 - Unnecessary type check; the result is always 'true'. Try correcting the type check, or removing the type check. - unnecessary_type_check
+warning - interpreter_home_web.dart:1448:11 - The value of the local variable 'secondLanguage' isn't used. Try removing the variable or using it. - unused_local_variable
+
+5 issues found.

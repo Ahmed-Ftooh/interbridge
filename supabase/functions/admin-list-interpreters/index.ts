@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     let search = (url.searchParams.get("search") || "").trim();
     let filterStatus = (url.searchParams.get("status") || "all").trim();
     let filterAccount = (url.searchParams.get("account") || "all").trim();
+    let includeEmail = (url.searchParams.get("include_email") || "").toLowerCase() === "true";
 
     if (req.method === "POST") {
       try {
@@ -49,6 +50,9 @@ Deno.serve(async (req) => {
         }
         if (typeof body?.account === "string") {
           filterAccount = body.account.trim();
+        }
+        if (typeof body?.include_email === "boolean") {
+          includeEmail = body.include_email;
         }
       } catch (_) {
         // ignore malformed JSON; fallback to query params
@@ -110,13 +114,35 @@ Deno.serve(async (req) => {
     const { data, error } = await query;
     if (error) throw error;
 
+    const emailByUserId = new Map<string, string>();
+    const rows = data ?? [];
+
+    if (includeEmail && rows.length > 0) {
+      await Promise.all(
+        rows.map(async (item: any) => {
+          const userId = item?.user_id as string | undefined;
+          if (!userId) return;
+
+          try {
+            const { data: authUser, error: authError } = await svc.auth.admin.getUserById(userId);
+            if (!authError && authUser?.user?.email) {
+              emailByUserId.set(userId, authUser.user.email);
+            }
+          } catch (_) {
+            // Ignore email lookup failures and continue returning profile data
+          }
+        }),
+      );
+    }
+
     // Flatten the response for easier consumption
-    const items = (data ?? []).map((item: any) => ({
+    const items = rows.map((item: any) => ({
       user_id: item.user_id,
       username: item.username,
       role: item.role,
       is_verified: item.interpreter_details?.is_verified ?? false,
       is_suspended: item.interpreter_details?.is_suspended ?? false,
+      email: includeEmail ? (emailByUserId.get(item.user_id) ?? null) : null,
     }));
 
     return json({ items });

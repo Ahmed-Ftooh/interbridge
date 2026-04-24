@@ -36,39 +36,46 @@ class SupabaseService {
   Future<AuthResponse> signUp({
     required String email,
     required String password,
+    String? portalHint,
+    Map<String, dynamic>? data,
   }) async {
     return await _client.auth.signUp(
       email: email,
       password: password,
-      emailRedirectTo: kAuthCallbackUrl,
+      data: data,
+      emailRedirectTo: getAuthCallbackUrl(portalHint: portalHint),
     );
   }
 
-  Future<void> sendEmailOtp(String email) async {
+  Future<void> sendEmailOtp(String email, {String? portalHint}) async {
     // Send magic link for verification
     await _client.auth.signInWithOtp(
       email: email,
       shouldCreateUser: false,
-      emailRedirectTo: kAuthCallbackUrl,
+      emailRedirectTo: getAuthCallbackUrl(portalHint: portalHint),
     );
   }
 
-  Future<void> sendMagicLink(String email) async {
+  Future<void> sendMagicLink(String email, {String? portalHint}) async {
     // Send magic link for verification
     await _client.auth.signInWithOtp(
       email: email,
       shouldCreateUser: false,
-      emailRedirectTo: kAuthCallbackUrl,
+      emailRedirectTo: getAuthCallbackUrl(portalHint: portalHint),
     );
   }
 
-  Future<void> sendPasswordResetEmail({required String email}) async {
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    String? redirectTo,
+    String? portalHint,
+  }) async {
+    final resolvedRedirect =
+        redirectTo ?? getAuthCallbackUrl(portalHint: portalHint);
+
     await _client.auth.resetPasswordForEmail(
       email,
-      redirectTo:
-          const String.fromEnvironment('SUPABASE_RESET_REDIRECT') != ''
-              ? const String.fromEnvironment('SUPABASE_RESET_REDIRECT')
-              : null,
+      redirectTo: resolvedRedirect,
     );
   }
 
@@ -299,6 +306,13 @@ class SupabaseService {
   }
 
   Future<void> deleteInterpreterLanguage(String userId, int languageId) async {
+    // Drop dependent skills first to satisfy foreign key constraints
+    await _client
+        .from('interpreter_language_skills')
+        .delete()
+        .eq('user_id', userId)
+        .eq('language_id', languageId);
+
     await _client
         .from('interpreter_languages')
         .delete()
@@ -2129,7 +2143,12 @@ class SupabaseService {
     String? inviteId,
   }) async {
     // First, sign up the user
-    final authResponse = await signUp(email: email, password: password);
+    final authResponse = await signUp(
+      email: email,
+      password: password,
+      portalHint: 'organization',
+      data: {'role': 'requester', 'username': fullName},
+    );
 
     if (authResponse.user != null) {
       final userId = authResponse.user!.id;

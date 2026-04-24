@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get_it/get_it.dart';
 import 'package:interbridge/app/app_prf.dart';
@@ -46,7 +47,16 @@ class PendingRegistrationService {
       return false;
     }
 
-    _activeFuture = _doFinalize(pendingJson, refreshSession);
+    _activeFuture =
+        _doFinalize(pendingJson, refreshSession).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () {
+            lastError =
+                'Account setup timed out. Please try again from the login page.';
+            log('finalizePendingRegistration: timed out after 20s');
+            return false;
+          },
+        );
     try {
       return await _activeFuture!;
     } finally {
@@ -73,15 +83,21 @@ class PendingRegistrationService {
       await _preferences.clearPendingRegistration();
       await _preferences.setLoginViewed();
 
-      // Initialize OneSignal if not already initialized
-      final oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'];
-      if (oneSignalAppId != null &&
-          oneSignalAppId.isNotEmpty &&
-          !_oneSignalService.isInitialized) {
-        await _oneSignalService.initialize(oneSignalAppId);
+      // Web uses Supabase realtime/browser notifications paths.
+      // Skip OneSignal player registration to avoid long no-op retries.
+      if (!kIsWeb) {
+        final oneSignalAppId = dotenv.env['ONESIGNAL_APP_ID'];
+        if (oneSignalAppId != null &&
+            oneSignalAppId.isNotEmpty &&
+            !_oneSignalService.isInitialized) {
+          await _oneSignalService
+              .initialize(oneSignalAppId)
+              .timeout(const Duration(seconds: 8));
+        }
+        await _oneSignalService
+            .refreshPlayerId()
+            .timeout(const Duration(seconds: 6));
       }
-      // Refresh player ID to ensure it's registered
-      await _oneSignalService.refreshPlayerId();
       return true;
     } catch (e, stackTrace) {
       log(
