@@ -10,10 +10,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (kIsWeb) {
-    // On web: always call runApp() so Flutn  renders its first frame and
-    // the HTML loading screen is dismissed.  If initialization hangs or
-    // fails (e.g. .env not reachable on the hosting), the user still sees
-    // the login page instead of an infinite spinner.
+ 
     try {
       await AppInitializer.initialize().timeout(
         const Duration(seconds: 10),

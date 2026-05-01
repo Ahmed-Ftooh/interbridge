@@ -1176,18 +1176,36 @@ class SupabaseService {
   }
 
   int _mapFluencyNameToId(String? name) {
-    switch (name) {
-      case 'Beginner':
-        return 1;
-      case 'Intermediate':
-        return 2;
-      case 'Upper Intermediate':
-        return 3;
-      case 'Native Or Fluent':
-        return 4;
-      default:
-        return 1;
+    final normalized =
+        (name ?? '')
+            .toLowerCase()
+            .replaceAll('_', ' ')
+            .replaceAll('-', ' ')
+            .trim();
+
+    if (normalized.isEmpty) {
+      return 1;
     }
+
+    final numeric = int.tryParse(normalized);
+    if (numeric != null && numeric >= 1 && numeric <= 4) {
+      return numeric;
+    }
+
+    if (normalized.contains('native') || normalized.contains('fluent')) {
+      return 4;
+    }
+    if (normalized.contains('upper') && normalized.contains('intermediate')) {
+      return 3;
+    }
+    if (normalized.contains('intermediate')) {
+      return 2;
+    }
+    if (normalized.contains('beginner')) {
+      return 1;
+    }
+
+    return 1;
   }
 
   List<int> _parseIntList(dynamic raw) {

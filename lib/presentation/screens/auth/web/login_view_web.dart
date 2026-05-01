@@ -77,7 +77,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
       } catch (_) {}
       if (!mounted) return;
       setState(() => _isFinalizing = false);
-      await _navigateBasedOnRole(user.id);
+      await _navigateBasedOnRole(user.id, enforceComplianceCheck: false);
       return;
     }
 
@@ -97,7 +97,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           } catch (_) {}
           if (!mounted) return;
           setState(() => _isFinalizing = false);
-          _navigateBasedOnRole(event.session!.user.id);
+          _navigateBasedOnRole(
+            event.session!.user.id,
+            enforceComplianceCheck: false,
+          );
         }
       });
 
@@ -110,7 +113,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
         AppInitializer.markInitialAuthHandled();
         await PendingRegistrationService().finalizePendingRegistration();
         if (!mounted) return;
-        await _navigateBasedOnRole(recheck.id);
+        await _navigateBasedOnRole(recheck.id, enforceComplianceCheck: false);
       }
     }
   }
@@ -199,18 +202,21 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
 
     try {
       // Do not convert doctors already linked to an organization.
-      final membership = await Supabase.instance.client
-          .from('organization_members')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle();
+      final membership =
+          await Supabase.instance.client
+              .from('organization_members')
+              .select('id')
+              .eq('user_id', userId)
+              .maybeSingle();
       if (membership != null) {
         return role;
       }
 
-      await Supabase.instance.client
-          .from('users_profile')
-          .upsert({'user_id': userId, 'role': 'interpreter', 'employment_type': 'volunteer'}, onConflict: 'user_id');
+      await Supabase.instance.client.from('users_profile').upsert({
+        'user_id': userId,
+        'role': 'interpreter',
+        'employment_type': 'volunteer',
+      }, onConflict: 'user_id');
 
       await Supabase.instance.client.from('interpreter_details').upsert({
         'user_id': userId,
@@ -269,7 +275,7 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   String _signupButtonLabelForPortal(String portalIntent) {
     switch (portalIntent) {
       case 'interpreter':
-        return 'Apply as an Interpreter';
+        return 'Apply to Join The Interpreter Network';
       case 'organization':
         return 'Register an Organization';
       default:
@@ -280,10 +286,9 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
   void _handleSignupByPortal(String portalIntent) {
     switch (portalIntent) {
       case 'interpreter':
-        Navigator.of(context).pushNamed(
-          Routes.registerRoute,
-          arguments: {'role': 'interpreter'},
-        );
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.registerRoute, arguments: {'role': 'interpreter'});
         return;
       case 'organization':
         Navigator.of(context).pushNamed(Routes.organizationRegisterRoute);
@@ -421,7 +426,10 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
     }
   }
 
-  Future<void> _navigateBasedOnRole(String userId) async {
+  Future<void> _navigateBasedOnRole(
+    String userId, {
+    bool enforceComplianceCheck = true,
+  }) async {
     try {
       final profile = await _supabaseService
           .getUserProfile(userId)
@@ -501,11 +509,13 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
           (route) => false,
         );
       } else if (role == 'interpreter') {
-        final interpreterDetails = await _supabaseService.getInterpreterDetails(userId);
+        final interpreterDetails = await _supabaseService.getInterpreterDetails(
+          userId,
+        );
         if (!mounted) return;
 
-        // Only enforce compliance picture if they are fully verified
-        if (interpreterDetails?.isVerified == true) {
+        // Enforce compliance only for actual login flow, not restored sessions on refresh.
+        if (enforceComplianceCheck && interpreterDetails?.isVerified == true) {
           final passedCompliance = await _runInterpreterComplianceCheck();
           if (!mounted) return;
           if (!passedCompliance) {

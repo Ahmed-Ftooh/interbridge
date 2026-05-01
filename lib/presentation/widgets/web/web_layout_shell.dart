@@ -234,10 +234,14 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
   }
 
   List<_NavItem> _getNavItems() {
+    final isInterpreter = widget.userRole == 'interpreter';
+    
     return [
       _NavItem(Icons.dashboard_rounded, 'Dashboard', 'Home'),
       _NavItem(Icons.description_outlined, 'Documents', 'Translations'),
       _NavItem(Icons.person_outline_rounded, 'Profile', 'Your profile'),
+      if (isInterpreter)
+        _NavItem(Icons.workspace_premium_rounded, 'Badges', 'Specializations'),
       _NavItem(Icons.settings_outlined, 'Settings', 'Preferences'),
     ];
   }
@@ -436,13 +440,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        _capitalizeRole(widget.userRole ?? 'user'),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
+                      
                     ],
                   ),
                 ],
@@ -544,14 +542,16 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
   }
 
   Widget _buildHeader() {
-    const titles = ['Dashboard', 'Documents', 'Profile', 'Settings'];
-    const subtitles = [
-      'Overview & activity',
-      'Translations & uploads',
-      'Your information',
-      'Preferences',
-    ];
-    final idx = widget.currentIndex.clamp(0, titles.length - 1);
+    final navItems = _getNavItems();
+    final idx = widget.currentIndex.clamp(0, navItems.length - 1);
+    final item = navItems[idx];
+
+    String headerSubtitle = item.subtitle;
+    if (item.label == 'Dashboard') headerSubtitle = 'Overview & activity';
+    if (item.label == 'Documents') headerSubtitle = 'Translations & uploads';
+    if (item.label == 'Profile') headerSubtitle = 'Your information';
+    if (item.label == 'Settings') headerSubtitle = 'Preferences';
+    if (item.label == 'Badges') headerSubtitle = 'Medical specializations';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
@@ -568,7 +568,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                titles[idx],
+                item.label,
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -578,7 +578,7 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
               ),
               const SizedBox(height: 2),
               Text(
-                subtitles[idx],
+                headerSubtitle,
                 style: const TextStyle(
                   fontSize: 13,
                   color: Color(0xFF94A3B8),

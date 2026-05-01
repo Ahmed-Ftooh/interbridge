@@ -7,7 +7,6 @@ import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/models/interpreter_request.dart';
-import 'package:interbridge/data/services/call_service.dart';
 import 'package:interbridge/data/services/incoming_call_service.dart';
 import 'package:interbridge/data/services/interpreter_job_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
@@ -26,7 +25,6 @@ class InterpreterHomeWeb extends StatefulWidget {
 class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     with WidgetsBindingObserver {
   String? _firstLanguageName;
-  String? _secondLanguageName;
   bool isProcessingJob = false;
   String? processingJobId;
   bool _isVerified = false;
@@ -37,12 +35,21 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
   int _totalFeedback = 0;
   List<Map<String, dynamic>> _recentCalls = [];
   bool _isLoadingProfile = true;
-  String? _employmentType;
   bool _isOnline = false;
   String _interpreterName = '';
   String _interpreterIdStr = '';
 
-  final CallService _callService = CallService();
+  // --- NEW: Admin Table Variables ---
+  final TextEditingController _callLogsSearchCtrl = TextEditingController();
+  final ScrollController _callLogsHorizontalController = ScrollController();
+  Map<int, String> jobLanguagesMap = {};
+  static const _adminHeaderStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.bold,
+    color: Color(0xFF64748B),
+    letterSpacing: 0.5,
+  );
+
   final IncomingCallService _incomingCallService = IncomingCallService();
 
   void _safeAddToJobsBloc(InterpreterJobEvent event) {
@@ -120,6 +127,8 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _incomingCallService.stopListening();
+    _callLogsSearchCtrl.dispose();
+    _callLogsHorizontalController.dispose();
     super.dispose();
   }
 
@@ -149,89 +158,314 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
       final profileData =
           await Supabase.instance.client
               .from('users_profile')
-              .select('employment_type, username')
+              .select('username')
               .eq('user_id', userId)
               .maybeSingle();
 
       // Fetch interpreter languages and language catalog
-      final interpreterLanguages = await Supabase.instance.client
+      final interpreterLanguagesResponse = await Supabase.instance.client
           .from('interpreter_languages')
           .select('language_id')
           .eq('user_id', userId);
-      final languageCatalog = await Supabase.instance.client
+
+      final interpreterLanguages = List<Map<String, dynamic>>.from(
+        interpreterLanguagesResponse,
+      );
+
+      final languageCatalogResponse = await Supabase.instance.client
           .from('languages')
           .select('id, name');
 
+      final languageCatalog = List<Map<String, dynamic>>.from(
+        languageCatalogResponse,
+      );
+
+      // --- NEW: Fill the jobLanguagesMap for the table ---
+      final langMap = <int, String>{};
+      for (final l in languageCatalog) {
+        langMap[l['id']] = l['name'];
+      }
+
       String? firstLanguageName;
-      String? secondLanguageName;
-      if (interpreterLanguages is List && interpreterLanguages.isNotEmpty) {
+      if (interpreterLanguages.isNotEmpty) {
         // First language
         final firstLangId = interpreterLanguages[0]['language_id'];
-        final firstMatch = (languageCatalog as List?)?.firstWhere(
+        final firstMatch = languageCatalog.firstWhere(
           (l) => l['id'] == firstLangId,
           orElse: () => <String, dynamic>{},
         );
-        if (firstMatch != null && firstMatch.isNotEmpty) {
+        if (firstMatch.isNotEmpty) {
           firstLanguageName = firstMatch['name'];
         }
-        // Second language (if available)
-        if (interpreterLanguages.length > 1) {
-          final secondLangId = interpreterLanguages[1]['language_id'];
-          final secondMatch = (languageCatalog as List?)?.firstWhere(
-            (l) => l['id'] == secondLangId,
-            orElse: () => <String, dynamic>{},
-          );
-          if (secondMatch != null && secondMatch.isNotEmpty) {
-            secondLanguageName = secondMatch['name'];
+      }
+
+      final now = DateTime.now();
+      final weekStart = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: now.weekday - 1));
+
+      final totalSessionsCount = await Supabase.instance.client
+          .from('call_logs')
+          .count(CountOption.exact)
+          .eq('interpreter_id', userId);
+
+      final weekSessionsCount = await Supabase.instance.client
+          .from('call_logs')
+          .count(CountOption.exact)
+          .eq('interpreter_id', userId)
+          .gte('started_at', weekStart.toIso8601String());
+
+      // Fetch call logs for this interpreter and resolve requester names.
+      final logsResponse = await Supabase.instance.client
+          .from('call_logs')
+          .select('*')
+          .eq('interpreter_id', userId)
+          .order('started_at', ascending: false)
+          .limit(100);
+
+      final rawCalls = List<Map<String, dynamic>>.from(logsResponse);
+      final recentCalls = <Map<String, dynamic>>[];
+      final seenRequestIds = <String>{};
+      final seenLogIds = <String>{};
+
+      for (final row in rawCalls) {
+        final durationSeconds = (row['duration_seconds'] as num?)?.toInt() ?? 0;
+        if (durationSeconds <= 0) {
+          continue;
+        }
+
+        final startedAtRaw = row['started_at']?.toString() ?? '';
+        if (startedAtRaw.isEmpty) {
+          continue;
+        }
+
+        final requestId = row['request_id']?.toString() ?? '';
+        final logId = row['id']?.toString() ?? '';
+
+        if (requestId.isNotEmpty) {
+          if (!seenRequestIds.add(requestId)) {
+            continue;
+          }
+        } else if (logId.isNotEmpty) {
+          if (!seenLogIds.add(logId)) {
+            continue;
+          }
+        }
+
+        recentCalls.add(row);
+      }
+
+      final requestIds =
+          recentCalls
+              .map((row) => row['request_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList();
+
+      final requestCallTypes = <String, String>{};
+      if (requestIds.isNotEmpty) {
+        final requestRows = await Supabase.instance.client
+            .from('interpreter_requests')
+            .select('id, call_type')
+            .inFilter('id', requestIds);
+
+        for (final row in requestRows) {
+          final item = Map<String, dynamic>.from(row);
+          final id = item['id']?.toString();
+          final callType = item['call_type']?.toString();
+          if (id != null &&
+              id.isNotEmpty &&
+              callType != null &&
+              callType.isNotEmpty) {
+            requestCallTypes[id] = callType;
           }
         }
       }
-      final sessionsCount = await Supabase.instance.client
-          .from('interpreter_requests')
-          .count(CountOption.exact)
-          .eq('accepted_by', userId)
-          .eq('status', 'completed');
 
-      // Fetch this week's sessions
-      final weekStart = DateTime.now().subtract(
-        Duration(days: DateTime.now().weekday - 1),
-      );
-      final weekSessions = await Supabase.instance.client
-          .from('call_sessions')
-          .select('id')
-          .or('user_id.eq.$userId,remote_user_id.eq.$userId')
-          .gte('created_at', weekStart.toIso8601String());
+      for (final row in recentCalls) {
+        final requestId = row['request_id']?.toString();
+        row['_session_call_type'] =
+            (requestId != null ? requestCallTypes[requestId] : null) ??
+            row['call_type']?.toString() ??
+            'unknown';
+      }
 
-      // Fetch average rating from feedback received (where interpreter is the remote user)
-      final feedbackStats = await _callService.getFeedbackStatistics(
-        userId: userId,
-      );
+      double avgRating = 0.0;
+      int totalFeedback = 0;
+      final requestIdsForFeedback =
+          recentCalls
+              .map((row) => row['request_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
 
-      // Fetch recent call sessions
-      final recentCalls = await _callService.getRecentCallSessions(
-        userId: userId,
-        limit: 5,
-      );
+      if (requestIdsForFeedback.isEmpty) {
+        final ratingCallRows = await Supabase.instance.client
+            .from('call_logs')
+            .select('request_id')
+            .eq('interpreter_id', userId)
+            .order('started_at', ascending: false)
+            .limit(500);
+
+        for (final row in ratingCallRows) {
+          final item = Map<String, dynamic>.from(row);
+          final requestId = item['request_id']?.toString();
+          if (requestId != null && requestId.isNotEmpty) {
+            requestIdsForFeedback.add(requestId);
+          }
+        }
+      }
+
+      if (requestIdsForFeedback.isNotEmpty) {
+        final feedbackResponse = await Supabase.instance.client
+            .from('call_feedback')
+            .select('rating, user_id, channel_id')
+            .inFilter('channel_id', requestIdsForFeedback.toList())
+            .neq('user_id', userId);
+
+        final feedbackRows = List<Map<String, dynamic>>.from(feedbackResponse);
+        final ratings = <double>[];
+        for (final row in feedbackRows) {
+          final rating = (row['rating'] as num?)?.toDouble();
+          if (rating != null) {
+            ratings.add(rating);
+          }
+        }
+
+        if (ratings.isNotEmpty) {
+          totalFeedback = ratings.length;
+          avgRating = ratings.reduce((a, b) => a + b) / ratings.length;
+        }
+      }
+
+      // Fallback: if ratings are still empty, derive channels directly
+      // from accepted interpreter requests instead of relying on call_logs.
+      if (totalFeedback == 0) {
+        final acceptedRequestsResponse = await Supabase.instance.client
+            .from('interpreter_requests')
+            .select('id, requester_id')
+            .eq('accepted_by', userId)
+            .limit(1000);
+
+        final acceptedRequests = List<Map<String, dynamic>>.from(
+          acceptedRequestsResponse,
+        );
+
+        final fallbackChannelIds = <String>[];
+        final requesterByChannel = <String, String>{};
+
+        for (final row in acceptedRequests) {
+          final channelId = row['id']?.toString();
+          final requesterId = row['requester_id']?.toString();
+          if (channelId == null || channelId.isEmpty) continue;
+          fallbackChannelIds.add(channelId);
+          if (requesterId != null && requesterId.isNotEmpty) {
+            requesterByChannel[channelId] = requesterId;
+          }
+        }
+
+        if (fallbackChannelIds.isNotEmpty) {
+          final fallbackRatings = <double>[];
+          const chunkSize = 200;
+
+          for (var i = 0; i < fallbackChannelIds.length; i += chunkSize) {
+            final end =
+                (i + chunkSize) < fallbackChannelIds.length
+                    ? (i + chunkSize)
+                    : fallbackChannelIds.length;
+
+            final chunk = fallbackChannelIds.sublist(i, end);
+
+            final feedbackChunkResponse = await Supabase.instance.client
+                .from('call_feedback')
+                .select('rating, user_id, channel_id')
+                .inFilter('channel_id', chunk)
+                .neq('user_id', userId);
+
+            final feedbackRows = List<Map<String, dynamic>>.from(
+              feedbackChunkResponse,
+            );
+
+            for (final row in feedbackRows) {
+              final channelId = row['channel_id']?.toString();
+              final authorUserId = row['user_id']?.toString();
+              if (channelId == null ||
+                  channelId.isEmpty ||
+                  authorUserId == null) {
+                continue;
+              }
+
+              final expectedRequesterId = requesterByChannel[channelId];
+              if (expectedRequesterId != null &&
+                  expectedRequesterId.isNotEmpty &&
+                  authorUserId != expectedRequesterId) {
+                continue;
+              }
+
+              final rating = (row['rating'] as num?)?.toDouble();
+              if (rating != null) {
+                fallbackRatings.add(rating);
+              }
+            }
+          }
+
+          if (fallbackRatings.isNotEmpty) {
+            totalFeedback = fallbackRatings.length;
+            avgRating =
+                fallbackRatings.reduce((a, b) => a + b) /
+                fallbackRatings.length;
+          }
+        }
+      }
+
+      final requesterIds = <String>{};
+      for (final logRow in recentCalls) {
+        final requesterId = logRow['requester_id']?.toString();
+        if (requesterId != null && requesterId.isNotEmpty) {
+          requesterIds.add(requesterId);
+        }
+      }
+
+      final requesterProfiles = <String, Map<String, dynamic>>{};
+      if (requesterIds.isNotEmpty) {
+        final requesterRows = await Supabase.instance.client
+            .from('users_profile')
+            .select('user_id, username')
+            .inFilter('user_id', requesterIds.toList());
+
+        for (final row in requesterRows) {
+          final item = Map<String, dynamic>.from(row);
+          final requesterId = item['user_id']?.toString();
+          if (requesterId != null && requesterId.isNotEmpty) {
+            requesterProfiles[requesterId] = item;
+          }
+        }
+      }
+
+      for (final row in recentCalls) {
+        final requesterId = row['requester_id']?.toString();
+        row['_requester'] =
+            requesterId == null ? null : requesterProfiles[requesterId];
+      }
 
       if (mounted) {
         setState(() {
+          jobLanguagesMap = langMap; // Save map to state
           _isVerified = interpreterData?['is_verified'] ?? false;
           _isSuspended = interpreterData?['is_suspended'] ?? false;
           _isOnline = interpreterData?['is_online'] ?? false;
-          _totalSessions = sessionsCount;
-          _thisWeekSessions = (weekSessions as List).length;
-          _avgRating =
-              (feedbackStats['average_rating'] as num?)?.toDouble() ?? 0.0;
-          _totalFeedback = feedbackStats['total_feedback'] as int? ?? 0;
+          _totalSessions = totalSessionsCount;
+          _thisWeekSessions = weekSessionsCount;
+          _avgRating = avgRating;
+          _totalFeedback = totalFeedback;
           _recentCalls = recentCalls;
-          _employmentType = profileData?['employment_type'] ?? 'volunteer';
           _interpreterName = profileData?['username'] ?? 'Interpreter';
           final fullIdStr = uidFromUuid(userId).toString();
           _interpreterIdStr =
               fullIdStr.length > 5 ? fullIdStr.substring(0, 5) : fullIdStr;
           _isLoadingProfile = false;
           _firstLanguageName = firstLanguageName;
-          _secondLanguageName = secondLanguageName;
         });
       }
     } catch (e) {
@@ -266,6 +500,86 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     }
   }
 
+  // --- NEW: Helper method to filter calls based on search bar ---
+  List<Map<String, dynamic>> _getFilteredCalls() {
+    final query = _callLogsSearchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) return _recentCalls;
+
+    return _recentCalls.where((call) {
+      final callType = call['_session_call_type']?.toString() ?? '';
+      final requestId = call['request_id']?.toString() ?? '';
+      final customRequestId = _formatCustomRequestId(requestId);
+
+      final metadataRaw = call['metadata'];
+      final metadata =
+          metadataRaw is Map<String, dynamic>
+              ? metadataRaw
+              : metadataRaw is Map
+              ? Map<String, dynamic>.from(metadataRaw)
+              : const <String, dynamic>{};
+
+      final fromLang = _resolveLanguageName(metadata['from_language']);
+      final toLang = _resolveLanguageName(metadata['to_language']);
+
+      final searchable =
+          '$requestId $customRequestId $callType $fromLang $toLang'
+              .toLowerCase();
+      return searchable.contains(query);
+    }).toList();
+  }
+
+  String _formatCustomRequestId(String requestId) {
+    if (requestId.isEmpty) return '-----';
+
+    try {
+      final numeric = uidFromUuid(requestId).toString();
+      return numeric.length >= 5
+          ? numeric.substring(0, 5)
+          : numeric.padLeft(5, '0');
+    } catch (_) {
+      final digits = requestId.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.isNotEmpty) {
+        return digits.length >= 5
+            ? digits.substring(0, 5)
+            : digits.padLeft(5, '0');
+      }
+
+      return requestId.length >= 5 ? requestId.substring(0, 5) : requestId;
+    }
+  }
+
+  void _scrollCallLogsHorizontally(double delta) {
+    if (!_callLogsHorizontalController.hasClients) return;
+
+    final position = _callLogsHorizontalController.position;
+    final target = (_callLogsHorizontalController.offset + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+
+    _callLogsHorizontalController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  String _resolveLanguageName(dynamic langValue) {
+    if (langValue == null) return 'Unknown';
+
+    if (langValue is int) {
+      return jobLanguagesMap[langValue] ?? langValue.toString();
+    }
+
+    final asString = langValue.toString();
+    final parsedInt = int.tryParse(asString);
+    if (parsedInt != null) {
+      return jobLanguagesMap[parsedInt] ?? asString;
+    }
+
+    return asString;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -280,7 +594,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           const SizedBox(height: 24),
 
           // Main content
-          // Only show jobs and call features for verified, non-suspended interpreters
           if (_isLoadingProfile)
             const Padding(
               padding: EdgeInsets.all(48),
@@ -291,40 +604,47 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
           else if (!_isVerified)
             _buildPendingVerificationWebView()
           else if (isWide)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
               children: [
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    children: [
-                      _buildScriptCard(),
-                      const SizedBox(height: 24),
-                      _buildJobsSection(),
-                      const SizedBox(height: 24),
-                      _buildRecentCallsSection(),
-                    ],
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: [
+                          _buildScriptCard(),
+                          const SizedBox(height: 24),
+                          _buildJobsSection(),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 1,
+                      child: Column(
+                        children: [
+                          _buildStatsCard(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 24),
-                Expanded(
-                  flex: 1,
-                  child: Column(
-                    children: [_buildStatsCard(), const SizedBox(height: 24)],
-                  ),
-                ),
+                const SizedBox(height: 24),
+                _buildRecentCallsSection(),
               ],
             )
           else
             Column(
               children: [
-                _buildStatsCard(),
-                const SizedBox(height: 24),
                 _buildScriptCard(),
+                const SizedBox(height: 24),
+                _buildStatsCard(),
                 const SizedBox(height: 24),
                 _buildJobsSection(),
                 const SizedBox(height: 24),
-                _buildRecentCallsSection(),
+                _buildRecentCallsSection(), // <--- Updated Table Section
                 const SizedBox(height: 24),
               ],
             ),
@@ -380,7 +700,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // NEW: Name and Premium Welcome Text
                 Text(
                   'Welcome back, ${_interpreterName.split(" ").first}! 👋',
                   style: const TextStyle(
@@ -392,7 +711,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                 ),
                 const SizedBox(height: 12),
 
-                // NEW: Show Interpreter ID clearly for doctors to copy
                 Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 16,
@@ -406,7 +724,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                         height: 1.5,
                       ),
                     ),
-                    // Built-in ID Badge
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -456,7 +773,6 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
 
           const SizedBox(width: 32),
 
-          // NEW: The integrated Online/Offline Switch Area
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: BoxDecoration(
@@ -742,7 +1058,7 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Your Stats',
+            'Your Status',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -1193,7 +1509,11 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
     }
   }
 
+  // --- NEW: Admin Style Table Implementation ---
   Widget _buildRecentCallsSection() {
+    final filteredCalls = _getFilteredCalls();
+    final tableMinWidth = MediaQuery.of(context).size.width * 1.35;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1207,71 +1527,80 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 1. Header with Admin-style Search Bar
           Padding(
             padding: const EdgeInsets.all(24),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Recent Sessions',
+                    Text(
+                      'Call History',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF1E293B),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
-                      _recentCalls.isEmpty
-                          ? 'No sessions yet'
-                          : 'Your last ${_recentCalls.length} interpretation sessions',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                      ),
+                      'Detailed logs for your completed and recent calls',
+                      style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                     ),
                   ],
                 ),
-                if (_totalFeedback > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          size: 16,
-                          color: Color(0xFFF59E0B),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${_avgRating.toStringAsFixed(1)} avg',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF92400E),
-                          ),
-                        ),
-                      ],
+                const Spacer(),
+                Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Scroll left',
+                        onPressed: () => _scrollCallLogsHorizontally(-320),
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      IconButton(
+                        tooltip: 'Scroll right',
+                        onPressed: () => _scrollCallLogsHorizontally(320),
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ),
+                ),
+                // Search bar matching admin dashboard style
+                SizedBox(
+                  width: 300,
+                  height: 40,
+                  child: TextField(
+                    controller: _callLogsSearchCtrl,
+                    onChanged: (val) => setState(() {}), // Local search trigger
+                    decoration: InputDecoration(
+                      hintText: 'Search by custom ID, type, language...',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      contentPadding: EdgeInsets.zero,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
+                ),
               ],
             ),
           ),
-          const Divider(height: 1),
-          if (_recentCalls.isEmpty)
+
+          // 2. The Data Table (The "Admin" look)
+          if (filteredCalls.isEmpty)
             Padding(
               padding: const EdgeInsets.all(48),
               child: Center(
@@ -1291,161 +1620,157 @@ class _InterpreterHomeWebState extends State<InterpreterHomeWeb>
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'No sessions yet',
+                      'No call logs found',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF475569),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Your completed sessions will appear here.',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
-                    ),
                   ],
                 ),
               ),
             )
           else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _recentCalls.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final call = _recentCalls[index];
-                return _buildRecentCallTile(call);
-              },
+            Scrollbar(
+              controller: _callLogsHorizontalController,
+              thumbVisibility: true,
+              trackVisibility: true,
+              child: SingleChildScrollView(
+                controller: _callLogsHorizontalController,
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: tableMinWidth < 1700 ? 1700 : tableMinWidth,
+                  ),
+                  child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(
+                      const Color(0xFFF8FAFC),
+                    ),
+                    dataRowMaxHeight: 70,
+                    columnSpacing: 56,
+                    horizontalMargin: 24,
+                    columns: const [
+                      DataColumn(
+                        label: Text('CUSTOM ID', style: _adminHeaderStyle),
+                      ),
+                      DataColumn(
+                        label: Text('SESSION TYPE', style: _adminHeaderStyle),
+                      ),
+                      DataColumn(
+                        label: Text('LANGUAGES', style: _adminHeaderStyle),
+                      ),
+                      DataColumn(
+                        label: Text('DURATION', style: _adminHeaderStyle),
+                      ),
+                      DataColumn(
+                        label: Text('CALL START', style: _adminHeaderStyle),
+                      ),
+                    ],
+                    rows:
+                        filteredCalls
+                            .map((call) => _buildAdminCallRow(call))
+                            .toList(),
+                  ),
+                ),
+              ),
             ),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
 
-  Widget _buildRecentCallTile(Map<String, dynamic> call) {
-    final durationSec = call['duration_seconds'] as int? ?? 0;
-    final callType = call['call_type'] as String? ?? 'voice';
-    final quality = call['connection_quality'] as String? ?? '';
-    final startedAt = DateTime.tryParse(call['started_at'] ?? '');
+  DataRow _buildAdminCallRow(Map<String, dynamic> call) {
+    final requestId = call['request_id']?.toString() ?? '—';
+    final customRequestId = _formatCustomRequestId(requestId);
+    final durationSec = (call['duration_seconds'] as num?)?.toInt() ?? 0;
+    final callType = call['_session_call_type']?.toString() ?? 'unknown';
+    final startedAt = DateTime.tryParse(call['started_at']?.toString() ?? '');
 
-    final minutes = durationSec ~/ 60;
-    final seconds = durationSec % 60;
-    final durationStr = '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+    final metadataRaw = call['metadata'];
+    final metadata =
+        metadataRaw is Map<String, dynamic>
+            ? metadataRaw
+            : metadataRaw is Map
+            ? Map<String, dynamic>.from(metadataRaw)
+            : const <String, dynamic>{};
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          // Call type icon
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color:
-                  callType == 'video'
-                      ? const Color(0xFF6366F1).withValues(alpha: 0.1)
-                      : const Color(0xFF0955FA).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              callType == 'video' ? Icons.videocam : Icons.phone,
-              color:
-                  callType == 'video'
-                      ? const Color(0xFF6366F1)
-                      : const Color(0xFF0955FA),
-              size: 24,
-            ),
+    final fromLang = _resolveLanguageName(metadata['from_language']);
+    final toLang = _resolveLanguageName(metadata['to_language']);
+
+    return DataRow(
+      cells: [
+        DataCell(
+          Text(
+            customRequestId,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(width: 16),
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${callType == 'video' ? 'Video' : 'Voice'} Session',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.access_time,
-                      size: 14,
-                      color: Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      durationStr,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    if (quality.isNotEmpty) ...[
-                      const SizedBox(width: 12),
-                      Icon(
-                        quality == 'excellent' || quality == 'good'
-                            ? Icons.signal_cellular_alt
-                            : Icons.signal_cellular_alt_2_bar,
-                        size: 14,
-                        color:
-                            quality == 'excellent' || quality == 'good'
-                                ? const Color(0xFF22C55E)
-                                : const Color(0xFFF59E0B),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        quality,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color:
-                              quality == 'excellent' || quality == 'good'
-                                  ? const Color(0xFF22C55E)
-                                  : const Color(0xFFF59E0B),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Date
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+        ),
+        DataCell(
+          Row(
             children: [
-              if (startedAt != null)
-                Text(
-                  DateFormat('MMM d').format(startedAt),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF475569),
-                  ),
+              Icon(
+                callType == 'video' ? Icons.videocam : Icons.phone,
+                size: 18,
+                color: ColorManager.primary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                callType.toUpperCase(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
                 ),
-              if (startedAt != null)
-                Text(
-                  DateFormat('h:mm a').format(startedAt),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
-                  ),
-                ),
+              ),
             ],
           ),
-        ],
-      ),
+        ),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0955FA).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$fromLang → $toLang',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0955FA),
+              ),
+            ),
+          ),
+        ),
+        DataCell(Text('${durationSec ~/ 60}m ${durationSec % 60}s')),
+        DataCell(
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                startedAt != null
+                    ? DateFormat('MMM d, yyyy').format(startedAt)
+                    : 'Unknown',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                startedAt != null ? DateFormat('h:mm a').format(startedAt) : '',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildScriptCard() {
     final firstLanguage = _firstLanguageName ?? 'interpreter';
-    final secondLanguage = _secondLanguageName ?? firstLanguage;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),

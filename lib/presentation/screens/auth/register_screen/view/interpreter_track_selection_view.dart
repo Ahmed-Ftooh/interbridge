@@ -66,7 +66,7 @@ class _InterpreterTrackSelectionScreenState
                 title: 'Entry-Level Beginner',
                 subtitle: 'Start with Basic medical calls',
                 description:
-                    'Ideal for newcomers to interpreting. Support humanitarian causes and build experience.',
+                    'Ideal for newcomers to interpreting. Support humanitarian Cases and build experience.',
                 icon: Icons.volunteer_activism_rounded,
                 color: ColorManager.primary2,
                 isSelected: _selectedLevel == InterpreterLevel.volunteer,
@@ -78,7 +78,7 @@ class _InterpreterTrackSelectionScreenState
               const SizedBox(height: AppSize.s16),
               _TrackCard(
                 title: 'Experienced Medical Interpreter',
-                subtitle: 'Medical & specialized calls',
+                subtitle: 'Advanced medical Specialized Calls',
                 description:
                     'For experienced interpreters. Complete medical sections and qualify for paid shifts.',
                 icon: Icons.medical_services_rounded,

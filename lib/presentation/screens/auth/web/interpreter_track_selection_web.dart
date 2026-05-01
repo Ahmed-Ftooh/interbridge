@@ -17,6 +17,26 @@ class InterpreterTrackSelectionWebScreen extends StatefulWidget {
 
 class _InterpreterTrackSelectionWebScreenState
     extends State<InterpreterTrackSelectionWebScreen> {
+      @override
+void initState() {
+  super.initState();
+  
+  // Add this block to catch browser refreshes
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) {
+      // The user refreshed the page and lost their session arguments.
+      // Send them to the dashboard gate, which will re-fetch their progress
+      // from Supabase and route them back here with the correct args!
+      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
+    }
+  });
+}
+@override 
+void dispose(){
+  super.dispose();
+
+} 
   InterpreterLevel? _selectedLevel;
   String? _hoveredTrack;
   bool _isLoading = false;
@@ -46,7 +66,7 @@ class _InterpreterTrackSelectionWebScreenState
             subtitle: 'Start with basic medical calls',
             features: const [
               'Build your experience',
-              'Support humanitarian causes',
+              'Support humanitarian Cases',
               'Earn recognition & certificates',
             ],
             isSelected: _selectedLevel == InterpreterLevel.volunteer,
@@ -60,11 +80,11 @@ class _InterpreterTrackSelectionWebScreenState
             trackId: 'paid',
             icon: Icons.workspace_premium_rounded,
             title: 'Experienced Professional',
-            subtitle: 'Medical & specialized interpretation',
+            subtitle: 'Advanced medical Specialized Calls',
             features: const [
-              'Complete medical section quizzes',
-              'Qualify for paid shifts',
-              'Access specialized assignments',
+              'Pass advanced medical competency assessments',
+              'Unlock specialty badges by passing advanced medical assessments',
+              'Qualify for hourly paid interpreting sessions',
             ],
             isSelected: _selectedLevel == InterpreterLevel.paid,
             onTap: () => setState(() => _selectedLevel = InterpreterLevel.paid),

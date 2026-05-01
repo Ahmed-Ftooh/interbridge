@@ -25,6 +25,7 @@ class RegisterViewWeb extends StatelessWidget {
 }
 
 class _RegisterViewWebBody extends StatefulWidget {
+  
   final Map<String, dynamic> data;
   const _RegisterViewWebBody({required this.data});
 
@@ -33,6 +34,7 @@ class _RegisterViewWebBody extends StatefulWidget {
 }
 
 class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
+  
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -60,7 +62,19 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   @override
   void initState() {
     super.initState();
+    
     _initializeData();
+  // Add this block to catch browser refreshes
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) {
+      // The user refreshed the page and lost their session arguments.
+      // Send them to the dashboard gate, which will re-fetch their progress
+      // from Supabase and route them back here with the correct args!
+      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
+    }
+  });
+
   }
 
   void _initializeData() {

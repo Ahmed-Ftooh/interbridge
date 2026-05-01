@@ -28,6 +28,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   final _appPreferences = instance<AppPreferences>();
   final _searchCtrl = TextEditingController();
   final _callLogsSearchCtrl = TextEditingController();
+  final _organizationsSearchCtrl = TextEditingController();
 
   List<dynamic> _items = [];
   bool _isLoading = false;
@@ -42,7 +43,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   bool _checking = true;
 
   // Sidebar
-  int _selectedNav = 0; // 0=interpreters, 1=pending reviews, 2=call logs
+  int _selectedNav =
+      0; // 0=interpreters, 1=pending reviews, 2=call logs, 3=organizations
   bool _sidebarCollapsed = false;
 
   // Call logs data
@@ -50,6 +52,15 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   List<Map<String, dynamic>> _activeCalls = [];
   bool _isLoadingCalls = false;
   Map<int, String> _languagesMap = {};
+
+  // Organizations data
+  List<Map<String, dynamic>> _organizations = [];
+  Map<String, List<Map<String, dynamic>>> _organizationMembersById = {};
+  Map<String, List<Map<String, dynamic>>> _organizationCallsById = {};
+  Map<String, Map<String, dynamic>> _organizationStatsById = {};
+  bool _isLoadingOrganizations = false;
+  String? _selectedOrganizationId;
+  bool _showInactiveOrganizations = false;
 
   // Admin listen mode
   final CallService _callService = CallService();
@@ -321,6 +332,380 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     }
   }
 
+  Future<void> _loadOrganizations() async {
+    if (_isLoadingOrganizations) return;
+    setState(() => _isLoadingOrganizations = true);
+
+    try {
+      final client = Supabase.instance.client;
+
+      List<Map<String, dynamic>> organizations = [];
+      try {
+        final rows = await client
+            .from('organizations')
+            .select(
+              'id, name, email, phone, address, wallet_balance, rate_per_minute, billing_email, billing_contact_name, billing_method, invite_code, is_active, verification_status, created_at, updated_at',
+            )
+            .order('created_at', ascending: false)
+            .limit(500);
+        organizations =
+            (rows as List)
+                .map((row) => Map<String, dynamic>.from(row as Map))
+                .toList();
+      } catch (e) {
+        debugPrint('Error loading organizations with selected fields: $e');
+        final fallbackRows = await client
+            .from('organizations')
+            .select('*')
+            .order('created_at', ascending: false)
+            .limit(500);
+        organizations =
+            (fallbackRows as List)
+                .map((row) => Map<String, dynamic>.from(row as Map))
+                .toList();
+      }
+
+      final organizationIds =
+          organizations
+              .map((org) => org['id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toList();
+
+      List<Map<String, dynamic>> members = [];
+      List<Map<String, dynamic>> calls = [];
+
+      if (organizationIds.isNotEmpty) {
+        try {
+          final memberRows = await client
+              .from('organization_members')
+              .select(
+                'id, organization_id, user_id, role, is_active, spending_limit, total_spent, joined_at',
+              )
+              .inFilter('organization_id', organizationIds);
+          members =
+              (memberRows as List)
+                  .map((row) => Map<String, dynamic>.from(row as Map))
+                  .toList();
+        } catch (e) {
+          debugPrint('Error loading organization members for admin tab: $e');
+        }
+
+        try {
+          final callRows = await client
+              .from('call_logs')
+              .select(
+                'id, organization_id, requester_id, interpreter_id, request_id, duration_seconds, cost, started_at, ended_at',
+              )
+              .inFilter('organization_id', organizationIds)
+              .order('started_at', ascending: false)
+              .limit(4000);
+          calls =
+              (callRows as List)
+                  .map((row) => Map<String, dynamic>.from(row as Map))
+                  .toList();
+        } catch (e) {
+          debugPrint('Error loading organization calls for admin tab: $e');
+        }
+      }
+
+      final userIds = <String>{};
+      for (final member in members) {
+        final userId = member['user_id']?.toString();
+        if (userId != null && userId.isNotEmpty) {
+          userIds.add(userId);
+        }
+      }
+      for (final call in calls) {
+        final requesterId = call['requester_id']?.toString();
+        final interpreterId = call['interpreter_id']?.toString();
+        if (requesterId != null && requesterId.isNotEmpty) {
+          userIds.add(requesterId);
+        }
+        if (interpreterId != null && interpreterId.isNotEmpty) {
+          userIds.add(interpreterId);
+        }
+      }
+
+      final profileMap = <String, Map<String, dynamic>>{};
+      if (userIds.isNotEmpty) {
+        try {
+          final profiles = await client
+              .from('users_profile')
+              .select('user_id, username, full_name, role')
+              .inFilter('user_id', userIds.toList());
+          for (final row in profiles) {
+            final item = Map<String, dynamic>.from(row as Map);
+            final userId = item['user_id']?.toString();
+            if (userId == null || userId.isEmpty) continue;
+            profileMap[userId] = item;
+          }
+        } catch (e) {
+          debugPrint('Error loading profiles for organizations tab: $e');
+        }
+      }
+
+      for (final member in members) {
+        final userId = member['user_id']?.toString();
+        member['_profile'] = userId == null ? null : profileMap[userId];
+      }
+      for (final call in calls) {
+        final requesterId = call['requester_id']?.toString();
+        final interpreterId = call['interpreter_id']?.toString();
+        call['_requester'] = requesterId == null ? null : profileMap[requesterId];
+        call['_interpreter'] =
+            interpreterId == null ? null : profileMap[interpreterId];
+      }
+
+      final membersByOrg = <String, List<Map<String, dynamic>>>{};
+      for (final member in members) {
+        final orgId = member['organization_id']?.toString();
+        if (orgId == null || orgId.isEmpty) continue;
+        membersByOrg.putIfAbsent(orgId, () => []).add(member);
+      }
+
+      final callsByOrg = <String, List<Map<String, dynamic>>>{};
+      for (final call in calls) {
+        final orgId = call['organization_id']?.toString();
+        if (orgId == null || orgId.isEmpty) continue;
+        callsByOrg.putIfAbsent(orgId, () => []).add(call);
+      }
+
+      final nowUtc = DateTime.now().toUtc();
+      final weekStartUtc =
+          DateTime.utc(
+            nowUtc.year,
+            nowUtc.month,
+            nowUtc.day,
+          ).subtract(Duration(days: nowUtc.weekday - 1));
+      final monthStartUtc = DateTime.utc(nowUtc.year, nowUtc.month, 1);
+
+      final statsByOrg = <String, Map<String, dynamic>>{};
+      for (final org in organizations) {
+        final orgId = org['id']?.toString();
+        if (orgId == null || orgId.isEmpty) continue;
+
+        final orgMembers =
+            membersByOrg[orgId] ?? const <Map<String, dynamic>>[];
+        final orgCalls = callsByOrg[orgId] ?? const <Map<String, dynamic>>[];
+
+        final doctorMembers =
+            orgMembers
+                .where((member) => (member['role']?.toString() ?? '') == 'doctor')
+                .toList();
+
+        final activeDoctors =
+            doctorMembers.where((member) => member['is_active'] != false).length;
+
+        final doctorUsage = <String, Map<String, dynamic>>{};
+        for (final doctor in doctorMembers) {
+          final userId = doctor['user_id']?.toString();
+          if (userId == null || userId.isEmpty) continue;
+          doctorUsage[userId] = {
+            'calls': 0,
+            'duration_seconds': 0,
+            'cost': 0.0,
+          };
+        }
+
+        var totalDurationSeconds = 0;
+        var totalCost = 0.0;
+        var callsThisWeek = 0;
+        var callsThisMonth = 0;
+        var costThisMonth = 0.0;
+        DateTime? lastCallAt;
+
+        for (final call in orgCalls) {
+          final durationSeconds = _asInt(call['duration_seconds']);
+          final callCost = _asDouble(call['cost']);
+          totalDurationSeconds += durationSeconds;
+          totalCost += callCost;
+
+          final startedAt = _parseDateTime(call['started_at']);
+          if (startedAt != null) {
+            final startedAtUtc = startedAt.toUtc();
+            if (startedAtUtc.isAfter(weekStartUtc)) {
+              callsThisWeek++;
+            }
+            if (startedAtUtc.isAfter(monthStartUtc)) {
+              callsThisMonth++;
+              costThisMonth += callCost;
+            }
+            if (lastCallAt == null || startedAtUtc.isAfter(lastCallAt)) {
+              lastCallAt = startedAtUtc;
+            }
+          }
+
+          final requesterId = call['requester_id']?.toString();
+          if (requesterId != null && requesterId.isNotEmpty) {
+            final usage = doctorUsage.putIfAbsent(requesterId, () {
+              return {
+                'calls': 0,
+                'duration_seconds': 0,
+                'cost': 0.0,
+              };
+            });
+            usage['calls'] = _asInt(usage['calls']) + 1;
+            usage['duration_seconds'] =
+                _asInt(usage['duration_seconds']) + durationSeconds;
+            usage['cost'] = _asDouble(usage['cost']) + callCost;
+          }
+        }
+
+        final totalDoctorSpent = doctorMembers.fold<double>(
+          0.0,
+          (sum, member) => sum + _asDouble(member['total_spent']),
+        );
+
+        String? topDoctorName;
+        double topDoctorSpent = 0.0;
+        for (final doctor in doctorMembers) {
+          final spent = _asDouble(doctor['total_spent']);
+          if (spent >= topDoctorSpent) {
+            topDoctorSpent = spent;
+            final profileRaw = doctor['_profile'];
+            final profile =
+                profileRaw is Map<String, dynamic>
+                    ? profileRaw
+                    : profileRaw is Map
+                    ? Map<String, dynamic>.from(profileRaw)
+                    : null;
+            topDoctorName =
+                profile?['full_name']?.toString() ??
+                profile?['username']?.toString();
+          }
+        }
+
+        statsByOrg[orgId] = {
+          'members_count': orgMembers.length,
+          'doctors_count': doctorMembers.length,
+          'active_doctors_count': activeDoctors,
+          'calls_count': orgCalls.length,
+          'total_duration_seconds': totalDurationSeconds,
+          'total_minutes': (totalDurationSeconds / 60).ceil(),
+          'total_cost': totalCost,
+          'calls_this_week': callsThisWeek,
+          'calls_this_month': callsThisMonth,
+          'cost_this_month': costThisMonth,
+          'total_doctor_spent': totalDoctorSpent,
+          'last_call_at': lastCallAt?.toIso8601String(),
+          'doctor_usage': doctorUsage,
+          'top_doctor_name': topDoctorName,
+          'top_doctor_spent': topDoctorSpent,
+        };
+      }
+
+      if (mounted) {
+        final visibleOrganizations =
+            _showInactiveOrganizations
+                ? organizations
+                : organizations
+                    .where((org) => org['is_active'] != false)
+                    .toList();
+        setState(() {
+          _organizations = organizations;
+          _organizationMembersById = membersByOrg;
+          _organizationCallsById = callsByOrg;
+          _organizationStatsById = statsByOrg;
+          _selectedOrganizationId = _resolveNextSelectedOrganizationId(
+            previousSelection: _selectedOrganizationId,
+            organizations: visibleOrganizations,
+          );
+          _isLoadingOrganizations = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Fatal error loading organizations tab: $e');
+      if (mounted) {
+        setState(() => _isLoadingOrganizations = false);
+      }
+    }
+  }
+
+  String? _resolveNextSelectedOrganizationId({
+    required String? previousSelection,
+    required List<Map<String, dynamic>> organizations,
+  }) {
+    if (organizations.isEmpty) return null;
+
+    if (previousSelection != null && previousSelection.isNotEmpty) {
+      final exists = organizations.any(
+        (org) => org['id']?.toString() == previousSelection,
+      );
+      if (exists) return previousSelection;
+    }
+
+    return organizations.first['id']?.toString();
+  }
+
+  int _asInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  double _asDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    return DateTime.tryParse(value.toString());
+  }
+
+  Map<String, dynamic>? _asMap(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  List<Map<String, dynamic>> _filteredOrganizations() {
+    final query = _organizationsSearchCtrl.text.trim().toLowerCase();
+    final baseOrganizations =
+        _showInactiveOrganizations
+            ? _organizations
+            : _organizations
+                .where((org) => org['is_active'] != false)
+                .toList();
+
+    if (query.isEmpty) return baseOrganizations;
+
+    return baseOrganizations.where((org) {
+      final orgId = org['id']?.toString() ?? '';
+      final name = org['name']?.toString() ?? '';
+      final email = org['email']?.toString() ?? '';
+      final billingEmail = org['billing_email']?.toString() ?? '';
+      final contactName = org['billing_contact_name']?.toString() ?? '';
+      final inviteCode = org['invite_code']?.toString() ?? '';
+
+      final searchable =
+          '$orgId $name $email $billingEmail $contactName $inviteCode'
+              .toLowerCase();
+      return searchable.contains(query);
+    }).toList();
+  }
+
+  String _formatCurrency(dynamic value) {
+    return '\$${_asDouble(value).toStringAsFixed(2)}';
+  }
+
+  String _formatShortDate(dynamic value) {
+    final date = _parseDateTime(value);
+    if (date == null) return '-';
+    return DateFormat('MMM d, yyyy').format(date.toLocal());
+  }
+
+  String _formatShortDateTime(dynamic value) {
+    final date = _parseDateTime(value);
+    if (date == null) return '-';
+    return DateFormat('MMM d, yyyy - h:mm a').format(date.toLocal());
+  }
+
   Future<Map<String, String>> _fetchInterpreterEmails(
     Set<String> interpreterIds,
   ) async {
@@ -493,6 +878,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
     _stopListening();
     _searchCtrl.dispose();
     _callLogsSearchCtrl.dispose();
+    _organizationsSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -959,6 +1345,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
           _buildNavItem(0, Icons.people_alt_outlined, 'All Interpreters'),
           _buildNavItem(1, Icons.pending_actions_outlined, 'Pending Reviews'),
           _buildNavItem(2, Icons.history_outlined, 'Call Logs'),
+          _buildNavItem(3, Icons.business_outlined, 'Organizations'),
           const Spacer(),
           // Broadcast Button here
           if (!collapsed)
@@ -1022,6 +1409,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             setState(() => _selectedNav = index);
             if (index == 2) {
               _loadCallLogs();
+            } else if (index == 3) {
+              _loadOrganizations();
             } else if (index == 1) {
               // Filter to unverified
               setState(() {
@@ -1094,7 +1483,13 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   // ──────── TOP BAR ────────
   Widget _buildTopBar() {
     final isCallLogsTab = _selectedNav == 2;
-    final activeSearchCtrl = isCallLogsTab ? _callLogsSearchCtrl : _searchCtrl;
+    final isOrganizationsTab = _selectedNav == 3;
+    final activeSearchCtrl =
+      isCallLogsTab
+        ? _callLogsSearchCtrl
+        : isOrganizationsTab
+        ? _organizationsSearchCtrl
+        : _searchCtrl;
 
     return Container(
       height: 72,
@@ -1121,6 +1516,8 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   hintText:
                       isCallLogsTab
                           ? 'Search call logs by interpreter ID, username, or email...'
+                        : isOrganizationsTab
+                        ? 'Search organizations by name, email, invite code, or ID...'
                           : 'Search interpreters by name or 5-digit ID...',
                   hintStyle: TextStyle(
                     color: Colors.grey.shade400,
@@ -1143,12 +1540,12 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   ),
                 ),
                 onChanged: (_) {
-                  if (isCallLogsTab) {
+                  if (isCallLogsTab || isOrganizationsTab) {
                     setState(() {});
                   }
                 },
                 onSubmitted: (_) {
-                  if (isCallLogsTab) {
+                  if (isCallLogsTab || isOrganizationsTab) {
                     setState(() {});
                   } else {
                     _load(reset: true);
@@ -1158,7 +1555,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             ),
           ),
           const SizedBox(width: 16),
-          if (!isCallLogsTab)
+          if (!isCallLogsTab && !isOrganizationsTab)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -1197,7 +1594,12 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
             ),
           const Spacer(),
           IconButton(
-            onPressed: isCallLogsTab ? _loadCallLogs : () => _load(reset: true),
+            onPressed:
+                isCallLogsTab
+                    ? _loadCallLogs
+                    : isOrganizationsTab
+                    ? _loadOrganizations
+                    : () => _load(reset: true),
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             style: IconButton.styleFrom(
@@ -1362,6 +1764,7 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
   // ──────── MAIN CONTENT ────────
   Widget _buildMainContent() {
     if (_selectedNav == 2) return _buildCallLogsContent();
+    if (_selectedNav == 3) return _buildOrganizationsContent();
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -2565,6 +2968,1379 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ──────── ORGANIZATIONS CONTENT ────────
+  Widget _buildOrganizationsContent() {
+    final filteredOrganizations = _filteredOrganizations();
+    final hasSearchQuery = _organizationsSearchCtrl.text.trim().isNotEmpty;
+    final showFilteredCount = hasSearchQuery || !_showInactiveOrganizations;
+
+    final selectedOrgId =
+        filteredOrganizations.any(
+          (org) => org['id']?.toString() == _selectedOrganizationId,
+        )
+            ? _selectedOrganizationId
+            : null;
+
+    Map<String, dynamic>? selectedOrganization;
+    if (selectedOrgId != null && selectedOrgId.isNotEmpty) {
+      for (final org in _organizations) {
+        if (org['id']?.toString() == selectedOrgId) {
+          selectedOrganization = org;
+          break;
+        }
+      }
+    }
+
+    final selectedMembers =
+        selectedOrgId == null
+            ? const <Map<String, dynamic>>[]
+            : (_organizationMembersById[selectedOrgId] ??
+                const <Map<String, dynamic>>[]);
+
+    final selectedCalls =
+        selectedOrgId == null
+            ? const <Map<String, dynamic>>[]
+            : (_organizationCallsById[selectedOrgId] ??
+                const <Map<String, dynamic>>[]);
+
+    final selectedStats =
+        selectedOrgId == null
+            ? const <String, dynamic>{}
+            : (_organizationStatsById[selectedOrgId] ??
+                const <String, dynamic>{});
+
+    if (selectedOrgId != null && selectedOrganization != null) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedOrganizationId = null;
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to Organizations list',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Text(
+                  'Organization Details',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Expanded(
+              child: _buildOrganizationDetailsPanel(
+                organization: selectedOrganization,
+                members: selectedMembers,
+                calls: selectedCalls,
+                stats: selectedStats,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildOrganizationsSummaryRow(_organizations),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Text(
+                'Organizations',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: ColorManager.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  showFilteredCount
+                      ? '${filteredOrganizations.length}/${_organizations.length}'
+                      : '${_organizations.length}',
+                  style: TextStyle(
+                    color: ColorManager.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilterChip(
+                label: const Text('Include inactive'),
+                selected: _showInactiveOrganizations,
+                onSelected: (value) {
+                  setState(() {
+                    _showInactiveOrganizations = value;
+                    if (!_filteredOrganizations().any((org) => org['id']?.toString() == _selectedOrganizationId)) {
+                      _selectedOrganizationId = null;
+                    }
+                  });
+                },
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: _loadOrganizations,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFF1F5F9),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final tableWidth =
+                      constraints.maxWidth > 1400
+                          ? constraints.maxWidth
+                          : 1400.0;
+                  final tableHeight =
+                      constraints.maxHeight.isFinite
+                          ? constraints.maxHeight
+                          : 420.0;
+
+                  Widget tableBody;
+                  if (_isLoadingOrganizations && _organizations.isEmpty) {
+                    tableBody =
+                        const Center(child: CircularProgressIndicator());
+                  } else if (filteredOrganizations.isEmpty) {
+                    tableBody = Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildOrganizationsEmptyState(
+                          _organizations.isEmpty
+                              ? 'No organizations found.'
+                              : 'No organizations matched your search.',
+                        ),
+                      ),
+                    );
+                  } else {
+                    tableBody = ListView.builder(
+                      itemCount: filteredOrganizations.length,
+                      itemBuilder: (context, index) {
+                        final org = filteredOrganizations[index];
+                        final orgId = org['id']?.toString() ?? '';
+                        final stats = _organizationStatsById[orgId] ??
+                            const <String, dynamic>{};
+                        final isSelected = orgId == selectedOrgId;
+
+                        return _buildOrganizationsTableRow(
+                          organization: org,
+                          stats: stats,
+                          isSelected: isSelected,
+                          index: index,
+                        );
+                      },
+                    );
+                  }
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: tableWidth,
+                      height: tableHeight,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(12),
+                              ),
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: Colors.grey.shade200,
+                                ),
+                              ),
+                            ),
+                            child: const Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'Organization',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'Contact',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Doctors',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    'Calls',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Usage Spend',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Wallet',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    'Status',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(child: tableBody),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationsSummaryRow(List<Map<String, dynamic>> organizations) {
+    var activeOrganizations = 0;
+    var totalDoctors = 0;
+    var totalCalls = 0;
+    var totalCost = 0.0;
+
+    for (final org in organizations) {
+      if (org['is_active'] != false) {
+        activeOrganizations++;
+      }
+
+      final orgId = org['id']?.toString();
+      if (orgId == null || orgId.isEmpty) continue;
+
+      final stats = _organizationStatsById[orgId];
+      if (stats == null) continue;
+
+      totalDoctors += _asInt(stats['doctors_count']);
+      totalCalls += _asInt(stats['calls_count']);
+      totalCost += _asDouble(stats['total_cost']);
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildSummaryCard(
+            'Organizations',
+            '${organizations.length}',
+            Icons.business,
+            const Color(0xFF3B82F6),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Active Organizations',
+            '$activeOrganizations',
+            Icons.verified,
+            const Color(0xFF10B981),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Doctors',
+            '$totalDoctors',
+            Icons.medical_information_outlined,
+            const Color(0xFF6366F1),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Total Calls',
+            '$totalCalls',
+            Icons.call,
+            const Color(0xFFF59E0B),
+          ),
+          const SizedBox(width: 16),
+          _buildSummaryCard(
+            'Usage Spend',
+            _formatCurrency(totalCost),
+            Icons.payments_outlined,
+            const Color(0xFFEF4444),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationsTableRow({
+    required Map<String, dynamic> organization,
+    required Map<String, dynamic> stats,
+    required bool isSelected,
+    required int index,
+  }) {
+    final orgId = organization['id']?.toString() ?? '';
+    final orgName = organization['name']?.toString() ?? 'Unnamed Organization';
+    final email = organization['email']?.toString() ?? '';
+    final billingEmail = organization['billing_email']?.toString() ?? '';
+    final inviteCode = organization['invite_code']?.toString() ?? '';
+    final isActive = organization['is_active'] != false;
+    final verificationStatus =
+        organization['verification_status']?.toString().toLowerCase() ??
+        'unknown';
+
+    final doctorsCount = _asInt(stats['doctors_count']);
+    final callsCount = _asInt(stats['calls_count']);
+    final callsThisWeek = _asInt(stats['calls_this_week']);
+    final totalCost = _asDouble(stats['total_cost']);
+    final walletBalance = _asDouble(organization['wallet_balance']);
+
+    Color verificationColor;
+    String verificationLabel;
+    switch (verificationStatus) {
+      case 'approved':
+        verificationColor = const Color(0xFF10B981);
+        verificationLabel = 'Approved';
+        break;
+      case 'rejected':
+        verificationColor = const Color(0xFFEF4444);
+        verificationLabel = 'Rejected';
+        break;
+      case 'pending':
+        verificationColor = const Color(0xFFF59E0B);
+        verificationLabel = 'Pending';
+        break;
+      default:
+        verificationColor = const Color(0xFF64748B);
+        verificationLabel = 'Unknown';
+    }
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedOrganizationId = orgId;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? const Color(0xFFEEF2FF)
+                  : index.isEven
+                  ? Colors.white
+                  : const Color(0xFFFAFBFC),
+          border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: const Color(0xFF3B82F6).withOpacity(0.1),
+                    child: Text(
+                      orgName.isNotEmpty ? orgName[0].toUpperCase() : 'O',
+                      style: const TextStyle(
+                        color: Color(0xFF3B82F6),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          orgName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (inviteCode.isNotEmpty)
+                          Text(
+                            'Invite: $inviteCode',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    email.isNotEmpty ? email : '-',
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    billingEmail.isNotEmpty ? billingEmail : '-',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Text(
+                '$doctorsCount',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$callsCount total',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  Text(
+                    '$callsThisWeek this week',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Text(
+                _formatCurrency(totalCost),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFEF4444),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                _formatCurrency(walletBalance),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color:
+                      walletBalance <= 0
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFF10B981),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildStatusBadge(
+                    isActive ? 'Active' : 'Inactive',
+                    isActive
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEF4444),
+                  ),
+                  const SizedBox(height: 4),
+                  _buildStatusBadge(verificationLabel, verificationColor),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrganizationDetailsPanel({
+    required Map<String, dynamic>? organization,
+    required List<Map<String, dynamic>> members,
+    required List<Map<String, dynamic>> calls,
+    required Map<String, dynamic> stats,
+  }) {
+    if (organization == null) {
+      return _buildOrganizationsEmptyState(
+        'Select an organization to view doctors, call usage, and billing details.',
+      );
+    }
+
+    final orgName = organization['name']?.toString() ?? 'Organization';
+    final orgId = organization['id']?.toString() ?? '';
+    final walletBalance = _asDouble(organization['wallet_balance']);
+    final ratePerMinute = _asDouble(organization['rate_per_minute']);
+    final callsCount = _asInt(stats['calls_count']);
+    final callsThisWeek = _asInt(stats['calls_this_week']);
+    final totalCost = _asDouble(stats['total_cost']);
+    final doctorsCount = _asInt(stats['doctors_count']);
+    final activeDoctors = _asInt(stats['active_doctors_count']);
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '$orgName Details',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              Text(
+                'Last call: ${_formatShortDateTime(stats['last_call_at'])}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildSummaryCard(
+                  'Doctors',
+                  '$doctorsCount',
+                  Icons.people,
+                  const Color(0xFF3B82F6),
+                ),
+                const SizedBox(width: 16),
+                _buildSummaryCard(
+                  'Active Doctors',
+                  '$activeDoctors',
+                  Icons.how_to_reg,
+                  const Color(0xFF10B981),
+                ),
+                const SizedBox(width: 16),
+                _buildSummaryCard(
+                  'Calls (Week / Total)',
+                  '$callsThisWeek / $callsCount',
+                  Icons.call,
+                  const Color(0xFF6366F1),
+                ),
+                const SizedBox(width: 16),
+                _buildSummaryCard(
+                  'Total Usage Spend',
+                  _formatCurrency(totalCost),
+                  Icons.account_balance_wallet,
+                  const Color(0xFFF59E0B),
+                ),
+                const SizedBox(width: 16),
+                _buildSummaryCard(
+                  'Wallet / Rate',
+                  '${_formatCurrency(walletBalance)} / ${_formatCurrency(ratePerMinute)}m',
+                  Icons.payments,
+                  const Color(0xFFEF4444),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              children: [
+                _buildOrganizationMetaItem('Organization ID', orgId),
+                _buildOrganizationMetaItem(
+                  'Email',
+                  organization['email']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Billing Email',
+                  organization['billing_email']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Billing Contact',
+                  organization['billing_contact_name']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Phone',
+                  organization['phone']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Address',
+                  organization['address']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Billing Method',
+                  organization['billing_method']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Invite Code',
+                  organization['invite_code']?.toString() ?? '-',
+                ),
+                _buildOrganizationMetaItem(
+                  'Created',
+                  _formatShortDate(organization['created_at']),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildOrganizationDoctorsTable(
+            organizationId: orgId,
+            members: members,
+            stats: stats,
+          ),
+          const SizedBox(height: 16),
+          _buildOrganizationRecentCallsTable(
+            organizationId: orgId,
+            calls: calls,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationMetaItem(String label, String value) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 360),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value.isEmpty ? '-' : value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationDoctorsTable({
+    required String organizationId,
+    required List<Map<String, dynamic>> members,
+    required Map<String, dynamic> stats,
+  }) {
+    final doctors =
+        members.where((member) => member['role']?.toString() == 'doctor').toList();
+
+    if (doctors.isEmpty) {
+      return _buildOrganizationsEmptyState(
+        'No doctors linked to this organization yet.',
+      );
+    }
+
+    doctors.sort(
+      (a, b) =>
+          _asDouble(b['total_spent']).compareTo(_asDouble(a['total_spent'])),
+    );
+
+    final usageByDoctor = <String, Map<String, dynamic>>{};
+    final usageRaw = stats['doctor_usage'];
+    if (usageRaw is Map) {
+      usageRaw.forEach((key, value) {
+        final usage = _asMap(value);
+        if (usage == null) return;
+        usageByDoctor[key.toString()] = usage;
+      });
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                const Text(
+                  'Doctors & Usage',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${doctors.length}',
+                    style: const TextStyle(
+                      color: Color(0xFF4F46E5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tableWidth =
+                  constraints.maxWidth > 1250 ? constraints.maxWidth : 1250.0;
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: tableWidth,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          border: Border(
+                            top: BorderSide(color: Colors.grey.shade100),
+                            bottom: BorderSide(color: Colors.grey.shade200),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                'Doctor',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Status',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Calls',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Minutes',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Call Cost',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Total Spent',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Limit',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Joined',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...doctors.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final doctor = entry.value;
+                        final profile = _asMap(doctor['_profile']);
+                        final userId = doctor['user_id']?.toString() ?? '';
+                        final shortId = _shortInterpreterId(userId);
+                        final displayName =
+                            profile?['full_name']?.toString() ??
+                            profile?['username']?.toString() ??
+                            'Doctor';
+
+                        final usage = usageByDoctor[userId] ??
+                            const <String, dynamic>{};
+                        final callsCount = _asInt(usage['calls']);
+                        final usageDurationSeconds =
+                            _asInt(usage['duration_seconds']);
+                        final usageMinutes = (usageDurationSeconds / 60).ceil();
+                        final usageCost = _asDouble(usage['cost']);
+
+                        final totalSpent = _asDouble(doctor['total_spent']);
+                        final spendingLimit = doctor['spending_limit'];
+                        final isActive = doctor['is_active'] != false;
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                index.isEven
+                                    ? Colors.white
+                                    : const Color(0xFFFAFBFC),
+                            border: Border(
+                              bottom: BorderSide(color: Colors.grey.shade100),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      shortId.isEmpty ? userId : 'ID $shortId',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey.shade500,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: _buildStatusBadge(
+                                  isActive ? 'Active' : 'Inactive',
+                                  isActive
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFEF4444),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '$callsCount',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '$usageMinutes',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _formatCurrency(usageCost),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _formatCurrency(totalSpent),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  spendingLimit == null
+                                      ? 'No limit'
+                                      : _formatCurrency(spendingLimit),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        spendingLimit == null
+                                            ? Colors.grey.shade500
+                                            : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _formatShortDate(doctor['joined_at']),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationRecentCallsTable({
+    required String organizationId,
+    required List<Map<String, dynamic>> calls,
+  }) {
+    if (calls.isEmpty) {
+      return _buildOrganizationsEmptyState(
+        'No call history available for this organization yet.',
+      );
+    }
+
+    final sortedCalls = List<Map<String, dynamic>>.from(calls)
+      ..sort((a, b) {
+        final aDate = _parseDateTime(a['started_at']);
+        final bDate = _parseDateTime(b['started_at']);
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        return bDate.compareTo(aDate);
+      });
+
+    final recentCalls =
+        sortedCalls.length > 25 ? sortedCalls.take(25).toList() : sortedCalls;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                const Text(
+                  'Recent Calls',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFEFF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${recentCalls.length}',
+                    style: const TextStyle(
+                      color: Color(0xFF0E7490),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Organization: ${organizationId.length > 8 ? organizationId.substring(0, 8) : organizationId}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tableWidth =
+                  constraints.maxWidth > 1180 ? constraints.maxWidth : 1180.0;
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: tableWidth,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          border: Border(
+                            top: BorderSide(color: Colors.grey.shade100),
+                            bottom: BorderSide(color: Colors.grey.shade200),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Doctor',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Interpreter',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Duration',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'Cost',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Started',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Ended',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                'Request',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...recentCalls.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final call = entry.value;
+
+                        final requester = _asMap(call['_requester']);
+                        final interpreter = _asMap(call['_interpreter']);
+
+                        final requesterName =
+                            requester?['full_name']?.toString() ??
+                            requester?['username']?.toString() ??
+                            'Doctor';
+                        final interpreterName =
+                            interpreter?['full_name']?.toString() ??
+                            interpreter?['username']?.toString() ??
+                            'Interpreter';
+
+                        final durationSeconds = _asInt(call['duration_seconds']);
+                        final minutes = durationSeconds ~/ 60;
+                        final seconds = durationSeconds % 60;
+
+                        final cost = _asDouble(call['cost']);
+                        final startedAt = _formatShortDateTime(call['started_at']);
+                        final endedAt = _formatShortDateTime(call['ended_at']);
+                        final requestId = call['request_id']?.toString() ?? '-';
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                index.isEven
+                                    ? Colors.white
+                                    : const Color(0xFFFAFBFC),
+                            border: Border(
+                              bottom: BorderSide(color: Colors.grey.shade100),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  requesterName,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  interpreterName,
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${minutes}m ${seconds.toString().padLeft(2, '0')}s',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _formatCurrency(cost),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  startedAt,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  endedAt,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  requestId.length > 18
+                                      ? '${requestId.substring(0, 18)}...'
+                                      : requestId,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade500,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrganizationsEmptyState(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inbox_outlined, size: 40, color: Colors.grey.shade400),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: TextStyle(color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

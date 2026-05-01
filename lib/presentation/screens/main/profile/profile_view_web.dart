@@ -622,14 +622,17 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
                       (l) => l.id == lang.languageId,
                       orElse: () => Language(id: 0, name: 'Unknown'),
                     );
-                    final fluency = state.fluencyLevels.firstWhere(
-                      (f) => f.id == lang.fluencyId,
-                      orElse:
-                          () =>
-                              state.fluencyLevels.isNotEmpty
-                                  ? state.fluencyLevels.first
-                                  : throw Exception('No fluency levels'),
-                    );
+                    final fluencyLabel =
+                        state.fluencyLevels
+                            .where((f) => f.id == lang.fluencyId)
+                            .map((f) => f.level)
+                            .cast<String?>()
+                            .firstWhere(
+                              (label) =>
+                                  label != null && label.trim().isNotEmpty,
+                              orElse: () => 'Unknown',
+                            ) ??
+                        'Unknown';
                     return Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -663,7 +666,7 @@ class _ProfileViewWebState extends State<ProfileViewWeb> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              fluency.level,
+                              fluencyLabel,
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: Color(0xFF64748B),

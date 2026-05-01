@@ -14,6 +14,7 @@ import 'package:interbridge/presentation/screens/main/profile/bloc/profile_bloc.
 import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_view.dart';
 import 'package:interbridge/presentation/screens/main/profile/requester/requester_profile_bloc.dart';
 import 'package:interbridge/presentation/screens/main/setting/setting_view.dart';
+import 'package:interbridge/presentation/screens/interpreter/interpreter_badges_view.dart';
 import 'package:interbridge/admin/screens/admin_list_screen.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/data/models/user_profile.dart';
@@ -322,6 +323,7 @@ class _MainViewState extends State<MainView> {
         SizedBox.shrink(),
         SizedBox.shrink(),
         SizedBox.shrink(),
+        SizedBox.shrink(),
       ];
     }
 
@@ -330,6 +332,7 @@ class _MainViewState extends State<MainView> {
       if (error!.type == ErrorType.authentication) {
         final authErrorWidget = _buildAuthErrorWidget();
         return [
+          authErrorWidget,
           authErrorWidget,
           authErrorWidget,
           authErrorWidget,
@@ -352,7 +355,7 @@ class _MainViewState extends State<MainView> {
                 : null,
         title: 'Failed to load profile',
       );
-      return [errorWidget, errorWidget, errorWidget, errorWidget];
+      return [errorWidget, errorWidget, errorWidget, errorWidget, errorWidget];
     }
 
     final isInterpreter = userProfile?.role == 'interpreter';
@@ -383,25 +386,34 @@ class _MainViewState extends State<MainView> {
           create: (context) => instance<RequesterProfileBloc>(),
           child: const RequesterProfileView(),
         ),
+      if (isInterpreter)
+        const InterpreterBadgesView(),
       const SettingView(),
     ];
   }
 
   List<BottomNavigationBarItem> _getNavigationItems() {
-    return const [
-      BottomNavigationBarItem(
+    final isInterpreter = userProfile?.role == 'interpreter';
+    
+    return [
+      const BottomNavigationBarItem(
         icon: Icon(Icons.home_outlined, size: 30),
         label: AppStrings.home,
       ),
-      BottomNavigationBarItem(
+      const BottomNavigationBarItem(
         icon: Icon(Icons.description, size: 30),
         label: AppStrings.documentTranslation,
       ),
-      BottomNavigationBarItem(
+      const BottomNavigationBarItem(
         icon: Icon(Icons.person, size: 30),
         label: 'Profile',
       ),
-      BottomNavigationBarItem(
+      if (isInterpreter)
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.workspace_premium, size: 30),
+          label: 'Badges',
+        ),
+      const BottomNavigationBarItem(
         icon: Icon(Icons.settings, size: 30),
         label: AppStrings.settings,
       ),
@@ -453,12 +465,15 @@ class _MainViewState extends State<MainView> {
         ),
         child: BottomNavigationBar(
           elevation: AppSize.s0,
+          type: BottomNavigationBarType.fixed,
           iconSize: AppSize.s24,
           selectedItemColor: ColorManager.primary2,
           unselectedItemColor: ColorManager.grey,
           currentIndex: currentIndex,
           onTap: (index) {
-            if (index >= 0 && index < 4) {
+            final isInterpreter = userProfile?.role == 'interpreter';
+            final maxTabs = isInterpreter ? 5 : 4;
+            if (index >= 0 && index < maxTabs) {
               setState(() {
                 currentIndex = index;
               });

@@ -15,6 +15,21 @@ class PhoneOtpWebScreen extends StatefulWidget {
 }
 
 class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
+  @override
+void initState() {
+  super.initState();
+  
+  // Add this block to catch browser refreshes
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) {
+      // The user refreshed the page and lost their session arguments.
+      // Send them to the dashboard gate, which will re-fetch their progress
+      // from Supabase and route them back here with the correct args!
+      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
+    }
+  });
+}
   final _phoneController = TextEditingController();
   bool _isSaving = false;
   String? _selectedCountryCode = '+1';
@@ -289,7 +304,7 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
     return AuthWebWrapper(
       fullScreen: fullScreenResume,
       title: 'Your phone number',
-      subtitle: 'Add your phone number so clients and admins can reach you',
+      subtitle: 'Please add your phone number.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -304,18 +319,7 @@ class _PhoneOtpWebScreenState extends State<PhoneOtpWebScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFBAE6FD)),
             ),
-            child: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Color(0xFF0EA5E9), size: 20),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Your phone number will be verified by an admin after registration.',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF0C4A6E)),
-                  ),
-                ),
-              ],
-            ),
+           
           ),
           const SizedBox(height: 24),
 

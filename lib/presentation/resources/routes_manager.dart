@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
@@ -661,7 +662,7 @@ class _UnknownRouteRecoveryScreenState
         final role = profile?.role;
         final route =
             role == 'interpreter'
-            ? Routes.interpreterPortalLoginRoute
+            ? Routes.interpreterPortalDashboardRoute
                 : role == 'organization_admin'
                 ? Routes.organizationPortalDashboardRoute
                 : role == 'admin' || role == 'superadmin'
@@ -767,9 +768,13 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
     }
   }
 
-  void _redirect(String route) {
+void _redirect(String route) {
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
+      }
+    });
   }
 
   @override
@@ -936,11 +941,13 @@ class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
     }
   }
 
-  void _redirect(String route, {Object? arguments}) {
+void _redirect(String route, {Object? arguments}) {
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(route, (r) => false, arguments: arguments);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false, arguments: arguments);
+      }
+    });
   }
 
   @override
@@ -1017,12 +1024,14 @@ class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
       _redirect(targetLogin);
     }
   }
-
-  void _redirect(String route) {
+void _redirect(String route) {
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
+      }
+    });
   }
-
   @override
   Widget build(BuildContext context) {
     return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -1627,20 +1636,19 @@ class _GeneralQuizRouteWrapperWebState
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
         {};
 
-    // Launch general quiz (web version)
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+    // Launch NEW advanced fluency quiz (web version)
+    final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder:
-            (_) => const QuizWebScreen(quizType: 'general', isRequired: true),
+        builder: (_) => const AdvancedFluencyQuizScreen(),
       ),
     );
 
     if (!mounted) return;
 
-    // Handle navigation based on quiz outcome and selected track
-    if (result != null && result['passed'] == true) {
+    // Handle navigation based on new quiz outcome (which returns a bool)
+    if (result == true) {
       args['generalQuizPassed'] = true;
-      args['generalQuizScore'] = result['score'];
+      // Note: We removed the score since the new quiz just returns true/false
 
       final track =
           args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];

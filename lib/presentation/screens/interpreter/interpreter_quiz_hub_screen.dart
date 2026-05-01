@@ -389,39 +389,7 @@ class _InterpreterQuizHubScreenState extends State<InterpreterQuizHubScreen> {
                 ),
               ],
 
-              // Medical Quizzes Section (only for experienced, show until all quizzes attempted)
-              if (isExperienced &&
-                  _hasCompletedAdvancedFluencyQuiz &&
-                  _hasAttemptedGeneralQuiz &&
-                  _attemptedQuizzes.length < _totalMedicalQuizzes) ...[
-                const SizedBox(height: 32),
-                _buildSectionTitle(
-                  'Medical Specializations',
-                  'Complete all $_totalMedicalQuizzes quizzes (${_attemptedQuizzes.length}/$_totalMedicalQuizzes done)',
-                ),
-                const SizedBox(height: 12),
-                // Only show sections that haven't been ATTEMPTED yet
-                ..._medicalSections
-                    .where(
-                      (section) => !_attemptedQuizzes.contains(section['id']),
-                    )
-                    .map((section) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildQuizCard(
-                          title: section['title'] as String,
-                          subtitle: '30 seconds per question',
-                          icon: section['icon'] as IconData,
-                          isPassed: false,
-                          onTap:
-                              () => _takeQuiz(
-                                'medical',
-                                medicalSection: section['id'] as String,
-                              ),
-                        ),
-                      );
-                    }),
-              ],
+              // Medical Specializations moved to Badges tab in the dashboard
 
               const SizedBox(height: 24),
               // Info note

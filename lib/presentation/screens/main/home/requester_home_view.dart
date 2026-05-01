@@ -110,6 +110,12 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
       'icon': FontAwesomeIcons.handDots,
       'color': const Color(0xFFFFB74D),
     },
+    {
+      'key': 'ear & eye',
+      'label': 'Ear & Eye',
+      'icon': FontAwesomeIcons.eye,
+      'color': Colors.indigo,
+    },
   ];
 
   @override

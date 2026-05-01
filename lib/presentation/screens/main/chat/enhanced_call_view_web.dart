@@ -97,8 +97,14 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   Timer? _remoteRenderableWatchdogTimer;
   String? _handledRemoteCallEndedMessageId;
   bool _sessionMarkedRemoteJoined = false;
+  bool _isEndingTransition = false;
+  int _videoSetupGeneration = 0;
 
   static const Duration _kForceRenderableDelay = Duration(seconds: 5);
+
+  void _invalidatePendingVideoSetup() {
+    _videoSetupGeneration += 1;
+  }
 
   void _runRemoteRebindAttempt(int attempt, String reason) {
     if (!mounted) return;
@@ -311,6 +317,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
   @override
   void dispose() {
+    _isEndingTransition = true;
+    _invalidatePendingVideoSetup();
     _pulseController.dispose();
     _hideTimer?.cancel();
     _webVideoReadyTimer?.cancel();
@@ -358,8 +366,11 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
   Future<void> _showFeedbackAndNavigateHome() async {
     if (!mounted) return;
-    await SessionService.endSession(requestId: widget.channelId);
-    log('Session marked completed and cleared after call ended');
+    unawaited(
+      SessionService.endSession(requestId: widget.channelId).catchError((e) {
+        log('Could not finalize session before feedback dialog (web): $e');
+      }),
+    );
     if (!mounted) return;
     showDialog(
       context: context,
@@ -414,9 +425,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   Future<void> _endWithoutFeedbackAndNavigateHome(String? reason) async {
-    try {
-      await SessionService.clearSession();
-    } catch (_) {}
+    unawaited(SessionService.clearSession());
 
     if (!mounted) return;
     _navigateToHome();
@@ -449,6 +458,20 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   void _endCallLocally() {
+    _isEndingTransition = true;
+    _invalidatePendingVideoSetup();
+    _webVideoReadyTimer?.cancel();
+    _webVideoReadyTimer = null;
+    _localController?.dispose();
+    _localController = null;
+    _localCachedEngine = null;
+
+    if (mounted) {
+      setState(() {
+        _webVideoReady = false;
+      });
+    }
+
     _notifyRemoteCallEnded();
     context.read<CallBloc>().add(EndCall());
   }
@@ -634,6 +657,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         },
         listener: (context, state) {
           if (state is CallEnded) {
+            _isEndingTransition = true;
+            _invalidatePendingVideoSetup();
             _webVideoReadyTimer?.cancel();
             _webVideoReadyTimer = null;
             _webRemoteVideoRetryTimer?.cancel();
@@ -656,6 +681,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
               _endWithoutFeedbackAndNavigateHome(state.reason);
             }
           } else if (state is CallConnecting) {
+            _isEndingTransition = false;
+            _invalidatePendingVideoSetup();
             _webVideoReadyTimer?.cancel();
             _webVideoReadyTimer = null;
             _webRemoteVideoRetryTimer?.cancel();
@@ -672,6 +699,8 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             _cancelRemoteRenderableWatchdog();
             _remoteViewEpoch = 0;
           } else if (state is CallError) {
+            _isEndingTransition = true;
+            _invalidatePendingVideoSetup();
             log('CallScreen: error — ${state.error.message}');
           } else if (state is CallOngoing) {
             if (state.remoteUids.isNotEmpty) {
@@ -750,14 +779,27 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
               _refreshRemoteRenderableWatchdog(state);
             }
 
-            if (!_webVideoReady) {
+            if (!_webVideoReady && state.remoteUids.isNotEmpty) {
               // Initial join: wait for the Iris Web SDK to finish
               // creating the camera track, then mount AgoraVideoView
               // fresh so setupLocalVideo finds a live track.
+              final setupGeneration = _videoSetupGeneration;
               _webVideoReadyTimer ??= Timer(
                 const Duration(milliseconds: 600),
                 () {
-                  if (!mounted) return;
+                  if (!mounted ||
+                      _isEndingTransition ||
+                      setupGeneration != _videoSetupGeneration) {
+                    return;
+                  }
+
+                  final latestState = context.read<CallBloc>().state;
+                  if (latestState is! CallOngoing ||
+                      !latestState.videoEnabled ||
+                      latestState.remoteUids.isEmpty) {
+                    return;
+                  }
+
                   log(
                     'Web: camera track should be ready — mounting AgoraVideoView',
                   );
@@ -766,46 +808,36 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
                     _localController = null;
                     _webVideoReady = true;
                   });
-                  // After AgoraVideoView is in the DOM, force the Iris SDK
-                  // to re-enable the track AND rebind it to the HTML element.
-                  // muteLocalVideoStream alone only controls publishing;
-                  // enableLocalVideo recreates the track binding.
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    Future.delayed(const Duration(milliseconds: 120), () {
-                      if (!mounted) return;
-                      final engine = context.read<CallBloc>().engine;
-                      if (engine != null) {
-                        engine.enableLocalVideo(true).catchError((_) {});
-                        engine.muteLocalVideoStream(false).catchError((_) {});
-                        engine.startPreview().catchError((_) {});
-                      }
-                    });
-                  });
                 },
               );
-            } else if (videoJustEnabled) {
+            } else if (videoJustEnabled && state.remoteUids.isNotEmpty) {
               // Video was just re-enabled after being turned off.
               // The old AgoraVideoView was removed from the tree when
               // videoEnabled=false, so its HTML <video> element is gone.
               // Reset the cached controller so a new VideoViewController
               // (fresh HTML element) is created on remount, and tell the
               // Iris SDK to rebind the camera track to that new element.
+              final setupGeneration = _videoSetupGeneration;
               _webVideoReadyTimer?.cancel();
               _webVideoReadyTimer = Timer(
                 const Duration(milliseconds: 300),
                 () {
-                  if (!mounted) return;
+                  if (!mounted ||
+                      _isEndingTransition ||
+                      setupGeneration != _videoSetupGeneration) {
+                    return;
+                  }
+
+                  final latestState = context.read<CallBloc>().state;
+                  if (latestState is! CallOngoing ||
+                      !latestState.videoEnabled ||
+                      latestState.remoteUids.isEmpty) {
+                    return;
+                  }
+
                   setState(() {
                     _localController?.dispose();
                     _localController = null;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    final engine = context.read<CallBloc>().engine;
-                    if (engine != null) {
-                      engine.enableLocalVideo(true).catchError((_) {});
-                      engine.muteLocalVideoStream(false).catchError((_) {});
-                      engine.startPreview().catchError((_) {});
-                    }
                   });
                 },
               );
@@ -1065,6 +1097,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
             state.videoEnabled &&
             engine != null &&
             !_webVideoReady &&
+            hasRemote &&
             !hasRenderableRemote)
           const Positioned.fill(
             child: Center(
@@ -1089,7 +1122,11 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
         // <video> element on web and loses the camera track).
         // Use hasRemote to determine sizing: if any remote joined, show
         // local as PiP; otherwise full-screen.
-        if (isVideo && state.videoEnabled && engine != null && _webVideoReady)
+        if (isVideo &&
+            state.videoEnabled &&
+            engine != null &&
+            _webVideoReady &&
+            hasRemote)
           Positioned(
             left: hasRemote ? null : 0,
             top: hasRemote ? 80 : 0,
@@ -1237,7 +1274,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
   Widget _buildRemoteWaitingSurface() {
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,

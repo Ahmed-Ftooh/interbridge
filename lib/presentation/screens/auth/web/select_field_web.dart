@@ -18,6 +18,7 @@ class SelectFieldWebScreen extends StatefulWidget {
 }
 
 class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
+  
   bool _isSaving = false;
 
   final List<Map<String, dynamic>> fieldData = [
@@ -130,8 +131,25 @@ class _SelectFieldWebScreenState extends State<SelectFieldWebScreen> {
       context.read<SelectFieldBloc>().add(
         InitializeFields(fieldData.map((e) => e['title'] as String).toList()),
       );
+
+  // Add this block to catch browser refreshes
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) {
+      // The user refreshed the page and lost their session arguments.
+      // Send them to the dashboard gate, which will re-fetch their progress
+      // from Supabase and route them back here with the correct args!
+      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
+    }
+  });
+
     });
   }
+  @override 
+void dispose(){
+  super.dispose();
+
+} 
 
   @override
   Widget build(BuildContext context) {

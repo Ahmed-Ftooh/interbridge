@@ -12,6 +12,8 @@ import 'package:interbridge/core/web_helpers/inline_audio_player.dart'
 import 'package:interbridge/core/web_helpers/fetch_blob_bytes.dart'
     if (dart.library.html) 'package:interbridge/core/web_helpers/fetch_blob_bytes_web.dart'
     as blob_helper;
+import 'package:interbridge/data/services/supabase_service.dart';
+import 'package:interbridge/app/di.dart';
 import 'package:interbridge/presentation/resources/assets_manager.dart';
 import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
 import 'package:path_provider/path_provider.dart';
@@ -39,6 +41,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   bool _isPlayingRecording = false;
   bool _isPlayingListeningAudio = false;
   bool _isSubmitting = false;
+  bool _isLoadingQuestions = true;
 
   int _currentQuestionIndex = 0;
   int _recordingSeconds = 0;
@@ -47,7 +50,9 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   final Map<String, _RecordedAnswer> _recordings = {};
   final Map<String, int> _listeningStarts = {};
 
-  static const List<_FluencyQuestion> _questions = [
+  late List<_FluencyQuestion> _questions;
+
+  static const List<_FluencyQuestion> _baseQuestions = [
     _FluencyQuestion(
       id: 's1_q1',
       sectionTitle: 'Section 1 - Listening & Comprehension Check',
@@ -76,7 +81,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q1_native',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 1 (Native Language)',
+      questionTitle: 'Task 1 (Native Language)',
       prompt:
           'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
       guidePrompts: ['Listen and take notes', 'Interpret to native language'],
@@ -86,7 +91,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q1_english',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 1 (English)',
+      questionTitle: 'Task 1 (English)',
       prompt:
           'Based on the previous recording and your notes, please repeat the message in English.',
       guidePrompts: ['Repeat in English'],
@@ -95,7 +100,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q2_native',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 2 (Native Language)',
+      questionTitle: 'Task 2 (Native Language)',
       prompt:
           'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
       guidePrompts: ['Listen and take notes', 'Interpret to native language'],
@@ -105,7 +110,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q2_english',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 2 (English)',
+      questionTitle: 'Task 2 (English)',
       prompt:
           'Based on the previous recording and your notes, please repeat the message in English.',
       guidePrompts: ['Repeat in English'],
@@ -114,7 +119,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q3_native',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 3 (Native Language)',
+      questionTitle: 'Task 3 (Native Language)',
       prompt:
           'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
       guidePrompts: ['Listen and take notes', 'Interpret to native language'],
@@ -124,7 +129,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q3_english',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 3 (English)',
+      questionTitle: 'Task 3 (English)',
       prompt:
           'Based on the previous recording and your notes, please repeat the message in English.',
       guidePrompts: ['Repeat in English'],
@@ -133,7 +138,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q4_native',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 4 (Native Language)',
+      questionTitle: 'Task 4 (Native Language)',
       prompt:
           'You will hear a short audio recording. Please listen carefully and take notes.\n\nPlease interpret the message into your native language.',
       guidePrompts: ['Listen and take notes', 'Interpret to native language'],
@@ -143,7 +148,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _FluencyQuestion(
       id: 's2_q4_english',
       sectionTitle: 'Section 2 - Interpretation Simulation',
-      questionTitle: 'Simulation 4 (English)',
+      questionTitle: 'Task 4 (English)',
       prompt:
           'Based on the previous recording and your notes, please repeat the message in English.',
       guidePrompts: ['Repeat in English'],
@@ -158,6 +163,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   @override
   void initState() {
     super.initState();
+    _questions = List.of(_baseQuestions);
     _audioRecorder = AudioRecorder();
     _recordingPlayer = AudioPlayer();
     _listeningPlayer = AudioPlayer();
@@ -175,6 +181,128 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     });
 
     _checkMicrophonePermission();
+    _initializeQuestions();
+  }
+
+  Future<void> _initializeQuestions() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not logged in');
+      }
+
+      final supabaseService = instance<SupabaseService>();
+      final interpreterLanguages = await supabaseService.getInterpreterLanguages(userId);
+
+      bool isArabic = false;
+      bool isSpanish = false;
+
+      for (var lang in interpreterLanguages) {
+        // Arabic language IDs (4 to 12)
+        if (lang.languageId >= 4 && lang.languageId <= 12) {
+          isArabic = true;
+        }
+        // Spanish language ID (100)
+        if (lang.languageId == 100) {
+          isSpanish = true;
+        }
+      }
+
+      if (isArabic) {
+        _addLanguageSpecificQuestions('Arabic', AudioAssets.arPtAudio1, AudioAssets.arPtAudio2, AudioAssets.arPtAudio3, AudioAssets.arPtAudio4);
+      } else if (isSpanish) {
+        _addLanguageSpecificQuestions('Spanish', AudioAssets.spPtAudio1, AudioAssets.spPtAudio2, AudioAssets.spPtAudio3, AudioAssets.spPtAudio4);
+      }
+    } catch (e) {
+      // Ignored for now, base questions will be used
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingQuestions = false;
+        });
+      }
+    }
+  }
+
+  void _addLanguageSpecificQuestions(String languagePrefix, String audio1, String audio2, String audio3, String audio4) {
+    _questions.addAll([
+      _FluencyQuestion(
+        id: 's3_q1_english',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 1 (English)',
+        prompt:
+            'You will hear a short audio recording in $languagePrefix. Please listen carefully and take notes.\n\nPlease interpret the message into English.',
+        guidePrompts: ['Listen and take notes', 'Interpret to English'],
+        suggestedSeconds: 120,
+        listeningAudioAsset: audio1,
+      ),
+      _FluencyQuestion(
+        id: 's3_q1_native',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 1 ($languagePrefix)',
+        prompt:
+            'Based on the previous recording and your notes, please repeat the message in $languagePrefix.',
+        guidePrompts: ['Repeat in $languagePrefix'],
+        suggestedSeconds: 120,
+      ),
+      _FluencyQuestion(
+        id: 's3_q2_english',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 2 (English)',
+        prompt:
+            'You will hear a short audio recording in $languagePrefix. Please listen carefully and take notes.\n\nPlease interpret the message into English.',
+        guidePrompts: ['Listen and take notes', 'Interpret to English'],
+        suggestedSeconds: 120,
+        listeningAudioAsset: audio2,
+      ),
+      _FluencyQuestion(
+        id: 's3_q2_native',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 2 ($languagePrefix)',
+        prompt:
+            'Based on the previous recording and your notes, please repeat the message in $languagePrefix.',
+        guidePrompts: ['Repeat in $languagePrefix'],
+        suggestedSeconds: 120,
+      ),
+      _FluencyQuestion(
+        id: 's3_q3_english',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 3 (English)',
+        prompt:
+            'You will hear a short audio recording in $languagePrefix. Please listen carefully and take notes.\n\nPlease interpret the message into English.',
+        guidePrompts: ['Listen and take notes', 'Interpret to English'],
+        suggestedSeconds: 120,
+        listeningAudioAsset: audio3,
+      ),
+      _FluencyQuestion(
+        id: 's3_q3_native',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 3 ($languagePrefix)',
+        prompt:
+            'Based on the previous recording and your notes, please repeat the message in $languagePrefix.',
+        guidePrompts: ['Repeat in $languagePrefix'],
+        suggestedSeconds: 120,
+      ),
+      _FluencyQuestion(
+        id: 's3_q4_english',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 4 (English)',
+        prompt:
+            'You will hear a short audio recording in $languagePrefix. Please listen carefully and take notes.\n\nPlease interpret the message into English.',
+        guidePrompts: ['Listen and take notes', 'Interpret to English'],
+        suggestedSeconds: 120,
+        listeningAudioAsset: audio4,
+      ),
+      _FluencyQuestion(
+        id: 's3_q4_native',
+        sectionTitle: 'Section 3 - $languagePrefix Interpretation Simulation',
+        questionTitle: 'Task 4 ($languagePrefix)',
+        prompt:
+            'Based on the previous recording and your notes, please repeat the message in $languagePrefix.',
+        guidePrompts: ['Repeat in $languagePrefix'],
+        suggestedSeconds: 120,
+      ),
+    ]);
   }
 
   @override
@@ -936,6 +1064,12 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingQuestions) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     final progress = (_currentQuestionIndex + 1) / _questions.length;
     final question = _currentQuestion;
     final hasRecording = _currentAnswer != null;

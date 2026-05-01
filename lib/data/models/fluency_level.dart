@@ -4,11 +4,17 @@ class FluencyLevel {
 
   FluencyLevel({required this.id, required this.level});
 
-  factory FluencyLevel.fromJson(Map<String, dynamic> json) =>
-      FluencyLevel(
-        id: (json['id'] as num?)?.toInt() ?? 0, 
-        level: json['level']?.toString() ?? '',
-      );
+  factory FluencyLevel.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
+    final parsedId =
+        rawId is num
+            ? rawId.toInt()
+            : rawId is String
+            ? int.tryParse(rawId) ?? 0
+            : 0;
+
+    return FluencyLevel(id: parsedId, level: json['level']?.toString() ?? '');
+  }
 
   Map<String, dynamic> toJson() => {'id': id, 'level': level};
 }

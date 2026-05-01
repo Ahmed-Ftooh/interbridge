@@ -27,6 +27,7 @@ import 'package:interbridge/presentation/widgets/error_display_widget.dart';
 import 'package:interbridge/presentation/widgets/web/web_layout_shell.dart';
 import 'package:interbridge/presentation/screens/main/home/web/requester_home_web.dart';
 import 'package:interbridge/presentation/screens/main/home/web/interpreter_home_web.dart';
+import 'package:interbridge/presentation/screens/interpreter/interpreter_badges_view.dart';
 import 'package:interbridge/admin/screens/admin_dashboard_web.dart';
 import 'package:lottie/lottie.dart';
 
@@ -353,6 +354,7 @@ class _MainViewWebState extends State<MainViewWeb> {
         SizedBox.shrink(),
         SizedBox.shrink(),
         SizedBox.shrink(),
+        SizedBox.shrink(),
       ];
     }
 
@@ -360,6 +362,7 @@ class _MainViewWebState extends State<MainViewWeb> {
       if (error!.type == ErrorType.authentication) {
         final authErrorWidget = _buildAuthErrorWidget();
         return [
+          authErrorWidget,
           authErrorWidget,
           authErrorWidget,
           authErrorWidget,
@@ -381,7 +384,7 @@ class _MainViewWebState extends State<MainViewWeb> {
                 : null,
         title: 'Failed to load profile',
       );
-      return [errorWidget, errorWidget, errorWidget, errorWidget];
+      return [errorWidget, errorWidget, errorWidget, errorWidget, errorWidget];
     }
 
     final isInterpreter = userProfile?.role == 'interpreter';
@@ -414,6 +417,9 @@ class _MainViewWebState extends State<MainViewWeb> {
           create: (context) => instance<RequesterProfileBloc>(),
           child: const RequesterProfileViewWeb(),
         ),
+      // Badges (Interpreter only)
+      if (isInterpreter)
+        const InterpreterBadgesView(),
       // Settings
       const SettingViewWeb(),
     ];
@@ -486,7 +492,9 @@ class _MainViewWebState extends State<MainViewWeb> {
     return WebLayoutShell(
       currentIndex: currentIndex,
       onNavigationChanged: (index) {
-        if (index >= 0 && index < 4) {
+        final isInterpreter = userProfile?.role == 'interpreter';
+        final maxTabs = isInterpreter ? 5 : 4;
+        if (index >= 0 && index < maxTabs) {
           setState(() {
             currentIndex = index;
           });

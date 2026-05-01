@@ -1,3 +1,15 @@
+# ----------------------------------------------------------------------
+# DISABLE CACHING FOR FLUTTER APP ENTRY POINTS
+# ----------------------------------------------------------------------
+<FilesMatch "^(index\.html|flutter_service_worker\.js|flutter_bootstrap\.js|flutter\.js|main\.dart\.js|version\.json|manifest\.json)$">
+    FileETag None
+    <IfModule mod_headers.c>
+        Header unset ETag
+        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </IfModule>
+</FilesMatch>
 RewriteEngine On
 RewriteBase /
 

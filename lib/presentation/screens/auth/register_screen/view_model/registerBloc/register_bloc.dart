@@ -7,7 +7,6 @@ import 'register_state.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/core/error_handler.dart';
-import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

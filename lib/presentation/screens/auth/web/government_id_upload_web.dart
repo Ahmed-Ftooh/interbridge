@@ -18,6 +18,26 @@ class GovernmentIdUploadWebScreen extends StatefulWidget {
 
 class _GovernmentIdUploadWebScreenState
     extends State<GovernmentIdUploadWebScreen> {
+  @override
+void initState() {
+  super.initState();
+  
+  // Add this block to catch browser refreshes
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args == null) {
+      // The user refreshed the page and lost their session arguments.
+      // Send them to the dashboard gate, which will re-fetch their progress
+      // from Supabase and route them back here with the correct args!
+      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
+    }
+  });
+}
+@override 
+void dispose(){
+  super.dispose();
+
+} 
   Uint8List? _idBytes;
   String? _fileName;
   bool _isSaving = false;

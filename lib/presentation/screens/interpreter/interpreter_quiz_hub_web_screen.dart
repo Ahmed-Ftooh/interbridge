@@ -153,8 +153,8 @@ class _InterpreterQuizHubWebScreenState
       final bool allComplete =
           isExperienced
               ? (hasGeneralAttempt &&
-                  hasAdvancedFluency &&
-                  attemptedMedical.length >= 10)
+                  hasAdvancedFluency 
+                 )
               : (hasGeneralAttempt && hasAdvancedFluency);
 
       if (allComplete && mounted) {
@@ -308,13 +308,13 @@ class _InterpreterQuizHubWebScreenState
   String _getHeaderMessage(bool isExperienced) {
     if (!isExperienced) {
       if (!_hasAttemptedGeneralQuiz && !_hasCompletedAdvancedFluencyQuiz) {
-        return 'Complete the advanced speaking fluency test first, then the general interpreter quiz to qualify.';
+        return 'Complete the Interpreting Mock Test test first, then the general interpreter quiz to qualify.';
       }
       if (!_hasAttemptedGeneralQuiz) {
         return 'Complete the general interpreter quiz to qualify.';
       }
       if (!_hasCompletedAdvancedFluencyQuiz) {
-        return 'Complete the advanced speaking fluency test to qualify.';
+        return 'Complete the Interpreting Mock Test to qualify.';
       }
       return 'You have completed all required quizzes!';
     }
@@ -325,11 +325,11 @@ class _InterpreterQuizHubWebScreenState
     if (!_hasAttemptedGeneralQuiz &&
         !_hasCompletedAdvancedFluencyQuiz &&
         remainingMedical == _totalMedicalQuizzes) {
-      return 'Complete the advanced speaking fluency test first, then the general quiz, then all 10 core medical specialization modules to unlock your full profile.';
+      return 'Complete the Interpreting Mock Test first, then the general quiz, then all 10 core medical specialization modules to unlock your full profile.';
     } else if (!_hasAttemptedGeneralQuiz) {
       return 'Complete the general quiz and $remainingMedical more medical quiz${remainingMedical > 1 ? 'zes' : ''} to qualify.';
     } else if (!_hasCompletedAdvancedFluencyQuiz) {
-      return 'Great progress. Complete the advanced speaking fluency test to qualify.';
+      return 'Great progress. Complete the Interpreting Mock Test  to qualify.';
     } else if (remainingMedical > 0) {
       return 'Great job! Complete $remainingMedical more medical specialization quiz${remainingMedical > 1 ? 'zes' : ''} to qualify.';
     }
@@ -374,7 +374,7 @@ class _InterpreterQuizHubWebScreenState
               // Advanced speaking must be completed first.
               if (!_hasCompletedAdvancedFluencyQuiz) ...[
                 _buildSectionTitle(
-                  'Advanced Speaking Fluency',
+                  'Interpreting Mock Test',
                   'Required for both general and specialist interpreters',
                 ),
                 const SizedBox(height: 12),
@@ -394,7 +394,7 @@ class _InterpreterQuizHubWebScreenState
                   'Professional Standards & Medical Assessment',
                   _hasCompletedAdvancedFluencyQuiz
                       ? 'Mandatory for all interpreters'
-                      : 'Unlocks after Advanced Speaking Fluency',
+                      : 'Unlocks after Interpreting Mock Test',
                 ),
                 const SizedBox(height: 12),
                 _buildQuizCard(
@@ -409,58 +409,7 @@ class _InterpreterQuizHubWebScreenState
                 ),
               ],
 
-              // Medical Quizzes
-              if (isExperienced &&
-                  _attemptedMedicalQuizzes.length < _totalMedicalQuizzes) ...[
-                const SizedBox(height: 32),
-                _buildSectionTitle(
-                  'Advanced Clinical Specializations',
-                  'Advanced Medical Interpreter Certification Modules | ${_attemptedMedicalQuizzes.length}/$_totalMedicalQuizzes completed',
-                ),
-                const SizedBox(height: 12),
-                ...(() {
-                  final remainingSections =
-                      _medicalSections
-                          .where(
-                            (section) =>
-                                !_attemptedMedicalQuizzes.contains(
-                                  section['id'],
-                                ),
-                          )
-                          .toList();
-
-                  return remainingSections.asMap().entries.map((entry) {
-                    final int idx = entry.key;
-                    final section = entry.value;
-
-                    // If advanced or general quiz is not done, everything here is locked.
-                    // Otherwise, only the very first remaining medical section is unlocked.
-                    final bool isLocked =
-                        !_hasCompletedAdvancedFluencyQuiz ||
-                        !_hasAttemptedGeneralQuiz ||
-                        idx > 0;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildQuizCard(
-                        title: section['title'] as String,
-                        icon: section['icon'] as IconData,
-                        iconColor:
-                            section['color'] as Color? ??
-                            const Color(0xFF3B82F6),
-                        isLocked: isLocked,
-                        onTap:
-                            isLocked
-                                ? null
-                                : () => _takeQuiz(
-                                  'medical',
-                                  medicalSection: section['id'] as String,
-                                ),
-                      ),
-                    );
-                  });
-                })(),
-              ],
+              // Medical Quizzes moved to Badges tab in the dashboard
 
               const SizedBox(height: 24),
               _buildInfoNote(isExperienced),
@@ -521,8 +470,8 @@ class _InterpreterQuizHubWebScreenState
               color: Colors.white.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.quiz_outlined,
+            child:const  Icon(
+              Icons.verified_user_rounded,
               size: 48,
               color: Colors.white,
             ),
@@ -557,11 +506,10 @@ class _InterpreterQuizHubWebScreenState
     int completed;
 
     if (isExperienced) {
-      totalRequired = 2 + _totalMedicalQuizzes;
+      totalRequired = 2 ;
       completed =
           (_hasAttemptedGeneralQuiz ? 1 : 0) +
-          (_hasCompletedAdvancedFluencyQuiz ? 1 : 0) +
-          _attemptedMedicalQuizzes.length.clamp(0, _totalMedicalQuizzes);
+          (_hasCompletedAdvancedFluencyQuiz ? 1 : 0) ;
     } else {
       totalRequired = 2;
       completed =
