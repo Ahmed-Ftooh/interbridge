@@ -16,11 +16,13 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
     with SingleTickerProviderStateMixin {
   // All languages for "from" selection (client speaks)
   List<Language> _allLanguages = [];
-  // Languages available from interpreters for "to" selection (patient speaks)
-  List<Language> _interpreterLanguages = [];
+  // Languages available for "to" selection based on selected "from"
+  List<Language> _availableToLanguages = [];
+  final Map<int, List<Language>> _toLanguageCache = {};
   Language? _selectedFromLanguage;
   Language? _selectedToLanguage;
   bool _isLoadingLanguages = true;
+  bool _isLoadingToLanguages = false;
 
   // Animation controller
   late AnimationController _animationController;
@@ -141,23 +143,15 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
   Future<void> _loadLanguages() async {
     try {
       final supabaseService = SupabaseService();
-      // Load all languages for "from" (client speaks) and interpreter languages for "to" (patient speaks)
-      final results = await Future.wait([
-        supabaseService.getLanguages(),
-        supabaseService.getAvailableInterpreterLanguages(),
-      ]);
+      // Load all languages for "from" (client speaks)
+      final allLangs = await supabaseService.getLanguages();
 
       if (mounted) {
-        final allLangs = results[0];
-        final interpreterLangs = results[1];
-
         // Sort alphabetically
         allLangs.sort((a, b) => a.name.compareTo(b.name));
-        interpreterLangs.sort((a, b) => a.name.compareTo(b.name));
 
         setState(() {
           _allLanguages = allLangs;
-          _interpreterLanguages = interpreterLangs;
           _isLoadingLanguages = false;
         });
         _animationController.forward();
@@ -170,6 +164,101 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
         _animationController.forward();
       }
     }
+  }
+
+  Language? _selectValidToLanguage(
+    Language? previous,
+    List<Language> options,
+  ) {
+    if (previous != null) {
+      for (final option in options) {
+        if (option.id == previous.id) {
+          return option;
+        }
+      }
+    }
+
+    if (options.length == 1) {
+      return options.first;
+    }
+
+    return null;
+  }
+
+  Future<void> _loadToLanguagesForFrom(
+    int fromLanguageId, {
+    Language? previousSelection,
+  }) async {
+    final cached = _toLanguageCache[fromLanguageId];
+    if (cached != null) {
+      if (!mounted || _selectedFromLanguage?.id != fromLanguageId) return;
+      setState(() {
+        _availableToLanguages = cached;
+        _isLoadingToLanguages = false;
+        _selectedToLanguage = _selectValidToLanguage(previousSelection, cached);
+      });
+      return;
+    }
+
+    try {
+      final supabaseService = SupabaseService();
+      final toLanguages =
+          await supabaseService.getAvailableToLanguagesForFromLanguage(
+            fromLanguageId,
+          );
+
+      toLanguages.sort((a, b) => a.name.compareTo(b.name));
+
+      if (!mounted || _selectedFromLanguage?.id != fromLanguageId) return;
+
+      setState(() {
+        _availableToLanguages = toLanguages;
+        _toLanguageCache[fromLanguageId] = toLanguages;
+        _isLoadingToLanguages = false;
+        _selectedToLanguage = _selectValidToLanguage(
+          previousSelection,
+          toLanguages,
+        );
+      });
+    } catch (e) {
+      if (!mounted || _selectedFromLanguage?.id != fromLanguageId) return;
+      setState(() {
+        _availableToLanguages = [];
+        _isLoadingToLanguages = false;
+        _selectedToLanguage = null;
+      });
+    }
+  }
+
+  void _handleFromLanguageSelected(Language language) {
+    if (_selectedFromLanguage?.id == language.id) return;
+
+    final previousTo = _selectedToLanguage;
+
+    setState(() {
+      _selectedFromLanguage = language;
+      _selectedToLanguage = null;
+      _availableToLanguages = [];
+      _isLoadingToLanguages = true;
+    });
+
+    _loadToLanguagesForFrom(
+      language.id,
+      previousSelection: previousTo,
+    );
+  }
+
+  String _toLanguagePlaceholder() {
+    if (_selectedFromLanguage == null) {
+      return 'Select client language first';
+    }
+    if (_isLoadingToLanguages) {
+      return 'Loading available languages...';
+    }
+    if (_availableToLanguages.isEmpty) {
+      return 'No interpreters available';
+    }
+    return 'Select language';
   }
 
   bool get _canStartRequest {
@@ -410,7 +499,7 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
             languages: _allLanguages,
             icon: Icons.record_voice_over_rounded,
             color: const Color(0xFF3B82F6),
-            onSelect: (lang) => setState(() => _selectedFromLanguage = lang),
+            onSelect: _handleFromLanguageSelected,
           ),
 
           // Arrow indicator
@@ -436,9 +525,12 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
           _buildLanguageSelector(
             label: 'Patient speaks',
             language: _selectedToLanguage,
-            languages: _interpreterLanguages,
+            languages: _availableToLanguages,
             icon: Icons.person_rounded,
             color: const Color(0xFF10B981),
+            placeholder: _toLanguagePlaceholder(),
+            enabled: _selectedFromLanguage != null,
+            isLoading: _isLoadingToLanguages,
             onSelect: (lang) => setState(() => _selectedToLanguage = lang),
           ),
         ],
@@ -453,9 +545,24 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
     required IconData icon,
     required Color color,
     required ValueChanged<Language> onSelect,
+    String? placeholder,
+    bool enabled = true,
+    bool isLoading = false,
   }) {
+    final isEnabled = enabled && !isLoading && languages.isNotEmpty;
+    final displayText = language?.name ?? (placeholder ?? 'Select language');
+    final displayColor =
+        language != null
+            ? const Color(0xFF1E293B)
+            : isEnabled
+            ? ColorManager.textSecondary
+            : const Color(0xFF94A3B8);
+
     return InkWell(
-      onTap: () => _showLanguageBottomSheet(languages, language, onSelect),
+      onTap:
+          isEnabled
+              ? () => _showLanguageBottomSheet(languages, language, onSelect)
+              : null,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -495,24 +602,32 @@ class _RequesterHomeViewState extends State<RequesterHomeView>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    language?.name ?? 'Select language',
+                    displayText,
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color:
-                          language != null
-                              ? const Color(0xFF1E293B)
-                              : ColorManager.textSecondary,
+                      color: displayColor,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: ColorManager.textSecondary,
-              size: 24,
-            ),
+            isLoading
+                ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      ColorManager.textSecondary,
+                    ),
+                  ),
+                )
+                : Icon(
+                  Icons.chevron_right_rounded,
+                  color: ColorManager.textSecondary,
+                  size: 24,
+                ),
           ],
         ),
       ),

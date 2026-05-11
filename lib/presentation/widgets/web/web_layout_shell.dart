@@ -440,6 +440,15 @@ class _WebLayoutShellState extends State<WebLayoutShell> {
                         ),
                       ),
                       const SizedBox(width: 6),
+                      Text(
+                        widget.userRole != null
+                            ? _capitalizeRole(widget.userRole!)
+                            : 'Active',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
                       
                     ],
                   ),

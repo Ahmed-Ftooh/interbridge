@@ -48,6 +48,7 @@ class MyAppState extends State<MyApp> {
         navigatorKey: MyApp.navigatorKey,
         debugShowCheckedModeBanner: false,
         onGenerateRoute: RouteGenerator.getRoute,
+        
         // On web, preserve browser URL on refresh (step routes, auth callback).
         // For mobile, keep splash as the explicit entry route.
         initialRoute: kIsWeb ? null : Routes.splashRoute,

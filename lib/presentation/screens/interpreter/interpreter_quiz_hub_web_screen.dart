@@ -232,8 +232,7 @@ class _InterpreterQuizHubWebScreenState
     if (isExperienced) {
       allQuizzesAttempted =
           _hasAttemptedGeneralQuiz &&
-          _hasCompletedAdvancedFluencyQuiz &&
-          _attemptedMedicalQuizzes.length >= _totalMedicalQuizzes;
+          _hasCompletedAdvancedFluencyQuiz ;
     } else {
       allQuizzesAttempted =
           _hasAttemptedGeneralQuiz && _hasCompletedAdvancedFluencyQuiz;

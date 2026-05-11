@@ -3,6 +3,7 @@ import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
 import 'dart:developer';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:interbridge/data/services/onesignal_service.dart';
 import 'package:interbridge/data/services/permission_service.dart';
@@ -13,6 +14,7 @@ import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
 import 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen.dart';
+import 'package:interbridge/presentation/screens/legal/interpreter_agreements_view.dart';
 import 'package:interbridge/presentation/widgets/simple_fade_animation.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/custom_button.dart';
@@ -74,6 +76,34 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
 
         // Only enforce compliance picture if they are fully verified
         if (interpreterDetails?.isVerified == true) {
+          // Check for legal agreements first
+          if (interpreterDetails?.hasAcceptedAgreements != true) {
+            final accepted = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                builder: (context) => InterpreterAgreementsView(
+                  onAccept: () => Navigator.of(context).pop(true),
+                ),
+              ),
+            );
+            if (!mounted) return;
+
+            if (accepted != true) {
+              await _supabaseService.signOut();
+              await _appPreferences.logout();
+              if (!mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                Routes.interpreterPortalLoginRoute,
+                (route) => false,
+              );
+              return;
+            } else {
+              await Supabase.instance.client
+                  .from('interpreter_details')
+                  .update({'has_accepted_agreements': true})
+                  .eq('user_id', userId);
+            }
+          }
+
           final passedCompliance = await _runInterpreterComplianceCheck();
           if (!mounted) return;
 

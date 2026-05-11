@@ -21,6 +21,7 @@ import 'package:interbridge/presentation/screens/auth/login_screen/view_Model/bl
 import 'package:interbridge/presentation/screens/auth/login_screen/view_Model/bloc/login_state.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
 import 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen.dart';
+import 'package:interbridge/presentation/screens/legal/interpreter_agreements_view.dart';
 
 /// Professional interpreter-focused web login view
 class LoginViewWeb extends StatelessWidget {
@@ -516,6 +517,34 @@ class _LoginViewWebBodyState extends State<_LoginViewWebBody> {
 
         // Enforce compliance only for actual login flow, not restored sessions on refresh.
         if (enforceComplianceCheck && interpreterDetails?.isVerified == true) {
+          // Check for legal agreements first
+          if (interpreterDetails?.hasAcceptedAgreements != true) {
+            final accepted = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                builder: (context) => InterpreterAgreementsView(
+                  onAccept: () => Navigator.of(context).pop(true),
+                ),
+              ),
+            );
+            if (!mounted) return;
+
+            if (accepted != true) {
+              await _supabaseService.signOut();
+              await _appPreferences.logout();
+              if (!mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                Routes.interpreterPortalLoginRoute,
+                (route) => false,
+              );
+              return;
+            } else {
+              await Supabase.instance.client
+                  .from('interpreter_details')
+                  .update({'has_accepted_agreements': true})
+                  .eq('user_id', userId);
+            }
+          }
+
           final passedCompliance = await _runInterpreterComplianceCheck();
           if (!mounted) return;
           if (!passedCompliance) {

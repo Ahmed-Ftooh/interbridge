@@ -5,6 +5,7 @@ class InterpreterDetails {
   final int? yearsExperience;
   final bool isVerified;
   final bool isSuspended;
+  final bool hasAcceptedAgreements;
 
   InterpreterDetails({
     required this.userId,
@@ -13,6 +14,7 @@ class InterpreterDetails {
     this.yearsExperience,
     this.isVerified = false,
     this.isSuspended = false,
+    this.hasAcceptedAgreements = false,
   });
 
   factory InterpreterDetails.fromJson(Map<String, dynamic> json) =>
@@ -23,6 +25,7 @@ class InterpreterDetails {
         yearsExperience: json['years_experience'],
         isVerified: json['is_verified'] ?? false,
         isSuspended: json['is_suspended'] ?? false,
+        hasAcceptedAgreements: json['has_accepted_agreements'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -32,5 +35,6 @@ class InterpreterDetails {
     if (yearsExperience != null) 'years_experience': yearsExperience,
     'is_verified': isVerified,
     'is_suspended': isSuspended,
+    'has_accepted_agreements': hasAcceptedAgreements,
   };
 }

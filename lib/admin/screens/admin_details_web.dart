@@ -2266,24 +2266,14 @@ class _WebVoiceSampleTileState extends State<_WebVoiceSampleTile> {
 
   @override
   Widget build(BuildContext context) {
-    final fileName = widget.voiceSample['name']?.toString() ?? '';
-    final createdAt =
-        widget.voiceSample['created_at']?.toString().split('T')[0] ?? '';
+    final sentenceTypeRaw = widget.voiceSample['sentence_type']?.toString() ?? '';
+    final prompt = widget.voiceSample['prompt']?.toString() ?? '';
+    final createdAt = widget.voiceSample['created_at']?.toString().split('T')[0] ?? '';
 
     String displayName = 'Voice Sample';
-    if (fileName.isNotEmpty) {
-      final nameWithoutExt = fileName
-          .replaceAll('.m4a', '')
-          .replaceAll('.mp3', '');
-      final parts = nameWithoutExt.split('_');
-      if (parts.length > 1) {
-        final sentenceType = parts[1].replaceAll('_', ' ');
-        displayName =
-            sentenceType.isNotEmpty
-                ? sentenceType[0].toUpperCase() +
-                    sentenceType.substring(1).replaceAll('_', ' ')
-                : 'Voice Sample';
-      }
+    if (sentenceTypeRaw.isNotEmpty) {
+      displayName = sentenceTypeRaw[0].toUpperCase() + 
+          sentenceTypeRaw.substring(1).replaceAll('_', ' ');
     }
 
     return Container(
@@ -2298,55 +2288,97 @@ class _WebVoiceSampleTileState extends State<_WebVoiceSampleTile> {
             offset: const Offset(0, 2),
           ),
         ],
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Play button
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child:
-                _isLoading
-                    ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                    : IconButton(
-                      onPressed: _toggle,
-                      icon: Icon(
-                        _isPlaying ? Icons.pause_circle : Icons.play_circle,
-                        color: Colors.blue,
-                        size: 28,
+          Row(
+            children: [
+              // Play button
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child:
+                    _isLoading
+                        ? const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                        : IconButton(
+                          onPressed: _toggle,
+                          icon: Icon(
+                            _isPlaying ? Icons.pause_circle : Icons.play_circle,
+                            color: Colors.blue,
+                            size: 28,
+                          ),
+                        ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: Color(0xFF1E293B),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Uploaded: $createdAt',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.mic, color: Colors.blue),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+          if (prompt.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Reference Question/Prompt:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
                   ),
-                ),
-                Text(
-                  'Uploaded: $createdAt',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    prompt,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF334155),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Icon(Icons.mic, color: Colors.blue.shade300),
+          ],
         ],
       ),
     );

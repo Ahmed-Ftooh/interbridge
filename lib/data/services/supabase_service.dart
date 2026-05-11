@@ -301,7 +301,7 @@ class SupabaseService {
         .upsert(
           lang.toJson(),
           onConflict: 'user_id,language_id',
-          ignoreDuplicates: true,
+          ignoreDuplicates: false,
         );
   }
 
@@ -358,6 +358,60 @@ class SupabaseService {
       return languages.map((e) => Language.fromJson(e)).toList();
     } catch (e) {
       log('Error getting available interpreter languages: $e');
+      return [];
+    }
+  }
+
+  /// Get languages available as a "to" option for a selected "from" language
+  /// Returns only languages spoken by interpreters who also speak fromLanguageId
+  Future<List<Language>> getAvailableToLanguagesForFromLanguage(
+    int fromLanguageId,
+  ) async {
+    try {
+      final fromLangUsers = await _client
+          .from('interpreter_languages')
+          .select('user_id')
+          .eq('language_id', fromLanguageId);
+
+      if (fromLangUsers.isEmpty) {
+        return [];
+      }
+
+      final userIds =
+          fromLangUsers
+              .map((e) => e['user_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList();
+
+      if (userIds.isEmpty) {
+        return [];
+      }
+
+      final toLangRows = await _client
+          .from('interpreter_languages')
+          .select('language_id')
+          .inFilter('user_id', userIds)
+          .neq('language_id', fromLanguageId);
+
+      if (toLangRows.isEmpty) {
+        return [];
+      }
+
+      final languageIds =
+          toLangRows
+              .map((e) => e['language_id'] as int)
+              .toSet()
+              .toList();
+
+      final languages = await _client
+          .from('languages')
+          .select()
+          .inFilter('id', languageIds);
+
+      return languages.map((e) => Language.fromJson(e)).toList();
+    } catch (e) {
+      log('Error getting available to languages for from=$fromLanguageId: $e');
       return [];
     }
   }

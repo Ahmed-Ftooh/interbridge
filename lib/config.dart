@@ -28,6 +28,10 @@ String get agoraAppCertificate {
   return certificate;
 }
 
+String get twilioPhoneNumber {
+  return dotenv.env['TWILIO_PHONE_NUMBER'] ?? '';
+}
+
 /// Stripe publishable key (test mode)
 String get stripePublishableKey {
   return dotenv.env['STRIPEPUBLISHABLEKEY'] ?? '';

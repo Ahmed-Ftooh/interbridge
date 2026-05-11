@@ -46,6 +46,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   int _currentQuestionIndex = 0;
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
+  String? _activeListeningQuestionId;
 
   final Map<String, _RecordedAnswer> _recordings = {};
   final Map<String, int> _listeningStarts = {};
@@ -176,7 +177,12 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
 
     _listeningPlayer.onPlayerComplete.listen((_) {
       if (mounted) {
-        setState(() => _isPlayingListeningAudio = false);
+        setState(() {
+          _isPlayingListeningAudio = false;
+          if (_activeListeningQuestionId != null) {
+            _listeningStarts[_activeListeningQuestionId!] = _maxListeningPlays;
+          }
+        });
       }
     });
 
@@ -323,17 +329,36 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     return remaining > 0 ? remaining : 0;
   }
 
+  Future<void> _pauseListeningAudio() async {
+    try {
+      if (kIsWeb) {
+        await inline_audio.pauseInlineAudio(_webListeningHandle);
+      } else {
+        await _listeningPlayer.pause();
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _isPlayingListeningAudio = false);
+    }
+  }
+
   Future<void> _stopListeningAudio() async {
     try {
       if (kIsWeb) {
         await inline_audio.stopInlineAudio(_webListeningHandle);
+        inline_audio.disposeInlineAudio(_webListeningHandle);
+        _webListeningHandle = null;
       } else {
         await _listeningPlayer.stop();
       }
     } catch (_) {}
 
     if (mounted) {
-      setState(() => _isPlayingListeningAudio = false);
+      setState(() {
+        _isPlayingListeningAudio = false;
+        _activeListeningQuestionId = null;
+      });
     }
   }
 
@@ -368,7 +393,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
 
     try {
       await _recordingPlayer.stop();
-      await _stopListeningAudio();
+      await _pauseListeningAudio();
 
       if (kIsWeb) {
         await _audioRecorder.start(
@@ -466,7 +491,7 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   }) async {
     try {
       if (_isPlayingListeningAudio) {
-        await _stopListeningAudio();
+        await _pauseListeningAudio();
         return;
       }
 
@@ -478,34 +503,44 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
         return;
       }
 
-      if (kIsWeb) {
-        inline_audio.disposeInlineAudio(_webListeningHandle);
-        _webListeningHandle = inline_audio.createInlineAudio(
-          assetPath: audioAsset,
-          onEnded: () {
-            if (mounted) {
-              setState(() => _isPlayingListeningAudio = false);
-            }
-          },
-        );
+      bool isExisting = _activeListeningQuestionId == questionId;
 
-        if (_webListeningHandle == null) {
-          throw Exception('Unable to initialize web audio player');
+      if (!isExisting) {
+        await _stopListeningAudio();
+
+        if (kIsWeb) {
+          _webListeningHandle = inline_audio.createInlineAudio(
+            assetPath: audioAsset,
+            onEnded: () {
+              if (mounted) {
+                setState(() {
+                  _isPlayingListeningAudio = false;
+                  _listeningStarts[questionId] = _maxListeningPlays;
+                });
+              }
+            },
+          );
+
+          if (_webListeningHandle == null) {
+            throw Exception('Unable to initialize web audio player');
+          }
+        } else {
+          await _listeningPlayer.setSource(AssetSource(audioAsset));
         }
 
-        await inline_audio.playInlineAudio(_webListeningHandle);
-      } else {
-        await _listeningPlayer.stop();
-        await _listeningPlayer.play(AssetSource(audioAsset));
+        _activeListeningQuestionId = questionId;
       }
 
-      if (!mounted) {
-        return;
+      if (kIsWeb) {
+        await inline_audio.playInlineAudio(_webListeningHandle);
+      } else {
+        await _listeningPlayer.resume();
       }
+
+      if (!mounted) return;
 
       setState(() {
         _isPlayingListeningAudio = true;
-        _listeningStarts[questionId] = usedStarts + 1;
       });
     } catch (e) {
       _showMessage('Unable to play the listening audio: $e');
@@ -846,14 +881,14 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
                 ),
                 icon: Icon(
                   _isPlayingListeningAudio
-                      ? Icons.stop_rounded
+                      ? Icons.pause_rounded
                       : (isLocked
                           ? Icons.lock_outline
                           : Icons.play_arrow_rounded),
                 ),
                 label: Text(
                   _isPlayingListeningAudio
-                      ? 'Stop Audio'
+                      ? 'Pause Audio'
                       : (isLocked ? 'Audio Locked' : 'Start Listening'),
                 ),
               ),
@@ -936,36 +971,39 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
                 style: TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
               ),
             ),
-          GestureDetector(
-            onTap:
-                _isSubmitting
-                    ? null
-                    : (_isRecording ? _stopRecording : _startRecording),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 86,
-              height: 86,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color:
-                    _isRecording
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF0F172A),
-                boxShadow: [
-                  BoxShadow(
-                    color: (_isRecording
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFF0F172A))
-                        .withValues(alpha: 0.25),
-                    blurRadius: 18,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Icon(
-                _isRecording ? Icons.stop_rounded : Icons.mic,
-                size: 34,
-                color: Colors.white,
+          Tooltip(
+            message: _isRecording ? 'Stop Recording' : 'Start Recording',
+            child: GestureDetector(
+              onTap:
+                  _isSubmitting
+                      ? null
+                      : (_isRecording ? _stopRecording : _startRecording),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 86,
+                height: 86,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      _isRecording
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF0F172A),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_isRecording
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFF0F172A))
+                          .withValues(alpha: 0.25),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _isRecording ? Icons.stop_rounded : Icons.mic,
+                  size: 34,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

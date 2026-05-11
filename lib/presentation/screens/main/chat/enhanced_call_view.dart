@@ -3,8 +3,9 @@ import 'dart:developer';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/config.dart';
+import 'package:interbridge/core/services/agora_dialer_service.dart';
 import 'package:interbridge/data/services/session_service.dart';
-import 'package:interbridge/data/services/twilio_call_service.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/call_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/bloc/chat_bloc.dart';
 import 'package:interbridge/presentation/screens/main/chat/call_feedback_dialog.dart';
@@ -48,8 +49,8 @@ class _EnhancedCallScreenBody extends StatefulWidget {
 }
 
 class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
-  // Twilio patient call state
-  final TwilioCallService _twilioService = TwilioCallService();
+  // Third-party dial state
+  final AgoraDialerService _agoraDialerService = AgoraDialerService();
   String? _patientCallSid;
   String _patientCallStatus = '';
   bool _isPatientCallLoading = false;
@@ -178,14 +179,10 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
     _idleEscapeTimer?.cancel();
     _localController?.dispose();
     _remoteController?.dispose();
-    // End any active patient call when leaving the screen
-    if (_patientCallSid != null) {
-      _twilioService.endCall(_patientCallSid!);
-    }
     super.dispose();
   }
 
-  // ===== Patient Phone Call Methods =====
+  // ===== Third-party Dial Methods =====
 
   void _showCallPatientDialog() {
     final phoneController = TextEditingController();
@@ -210,7 +207,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Enter the patient\'s phone number to add them to the call.',
+                  'Enter the interpreter\'s phone number to add them to the call.',
                   style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
               ],
@@ -236,10 +233,15 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
           ),
     );
   }
-
-  Future<void> _initiatePatientCall(String phoneNumber) async {
+Future<void> _initiatePatientCall(String phoneNumber) async {
     if (phoneNumber.isEmpty) {
       _showSnackBar('Please enter a phone number', isError: true);
+      return;
+    }
+
+    final fromNumber = twilioPhoneNumber;
+    if (fromNumber.isEmpty) {
+      _showSnackBar('Twilio phone number is not configured', isError: true);
       return;
     }
 
@@ -247,30 +249,46 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       _isPatientCallLoading = true;
       _patientCallStatus = 'Initiating call...';
     });
+    
+    try {
+      log('--- DIALER START ---'); 
+      
+      log('1. Fetching token for bot...'); 
+      final callService = context.read<CallBloc>().service;
+      final botToken = await callService.fetchAgoraToken(
+        channelName: widget.channelId,
+        uid: 0, 
+      );
+      
+      log('2. Token fetched successfully! Token: $botToken'); 
+      
+      log('3. Calling dialer edge function...'); 
+      await _agoraDialerService.callInterpreter(
+        phoneNumber,
+        widget.channelId,
+        fromNumber,
+        botToken, 
+      );
+      
+      log('4. Dialer finished successfully!'); 
 
-    final result = await _twilioService.initiateCall(
-      toPhoneNumber: phoneNumber,
-      requestId: widget.channelId,
-    );
-
-    if (!mounted) return;
-
-    if (result.success) {
+      if (!mounted) return;
       setState(() {
-        _patientCallSid = result.callSid;
-        _patientCallStatus = 'Calling ${result.toPhone}...';
+        _patientCallSid = 'agora';
+        _patientCallStatus = 'Dialing $phoneNumber...';
         _isPatientCallLoading = false;
       });
-      log('Patient call initiated: ${result.callSid}');
-    } else {
+      log('Third-party call initiated: $phoneNumber');
+      
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isPatientCallLoading = false;
         _patientCallStatus = '';
+        _patientCallSid = null;
       });
-      _showSnackBar(
-        result.errorMessage ?? 'Failed to call patient',
-        isError: true,
-      );
+      _showSnackBar('Failed to dial third party', isError: true);
+      log('Failed to dial third party: $e');
     }
   }
 
@@ -279,23 +297,15 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
 
     setState(() => _isPatientCallLoading = true);
 
-    final success = await _twilioService.endCall(_patientCallSid!);
-
     if (!mounted) return;
 
     setState(() {
       _isPatientCallLoading = false;
-      if (success) {
-        _patientCallSid = null;
-        _patientCallStatus = '';
-      }
+      _patientCallSid = null;
+      _patientCallStatus = '';
     });
 
-    if (success) {
-      _showSnackBar('Patient call ended');
-    } else {
-      _showSnackBar('Failed to end patient call', isError: true);
-    }
+    _showSnackBar('Third-party call state cleared');
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -950,7 +960,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Patient call status indicator
+          // Third-party call status indicator
           if (_patientCallStatus.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -1020,7 +1030,7 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
                   _endCallLocally();
                 },
               ),
-              // Call Patient button
+              // Third-party call button
               _roundIconButton(
                 icon:
                     _patientCallSid != null

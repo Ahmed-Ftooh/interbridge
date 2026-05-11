@@ -23,12 +23,12 @@ class AudioAssets {
   static const String audioTest2 = '${audioPath}audio_test_2.mp3';
   static const String audioTest3 = '${audioPath}audio_test_3.mp3';
   static const String audioTest4 = '${audioPath}audio_test_4.mp3';
-  static const String arPtAudio1 = '${audioPath}AR PT Audio 1.mp3';
-  static const String arPtAudio2 = '${audioPath}AR PT Audio 2.mp3';
-  static const String arPtAudio3 = '${audioPath}AR PT Audio3.mp3';
-  static const String arPtAudio4 = '${audioPath}AR PT Audio4.mp3';
-  static const String spPtAudio1 = '${audioPath}SP PT Audio 1.mp3';
-  static const String spPtAudio2 = '${audioPath}SP PT Audio 2.mp3';
-  static const String spPtAudio3 = '${audioPath}SP PT Audio 3.mp3';
-  static const String spPtAudio4 = '${audioPath}SP PT Audio 4.mp3';
+  static const String arPtAudio1 = '${audioPath}ar_pt_audio_1.mp3';
+  static const String arPtAudio2 = '${audioPath}ar_pt_audio_2.mp3';
+  static const String arPtAudio3 = '${audioPath}ar_pt_audio_3.mp3';
+  static const String arPtAudio4 = '${audioPath}ar_pt_audio_4.mp3';
+  static const String spPtAudio1 = '${audioPath}sp_pt_audio_1.mp3';
+  static const String spPtAudio2 = '${audioPath}sp_pt_audio_2.mp3';
+  static const String spPtAudio3 = '${audioPath}sp_pt_audio_3.mp3';
+  static const String spPtAudio4 = '${audioPath}sp_pt_audio_4.mp3';
 }
