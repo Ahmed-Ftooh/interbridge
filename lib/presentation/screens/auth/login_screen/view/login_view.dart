@@ -64,10 +64,16 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
         Navigator.of(context).pushNamedAndRemoveUntil(
           Routes.adminPortalDashboardRoute,
           (route) => false,
+        );}
+
+        else if (profile?.role == 'requester' ) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          Routes.mainRoute,
+          (route) => false,
         );
       } else if (profile?.role == 'organization_admin') {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationPortalDashboardRoute,
+          Routes.organizationDashboardRoute,
           (route) => false,
         );
       } else if (profile?.role == 'interpreter') {
@@ -92,7 +98,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
               await _appPreferences.logout();
               if (!mounted) return;
               Navigator.of(context).pushNamedAndRemoveUntil(
-                Routes.interpreterPortalLoginRoute,
+                Routes.loginRoute,
                 (route) => false,
               );
               return;
@@ -270,26 +276,36 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                       children: [
                         const SizedBox(height: AppSize.s40),
                         // Welcome Section
+                // Welcome Section
                         SimpleFadeAnimation(
                           child: Column(
                             children: [
+                              // Updated Logo Container
                               Container(
-                                padding: const EdgeInsets.all(AppSize.s20),
                                 decoration: BoxDecoration(
-                                  color: ColorManager.primary2.withValues(
-                                    alpha: 0.1,
-                                  ),
-                                  borderRadius: BorderRadius.circular(
-                                    AppSize.s20,
-                                  ),
+                                  borderRadius: BorderRadius.circular(AppSize.s24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: ColorManager.primary2.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      blurRadius: AppSize.s24,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
                                 ),
-                                child: Icon(
-                                  Icons.language,
-                                  color: ColorManager.primary2,
-                                  size: AppSize.s50,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(AppSize.s24),
+                                  child: Image.asset(
+                                    'assets/images/app_icons.png', // Ensure this matches your asset
+                                    width: AppSize.s90, // Slightly larger for better brand visibility
+                                    height: AppSize.s90,
+                                    fit: BoxFit.cover,
+                                    // NOTE: Removed the 'color' property so your original gradient and black background show perfectly
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: AppSize.s20),
+                              const SizedBox(height: AppSize.s24),
                               Text(
                                 AppStrings.welcomeBackExclamation,
                                 style: TextStyle(
@@ -300,10 +316,12 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                               ),
                               const SizedBox(height: AppSize.s8),
                               Text(
-                                AppStrings.signInToContinue,
+                                'Secure, Compliant, Ready to Connect.',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: AppSize.s16,
                                   color: ColorManager.textSecondary,
+                                  height: 1.4,
                                 ),
                               ),
                             ],
@@ -439,7 +457,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                                     Icon(Icons.login, size: AppSize.s20),
                                     SizedBox(width: AppSize.s8),
                                     Text(
-                                      AppStrings.login,
+                                      'Sign In', // Changed to match "Sign In" from the copy
                                       style: TextStyle(
                                         fontSize: AppSize.s16,
                                         fontWeight: FontWeight.w600,
@@ -448,11 +466,42 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                                   ],
                                 ),
                               ),
+                              
+                              const SizedBox(height: AppSize.s24),
+                              
+                              // Added Security / Compliance Trust Mark
+                              Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.lock, size: AppSize.s16, color: ColorManager.primary2),
+                                      const SizedBox(width: AppSize.s6),
+                                      Text(
+                                        'Secure & Confidential Communication',
+                                        style: TextStyle(
+                                          color: ColorManager.textPrimary,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: AppSize.s14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: AppSize.s4),
+                                  Text(
+                                    'Trusted by Healthcare Providers.',
+                                    style: TextStyle(
+                                      color: ColorManager.textSecondary,
+                                      fontSize: AppSize.s12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(height: AppSize.s32),
-                        // Sign Up Section
+                        // Sign Up Section - Changed for Enterprise appeal
                         SimpleFadeAnimation(
                           delay: const Duration(milliseconds: 400),
                           child: Container(
@@ -466,11 +515,13 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                                 ),
                               ),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            // CHANGED: Row replaced with Wrap to prevent pixel overflow
+                            child: Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Text(
-                                  AppStrings.donthaveAnAccount,
+                                  'Need an account?',
                                   style: TextStyle(
                                     color: ColorManager.textSecondary,
                                     fontSize: AppSize.s14,
@@ -484,7 +535,7 @@ class _LoginViewBodyState extends State<_LoginViewBody> {
                                     ).pushNamed(Routes.selectRole);
                                   },
                                   child: Text(
-                                    AppStrings.signup,
+                                    'Request pricing Account',
                                     style: TextStyle(
                                       color: ColorManager.primary2,
                                       fontWeight: FontWeight.bold,

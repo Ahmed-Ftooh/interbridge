@@ -26,6 +26,7 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
   final _supabase = SupabaseService();
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _audioPlayer;
+  StreamSubscription? _playerComplSub;
 
   bool _loadingPrompts = true;
   bool _permissionDenied = false;
@@ -54,7 +55,7 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
     super.initState();
     _audioRecorder = AudioRecorder();
     _audioPlayer = AudioPlayer();
-    _audioPlayer.onPlayerComplete.listen((_) {
+    _playerComplSub = _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlaying = false);
     });
     _loadPrompts();
@@ -78,6 +79,7 @@ class _VoicePromptWebScreenState extends State<VoicePromptWebScreen> {
   @override
   void dispose() {
     _recordTimer?.cancel();
+    _playerComplSub?.cancel();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
     super.dispose();

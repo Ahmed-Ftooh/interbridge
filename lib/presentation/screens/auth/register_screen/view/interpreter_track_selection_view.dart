@@ -16,6 +16,18 @@ class InterpreterTrackSelectionScreen extends StatefulWidget {
 class _InterpreterTrackSelectionScreenState
     extends State<InterpreterTrackSelectionScreen> {
   InterpreterLevel? _selectedLevel;
+  bool _autoContinueTriggered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLevel = InterpreterLevel.paid;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _autoContinueTriggered) return;
+      _autoContinueTriggered = true;
+      _continue();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +50,7 @@ class _InterpreterTrackSelectionScreenState
             children: [
               const SizedBox(height: AppSize.s10),
               Text(
-                'Choose your path',
+                'Experienced Interpreter Track',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: ColorManager.textPrimary,
@@ -46,7 +58,7 @@ class _InterpreterTrackSelectionScreenState
               ),
               const SizedBox(height: AppSize.s12),
               Text(
-                'Select the interpreter track that best fits your experience.',
+                'All interpreter applications follow the experienced medical track.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: ColorManager.textSecondary,
                 ),
@@ -63,20 +75,6 @@ class _InterpreterTrackSelectionScreenState
               ),
               const SizedBox(height: AppSize.s12),
               _TrackCard(
-                title: 'Entry-Level Beginner',
-                subtitle: 'Start with Basic medical calls',
-                description:
-                    'Ideal for newcomers to interpreting. Support humanitarian Cases and build experience.',
-                icon: Icons.volunteer_activism_rounded,
-                color: ColorManager.primary2,
-                isSelected: _selectedLevel == InterpreterLevel.volunteer,
-                onTap:
-                    () => setState(
-                      () => _selectedLevel = InterpreterLevel.volunteer,
-                    ),
-              ),
-              const SizedBox(height: AppSize.s16),
-              _TrackCard(
                 title: 'Experienced Medical Interpreter',
                 subtitle: 'Advanced medical Specialized Calls',
                 description:
@@ -85,8 +83,8 @@ class _InterpreterTrackSelectionScreenState
                 color: ColorManager.success,
                 isSelected: _selectedLevel == InterpreterLevel.paid,
                 onTap:
-                    () =>
-                        setState(() => _selectedLevel = InterpreterLevel.paid),
+                  () =>
+                    setState(() => _selectedLevel = InterpreterLevel.paid),
               ),
               const SizedBox(height: AppSize.s32),
 
@@ -123,16 +121,14 @@ class _InterpreterTrackSelectionScreenState
   bool get _canContinue => _selectedLevel != null;
 
   void _continue() {
-    final track =
-        _selectedLevel == InterpreterLevel.volunteer
-            ? InterpreterTrack.volunteer
-            : InterpreterTrack.paid;
+    final selectedLevel = _selectedLevel ?? InterpreterLevel.paid;
+    final track = InterpreterTrack.paid;
 
     final args = <String, dynamic>{
       'role': 'interpreter',
-      'interpreterLevel': _selectedLevel!.name,
+      'interpreterLevel': selectedLevel.name,
       'interpreterTrack': track.name,
-      'requiresMedicalDocs': _selectedLevel == InterpreterLevel.paid,
+      'requiresMedicalDocs': true,
     };
     Navigator.of(context).pushNamed(Routes.selectLanguage, arguments: args);
   }

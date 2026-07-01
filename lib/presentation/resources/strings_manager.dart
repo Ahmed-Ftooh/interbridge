@@ -28,15 +28,31 @@ class AppStrings {
   static const String confirmPassword = 'Confirm Password';
   static const String dateOfBirth = 'Date of Birth';
   static const String date = 'Date';
-  static const String onbordingTitle1 = 'Welcome To InterBridge';
+  static const String onbordingTitle1 = 'Language Access for Every Team';
   static const String onbordingSubtit1e1 =
-      'Get language support when it matters most';
-  static const String onbordingTitle2 = 'Our Community';
+      'Deliver equitable communication with interpreter support in 50 languages.';
+  static const String onbordingTitle2 = 'Operationally Ready';
   static const String onbordingSubtit1e2 =
-      'Thousands of volunteers at your fingertips.';
-  static const String onbordingTitle3 = 'Join us now';
+      'Launch fast and keep service consistent across locations and teams.';
+  static const String onbordingTitle3 = 'Connect in Moments';
   static const String onbordingSubtit1e3 =
-      'Connect in seconds—no barriers, just help';
+      'Voice, video, and chat options keep conversations moving.';
+  static const String onboardingEyebrow1 = 'Enterprise ready';
+  static const String onboardingEyebrow2 = 'Operational scale';
+  static const String onboardingEyebrow3 = 'Everyday delivery';
+  static const String onboardingBadge1 = '50 languages';
+  static const String onboardingBadge2 = 'Team ready';
+  static const String onboardingBadge3 = 'Voice, video';
+  static const String onboardingBullet1a = '50 languages supported';
+  static const String onboardingBullet1b =
+      'Designed for organizations and teams';
+  static const String onboardingBullet1c = 'Clear, consistent communication';
+  static const String onboardingBullet2a = 'Streamlined onboarding for staff';
+  static const String onboardingBullet2b = 'Flexible access across locations';
+  static const String onboardingBullet2c = 'Support when demand spikes';
+  static const String onboardingBullet3a = 'Voice and video options';
+  static const String onboardingBullet3b = 'On-demand or scheduled sessions';
+  static const String onboardingBullet3c = 'Privacy-first workflows';
   static const String explor = 'Explore';
   static const String gender = 'Gender';
   static const String male = 'Male';
@@ -95,7 +111,7 @@ class AppStrings {
       'Your conversations are protected';
   static const String getHelpWheneverYouNeedIt =
       'Get help whenever you need it';
-  static const String selectYourRole = 'Select Your Role';
+  static const String selectYourRole = 'Choose Your Account Type';
   static const String chooseHowYouWantToUseInterBridge =
       'Choose how you want to use InterBridge';
   static const String findProfessionalInterpreters =

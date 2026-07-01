@@ -25,6 +25,25 @@ class IncomingCallService {
   String _employmentType = 'volunteer';
   Timer? _periodicResyncTimer;
 
+  /// Maximum number of request IDs to track in memory. Prevents unbounded
+  /// growth for interpreters receiving hundreds of requests per session.
+  static const int _maxTrackedIds = 200;
+
+  /// Prune the tracking sets when they exceed the max capacity.
+  /// Removes the oldest entries (relies on insertion order of LinkedHashSet).
+  void _pruneTrackedIds() {
+    if (_shownRequestIds.length > _maxTrackedIds) {
+      final excess = _shownRequestIds.length - _maxTrackedIds;
+      final toRemove = _shownRequestIds.take(excess).toList();
+      _shownRequestIds.removeAll(toRemove);
+    }
+    if (_declinedRequestIds.length > _maxTrackedIds) {
+      final excess = _declinedRequestIds.length - _maxTrackedIds;
+      final toRemove = _declinedRequestIds.take(excess).toList();
+      _declinedRequestIds.removeAll(toRemove);
+    }
+  }
+
   /// Start listening for incoming calls for the interpreter.
   /// Set [skipOnlineCheck] to true when the caller has already ensured
   /// the interpreter is online (e.g. right after writing is_online=true to DB)
@@ -151,15 +170,26 @@ class IncomingCallService {
   /// Load the interpreter's employment type to filter by interpreter_type
   Future<void> _loadEmploymentType(String userId) async {
     try {
-      final response =
+      final detailsRow =
           await Supabase.instance.client
-              .from('users_profile')
+              .from('interpreter_details')
               .select('employment_type')
               .eq('user_id', userId)
               .maybeSingle();
+      final detailsType = detailsRow?['employment_type'] as String?;
 
-      _employmentType =
-          (response?['employment_type'] as String?) ?? 'volunteer';
+      if (detailsType != null && detailsType.isNotEmpty) {
+        _employmentType = detailsType;
+      } else {
+        final profileRow =
+            await Supabase.instance.client
+                .from('users_profile')
+                .select('employment_type')
+                .eq('user_id', userId)
+                .maybeSingle();
+        _employmentType =
+            (profileRow?['employment_type'] as String?) ?? 'volunteer';
+      }
       log('IncomingCallService: employment_type=$_employmentType');
     } catch (e) {
       log('IncomingCallService: Error loading employment_type: $e');
@@ -323,6 +353,7 @@ class IncomingCallService {
     }
 
     _shownRequestIds.add(request.id);
+    _pruneTrackedIds();
     _isShowingIncomingCall = true;
 
     // Get language names

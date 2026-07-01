@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/values_manager.dart';
@@ -8,7 +9,7 @@ import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/registerBloc/register_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/registerBloc/register_event.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/registerBloc/register_state.dart';
-
+import 'package:flutter/services.dart'; // <--- ADD THIS
 class OrganizationRegistrationScreen extends StatefulWidget {
   const OrganizationRegistrationScreen({super.key});
 
@@ -19,8 +20,15 @@ class OrganizationRegistrationScreen extends StatefulWidget {
 
 class _OrganizationRegistrationScreenState
     extends State<OrganizationRegistrationScreen> {
+      // Add this under your other controllers
+  String _billingMethod = 'prepaid'; // Default to prepaid
   final _formKey = GlobalKey<FormState>();
   int _currentStep = 0;
+
+  bool _isValidatingCode = false;
+
+  // Step 0: Registration Code
+  final _codeController = TextEditingController();
 
   // Step 1: Admin Account
   final _emailController = TextEditingController();
@@ -41,6 +49,7 @@ class _OrganizationRegistrationScreenState
 
   @override
   void dispose() {
+    _codeController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -127,9 +136,11 @@ class _OrganizationRegistrationScreenState
         children: [
           Row(
             children: [
-              _buildStepIndicator(0, 'Account'),
+              _buildStepIndicator(0, 'Code'),
               _buildStepConnector(0),
-              _buildStepIndicator(1, 'Organization'),
+              _buildStepIndicator(1, 'Account'),
+              _buildStepConnector(1),
+              _buildStepIndicator(2, 'Details'),
             ],
           ),
         ],
@@ -198,12 +209,48 @@ class _OrganizationRegistrationScreenState
   Widget _buildCurrentStep() {
     switch (_currentStep) {
       case 0:
-        return _buildAccountStep();
+        return _buildCodeStep();
       case 1:
+        return _buildAccountStep();
+      case 2:
         return _buildOrganizationStep();
       default:
         return const SizedBox.shrink();
     }
+  }
+Widget _buildCodeStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          'Registration Code',
+          'Enter the code provided by InterBridge',
+          Icons.vpn_key_outlined,
+        ),
+        const SizedBox(height: AppSize.s24),
+        // ... (Keep your info container exactly as it is) ...
+        const SizedBox(height: AppSize.s24),
+        
+        _buildTextField(
+          controller: _codeController,
+          label: 'Registration Code',
+          hint: 'e.g. ORG-ABCD-1234',
+          icon: Icons.tag,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [OrgCodeFormatter()], // <--- 1. ADD THE FORMATTER HERE
+          validator: (value) {
+            // 2. UPDATE THE VALIDATOR TO CHECK FOR THE FULL FORMAT
+            if (value == null || value.isEmpty || value == 'ORG' || value == 'ORG-') {
+              return 'Please enter your registration code';
+            }
+            if (value.length < 13) {
+              return 'Please enter a complete code (e.g. ORG-ABCD-1234)';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildAccountStep() {
@@ -374,6 +421,60 @@ class _OrganizationRegistrationScreenState
           maxLines: 3,
         ),
 
+// Find where you define _orgDescriptionController and add this right below it:
+
+  const SizedBox(height: AppSize.s16),
+  // --- ADD THIS NEW SECTION ---
+  const Text(
+    'Billing Preference',
+    style: TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+      color: Color(0xFF0F172A),
+    ),
+  ),
+  const SizedBox(height: AppSize.s8),
+  Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFE2E8F0)),
+    ),
+    child: Column(
+      children: [
+        RadioListTile<String>(
+          title: const Text('Prepaid (Pay Upfront)', style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: const Text('Top up balance before calls. Includes 2 hours free trial.'),
+          value: 'prepaid',
+          groupValue: _billingMethod,
+          activeColor: ColorManager.primary2,
+          onChanged: (value) => setState(() => _billingMethod = value!),
+        ),
+        const Divider(height: 1),
+        RadioListTile<String>(
+          title: const Text('Postpaid (Billed Monthly)', style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: const Text('Use now, pay invoice at the end of the month.'),
+          value: 'postpaid', // Notice I mapped this to 'postpaid' or 'pay_as_you_go' based on your preference
+          groupValue: _billingMethod,
+          activeColor: ColorManager.primary2,
+          onChanged: (value) => setState(() => _billingMethod = value!),
+        ),
+        const Divider(height: 1),
+        RadioListTile<String>(
+          title: const Text('Subscription (Monthly Plan)', style: TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: const Text('Pay a fixed monthly fee for a set number of minutes.'),
+          value: 'subscription',
+          groupValue: _billingMethod,
+          activeColor: ColorManager.primary2,
+          onChanged: (value) => setState(() => _billingMethod = value!),
+        ),
+      ],
+    ),
+  ),
+  // --- END NEW SECTION ---
+  // --- END NEW SECTION ---
+
+  const SizedBox(height: AppSize.s24),
         const SizedBox(height: AppSize.s24),
 
         // Terms and conditions
@@ -467,7 +568,7 @@ class _OrganizationRegistrationScreenState
         Container(
           padding: const EdgeInsets.all(AppSize.s12),
           decoration: BoxDecoration(
-            color: ColorManager.primary2.withOpacity(0.1),
+            color: ColorManager.primary2.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(AppSize.s12),
           ),
           child: Icon(icon, color: ColorManager.primary2, size: 28),
@@ -499,8 +600,7 @@ class _OrganizationRegistrationScreenState
       ],
     );
   }
-
-  Widget _buildTextField({
+Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required String hint,
@@ -509,17 +609,22 @@ class _OrganizationRegistrationScreenState
     bool obscureText = false,
     Widget? suffixIcon,
     int maxLines = 1,
+    TextCapitalization textCapitalization = TextCapitalization.none,
     String? Function(String?)? validator,
+    List<TextInputFormatter>? inputFormatters, // <--- 1. ADD THIS PARAMETER
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
       maxLines: maxLines,
+      textCapitalization: textCapitalization,
       validator: validator,
+      inputFormatters: inputFormatters, // <--- 2. PASS IT TO THE TEXTFORMFIELD
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        // ... (keep the rest of your decoration the same)
         prefixIcon: Icon(icon, color: ColorManager.primary2),
         suffixIcon: suffixIcon,
         filled: true,
@@ -545,13 +650,16 @@ class _OrganizationRegistrationScreenState
   }
 
   Widget _buildNavigationButtons(BuildContext context, bool isLoading) {
+    final isFirstStep = _currentStep == 0;
+    final isLastStep = _currentStep == 2;
+
     return Container(
       padding: const EdgeInsets.all(AppSize.s20),
       decoration: BoxDecoration(
-        color: ColorManager.backgroundCard,
+        color: ColorManager.backgroundPrimary,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -559,10 +667,10 @@ class _OrganizationRegistrationScreenState
       ),
       child: Row(
         children: [
-          if (_currentStep > 0)
+          if (!isFirstStep) ...[
             Expanded(
               child: OutlinedButton(
-                onPressed: isLoading ? null : _previousStep,
+                onPressed: isLoading || _isValidatingCode ? null : _previousStep,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: ColorManager.primary2,
                   side: BorderSide(color: ColorManager.primary2),
@@ -574,29 +682,28 @@ class _OrganizationRegistrationScreenState
                 child: const Text('Back'),
               ),
             ),
-          if (_currentStep > 0) const SizedBox(width: AppSize.s16),
+            const SizedBox(width: AppSize.s16),
+          ],
           Expanded(
-            flex:
-                _currentStep == 0
-                    ? 1
-                    : 2, // Give more space to Submit button when Back is showing
+            flex: isFirstStep ? 1 : 2,
             child: CustomButton(
               onTap: () {
-                if (!isLoading) _nextStep(context);
+                if (!isLoading && !_isValidatingCode) _nextStep(context);
               },
-              isLoading: isLoading,
+              isLoading: isLoading || _isValidatingCode,
               color: ColorManager.primary2,
               borderRadius: BorderRadius.circular(AppSize.s12),
               child: Text(
-                _currentStep < 1 ? 'Continue' : 'Submit Application',
+                _isValidatingCode
+                    ? 'Validating...'
+                    : (isLastStep ? 'Create Organization' : 'Continue'),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
                 maxLines: 1,
-                overflow:
-                    TextOverflow
-                        .ellipsis, // Ensure it doesn't wrap or get cut off strangely
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -611,13 +718,46 @@ class _OrganizationRegistrationScreenState
     }
   }
 
-  void _nextStep(BuildContext context) {
+  Future<void> _nextStep(BuildContext context) async {
     // Validate current step
     if (!_validateCurrentStep()) {
       return;
     }
 
-    if (_currentStep < 1) {
+    if (_currentStep == 0) {
+      setState(() => _isValidatingCode = true);
+      final code = _codeController.text.trim().toUpperCase();
+      try {
+        final response = await Supabase.instance.client
+            .from('organization_registration_codes')
+            .select('id, is_used')
+            .eq('code', code)
+            .maybeSingle();
+            
+        if (response == null) {
+          if (mounted) _showError('Invalid or already used registration code.');
+          setState(() => _isValidatingCode = false);
+          return;
+        }
+        
+        if (response['is_used'] == true) {
+          if (mounted) _showError('This registration code has already been used.');
+          setState(() => _isValidatingCode = false);
+          return;
+        }
+        
+        setState(() {
+          _isValidatingCode = false;
+          _currentStep++;
+        });
+      } catch (e) {
+        if (mounted) _showError('Error validating code.');
+        setState(() => _isValidatingCode = false);
+      }
+      return;
+    }
+
+    if (_currentStep < 2) {
       setState(() => _currentStep++);
     } else {
       // Final step - submit
@@ -628,6 +768,13 @@ class _OrganizationRegistrationScreenState
   bool _validateCurrentStep() {
     switch (_currentStep) {
       case 0:
+        if (_codeController.text.trim().isEmpty) {
+          _showError('Please enter your registration code');
+          return false;
+        }
+        return true;
+
+      case 1:
         if (_usernameController.text.isEmpty) {
           _showError('Please enter your name');
           return false;
@@ -649,7 +796,7 @@ class _OrganizationRegistrationScreenState
         }
         return true;
 
-      case 1:
+      case 2:
         if (_orgNameController.text.isEmpty) {
           _showError('Please enter organization name');
           return false;
@@ -675,8 +822,7 @@ class _OrganizationRegistrationScreenState
   void _showError(String message) {
     CustomSnackBar.show(context, message: message, type: SnackBarType.error);
   }
-
-  void _submitApplication(BuildContext context) {
+void _submitApplication(BuildContext context) {
     context.read<RegisterBloc>().add(
       OrganizationRegisterSubmitted(
         email: _emailController.text.trim(),
@@ -686,7 +832,52 @@ class _OrganizationRegistrationScreenState
         organizationEmail: _orgEmailController.text.trim(),
         organizationPhone: _orgPhoneController.text.trim(),
         organizationAddress: _orgAddressController.text.trim(),
+        registrationCode: _codeController.text.trim().toUpperCase(),
+        // Add this line (requires updating the event class)
+        billingMethod: _billingMethod, 
       ),
+    );
+  }}
+  // Place this at the very bottom of your file
+class OrgCodeFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    
+    // 1. Strip out everything that isn't a letter or number, and force uppercase
+    String cleanText = newValue.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    // 2. Ensure it ALWAYS starts with 'ORG' (prevents user from deleting it)
+    if (!cleanText.startsWith('ORG')) {
+      cleanText = 'ORG' + cleanText.replaceFirst(RegExp(r'^O?R?G?'), '');
+    }
+
+    // 3. Separate the 'ORG' prefix from whatever the user is typing
+    String remainder = cleanText.substring(3);
+
+    // 4. Build the final formatted string
+    StringBuffer buffer = StringBuffer();
+    buffer.write('ORG');
+
+    if (remainder.isNotEmpty) {
+      buffer.write('-');
+      if (remainder.length > 4) {
+        // Add the first 4 characters, then another dash, then the final 4 characters (max 8)
+        buffer.write(remainder.substring(0, 4));
+        buffer.write('-');
+        buffer.write(remainder.substring(4, remainder.length > 8 ? 8 : remainder.length));
+      } else {
+        // Add up to the first 4 characters
+        buffer.write(remainder);
+      }
+    }
+
+    String finalString = buffer.toString();
+
+    // 5. Return the new formatted string, keeping the cursor at the end
+    return TextEditingValue(
+      text: finalString,
+      selection: TextSelection.collapsed(offset: finalString.length),
     );
   }
 }

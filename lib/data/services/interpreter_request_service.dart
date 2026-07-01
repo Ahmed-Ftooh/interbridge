@@ -211,25 +211,31 @@ class InterpreterRequestService {
 
       log('Matching user IDs by languages: ${matchingUserIds.length}');
 
-      // Determine currently online interpreters from interpreter_details,
-      // then classify paid/volunteer from users_profile (source of truth).
+        // Determine currently online interpreters from interpreter_details,
+        // then classify paid/volunteer from interpreter_details (source of truth).
       final onlineInterpreterRows = await _client
           .from('interpreter_details')
-          .select('user_id')
+          .select('user_id, employment_type')
           .eq('is_online', true)
           .inFilter('user_id', matchingUserIds);
 
       final onlineInterpreterIds =
           onlineInterpreterRows.map((u) => u['user_id'] as String).toList();
 
+        final Map<String, String> employmentTypeById = {
+        for (final row in onlineInterpreterRows)
+          row['user_id'] as String:
+            (row['employment_type'] as String?) ?? 'volunteer',
+        };
+
       if (onlineInterpreterIds.isEmpty) {
         log('No online interpreters found matching both languages');
         return [];
       }
 
-      final onlineProfiles = await _client
+        final onlineProfiles = await _client
           .from('users_profile')
-          .select('user_id, username, role, employment_type')
+          .select('user_id, username, role')
           .inFilter('user_id', onlineInterpreterIds)
           .eq('role', 'interpreter');
 
@@ -237,13 +243,17 @@ class InterpreterRequestService {
 
       final paidIds =
           profileRows
-              .where((p) => (p['employment_type'] as String?) == 'paid')
+              .where(
+                (p) => employmentTypeById[p['user_id'] as String] == 'paid',
+              )
               .map((p) => p['user_id'] as String)
               .toList();
 
       final volunteerIds =
           profileRows
-              .where((p) => (p['employment_type'] as String?) != 'paid')
+              .where(
+                (p) => employmentTypeById[p['user_id'] as String] != 'paid',
+              )
               .map((p) => p['user_id'] as String)
               .toList();
 

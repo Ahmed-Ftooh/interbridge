@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -167,10 +168,10 @@ void initState() {
     final isPaid = _isPaidTrack(args);
     final fullScreenResume = args['authContinuationFullScreen'] == true;
 
-    return AuthWebWrapper(
-      fullScreen: fullScreenResume,
-      title: isPaid ? 'Certification' : 'Training certificate',
-      subtitle:
+    return InterpreterOnboardingWrapper(
+      currentStepIndex:6,
+      stepTitle: isPaid ? 'Certification' : 'Training certificate',
+      stepSubtitle:
           isPaid
               ? 'Upload your medical interpreter credentials'
               : 'Upload any relevant training certificates',
@@ -205,7 +206,7 @@ void initState() {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: Colors.black,
               ),
             ),
             const SizedBox(height: 12),

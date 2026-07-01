@@ -194,6 +194,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   final Map<int, int> _remoteReadyFallbackAttempts = {};
   Timer? _doctorAbsentTimer;
   Timer? _requesterNoJoinTimeoutTimer;
+  Timer? _connectingFallbackTimer;
 
   String? _localUserId;
   int? _requesterUid;
@@ -746,7 +747,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       // On web we give extra time because the browser permission
       // dialog and WebRTC ICE negotiation can be slow.
       final fallbackSeconds = kIsWeb ? 12 : 5;
-      Timer(Duration(seconds: fallbackSeconds), () {
+      _connectingFallbackTimer?.cancel();
+      _connectingFallbackTimer = Timer(Duration(seconds: fallbackSeconds), () {
         if (state is CallConnecting) {
           log(
             'Fallback: Manually transitioning to CallOngoing state (timer waits for remote user)',
@@ -787,6 +789,8 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     log('Ending call... (isRemote: ${e.isRemote})');
     _timer?.cancel();
     _timer = null;
+    _connectingFallbackTimer?.cancel();
+    _connectingFallbackTimer = null;
     _cancelRequesterNoJoinTimeout();
 
     final shouldCollectFeedback = _startedAt != null;

@@ -1,15 +1,17 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart' as callkit;
 
-/// Mobile-specific CallKit listener initialization
-void initializeCallKitListeners({
+/// Mobile-specific CallKit listener initialization.
+/// Returns the [StreamSubscription] so the caller can cancel it if needed.
+StreamSubscription? initializeCallKitListeners({
   required void Function(String requestId, String callType) onCallAccepted,
   required void Function() onCallDeclined,
   required void Function() onCallEnded,
   required void Function() onCallTimeout,
 }) {
-  FlutterCallkitIncoming.onEvent.listen((callkit.CallEvent? event) {
+  return FlutterCallkitIncoming.onEvent.listen((callkit.CallEvent? event) {
     if (event == null) return;
     log('CallKit event received: ${event.event}');
 

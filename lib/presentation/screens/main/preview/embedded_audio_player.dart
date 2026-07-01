@@ -1,4 +1,5 @@
 // lib/previews/embedded_audio_player.dart
+import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:io'; // Add import
 import 'package:flutter/material.dart';
@@ -25,6 +26,9 @@ class EmbeddedAudioPlayer extends StatefulWidget {
 
 class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
   late AudioPlayer _audioPlayer;
+  StreamSubscription? _stateSub;
+  StreamSubscription? _durationSub;
+  StreamSubscription? _positionSub;
   PlayerState _playerState = PlayerState.stopped;
   bool _isLoading = false;
   Duration _position = Duration.zero;
@@ -37,17 +41,17 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
     _playerState = PlayerState.stopped;
 
     // Listen to player state changes
-    _audioPlayer.onPlayerStateChanged.listen((state) {
+    _stateSub = _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() => _playerState = state);
       }
     });
 
-    _audioPlayer.onDurationChanged.listen((d) {
+    _durationSub = _audioPlayer.onDurationChanged.listen((d) {
       if (mounted) setState(() => _duration = d);
     });
 
-    _audioPlayer.onPositionChanged.listen((p) {
+    _positionSub = _audioPlayer.onPositionChanged.listen((p) {
       if (mounted) setState(() => _position = p);
     });
 
@@ -93,6 +97,9 @@ class _EmbeddedAudioPlayerState extends State<EmbeddedAudioPlayer> {
 
   @override
   void dispose() {
+    _stateSub?.cancel();
+    _durationSub?.cancel();
+    _positionSub?.cancel();
     _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();

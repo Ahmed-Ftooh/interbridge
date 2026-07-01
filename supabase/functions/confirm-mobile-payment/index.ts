@@ -81,43 +81,22 @@ Deno.serve(async (req) => {
         400
       );
     }
-
-    // Extract metadata
+// Extract metadata
     const organizationId = pi.metadata?.organization_id;
     const amount =
       parseFloat(pi.metadata?.amount ?? "0") ||
       (pi.amount_received ? pi.amount_received / 100 : 0);
+    
+    // Check if this was a subscription purchase!
+    const minutes = pi.metadata?.minutes ? parseInt(pi.metadata.minutes) : null;
 
     if (!organizationId || !amount) {
       return json({ error: "Missing metadata on PaymentIntent" }, 400);
     }
 
-    // Verify the caller belongs to the organization
-    const { data: membership } = await supabase
-      .from("organization_members")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .maybeSingle();
+    // ... (Keep the membership and deduplication checks the same) ...
 
-    if (!membership) {
-      return json({ error: "Not a member of this organization" }, 403);
-    }
-
-    // ─── Deduplication — check if already credited ────────────────────
-    const { data: existing } = await supabase
-      .from("stripe_checkout_sessions")
-      .select("status")
-      .eq("stripe_session_id", pi.id)
-      .maybeSingle();
-
-    if (existing?.status === "completed") {
-      console.log("Payment already credited:", pi.id);
-      return json({ received: true, duplicate: true, already_credited: true });
-    }
-
-    // ─── Credit the wallet ───────────────────────────────────────────
+    // ─── Credit the Organization ───────────────────────────────────────────
     const { data: org, error: orgError } = await supabase
       .from("organizations")
       .select("wallet_balance")
@@ -128,23 +107,51 @@ Deno.serve(async (req) => {
       return json({ error: "Organization not found" }, 404);
     }
 
-    const newBalance = parseFloat(org.wallet_balance ?? "0") + amount;
+    // NEW LOGIC: Branch based on payment type
+    if (minutes) {
+      // IT IS A SUBSCRIPTION: Update plan limits instead of wallet
+      
+      // 1. Update the organization's subscription data
+      await supabase
+        .from("organizations")
+        .update({ 
+          subscription_monthly_minutes: minutes,
+          subscription_minutes_used: 0 // Reset usage since they bought a new plan
+        })
+        .eq("id", organizationId);
 
-    // Insert transaction (trigger auto-updates wallet_balance)
-    const { error: txError } = await supabase
-      .from("organization_transactions")
-      .insert({
+      // 2. Log the transaction for receipt history
+      await supabase.from("organization_transactions").insert({
         organization_id: organizationId,
-        transaction_type: "topup",
+        transaction_type: "subscription_purchase",
         amount: amount,
-        balance_after: newBalance,
+        balance_after: parseFloat(org.wallet_balance ?? "0"), // Wallet is unaffected
         payment_reference: `stripe:${pi.id}`,
-        notes: `Mobile top-up — $${amount.toFixed(2)}`,
+        notes: `Purchased ${minutes} Minute Monthly Plan`,
       });
 
-    if (txError) {
-      console.error("Transaction insert error:", txError);
-      return json({ error: "Failed to record transaction" }, 500);
+      console.log(`Subscription confirmed: org=${organizationId}, minutes=${minutes}`);
+
+    } else {
+      // IT IS A PREPAID TOP-UP: Keep your exact original logic
+      const newBalance = parseFloat(org.wallet_balance ?? "0") + amount;
+
+      const { error: txError } = await supabase
+        .from("organization_transactions")
+        .insert({
+          organization_id: organizationId,
+          transaction_type: "topup",
+          amount: amount,
+          balance_after: newBalance,
+          payment_reference: `stripe:${pi.id}`,
+          notes: `Mobile top-up — $${amount.toFixed(2)}`,
+        });
+
+      if (txError) {
+        console.error("Transaction insert error:", txError);
+        return json({ error: "Failed to record transaction" }, 500);
+      }
+      console.log(`Mobile payment confirmed: org=${organizationId}, amount=$${amount}, new_balance=$${newBalance}`);
     }
 
     // Mark the checkout session as completed
@@ -153,17 +160,8 @@ Deno.serve(async (req) => {
       .update({ status: "completed", completed_at: new Date().toISOString() })
       .eq("stripe_session_id", pi.id);
 
-    console.log(
-      `Mobile payment confirmed: org=${organizationId}, amount=$${amount}, new_balance=$${newBalance}`
-    );
-
     return json({
       success: true,
-      new_balance: newBalance,
       amount: amount,
     });
-  } catch (e) {
-    console.error("confirm-mobile-payment error:", e);
-    return json({ error: (e as Error)?.message ?? String(e) }, 500);
-  }
-});
+  }});

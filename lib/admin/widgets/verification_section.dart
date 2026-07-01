@@ -57,7 +57,10 @@ class _VerificationSectionState extends State<VerificationSection> {
 
     setState(() => _busy = true);
     try {
-      await _service.setInterpreterVerification(widget.userId, verified: value);
+      final cleanupWarning = await _service.setInterpreterVerification(
+        widget.userId,
+        verified: value,
+      );
       String? emailWarning;
 
       if (value) {
@@ -86,6 +89,15 @@ class _VerificationSectionState extends State<VerificationSection> {
             backgroundColor: value ? Colors.green : Colors.orange,
           ),
         );
+
+        if (cleanupWarning != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(cleanupWarning),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
 
         if (emailWarning != null) {
           ScaffoldMessenger.of(context).showSnackBar(

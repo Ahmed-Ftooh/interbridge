@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:interbridge/data/services/web_session_storage.dart';
+import 'package:interbridge/data/services/web_session_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
@@ -31,6 +34,10 @@ class AppInitializer {
   /// The Splash / Auth Gate checks this to wait for the auth session to resolve
   /// instead of navigating prematurely.
   static bool deepLinkPending = false;
+
+  /// Subscription to Supabase auth state changes. Stored so we can cancel
+  /// on re-initialization (e.g. hot restart) to prevent duplicate listeners.
+  static StreamSubscription? _authStateSub;
 
   /// Reset the auth navigation flag. Call this when the user signs out.
   static void resetAuthState() {
@@ -127,16 +134,18 @@ class AppInitializer {
       final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
       final supabaseKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
+      // Ensure you import the new web_session_storage.dart at the top!
+// import 'package:interbridge/presentation/services/web_session_storage.dart';
+
       if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
         await Future.wait([
-          // Initialize Supabase — give it its own 15-second guard so a slow
-          // network on cPanel does not silently hang the outer 10-second
-          // timeout and cause runApp() to fire before Supabase is ready.
           Supabase.initialize(
             url: supabaseUrl,
             anonKey: supabaseKey,
-            authOptions: const FlutterAuthClientOptions(
+            authOptions: FlutterAuthClientOptions(
               authFlowType: AuthFlowType.pkce,
+              // FIX: Use SharedPreferencesLocalStorage() instead of DefaultLocalStorage()
+              localStorage: kIsWeb ? WebSessionStorage() :  SharedPreferencesLocalStorage(persistSessionKey: 'supabase_auth_token'),
             ),
           ).timeout(
             const Duration(seconds: 15),
@@ -145,14 +154,9 @@ class AppInitializer {
               return Supabase.instance;
             },
           ),
-          // Initialize Error Service (no network calls)
           ErrorService().initialize(),
         ]);
-      } else {
-        log('Supabase credentials missing — skipping Supabase init');
-        await ErrorService().initialize();
       }
-
       // Initialize Stripe (non-web only)
       if (!kIsWeb) {
         final stripeKey = dotenv.env['STRIPEPUBLISHABLEKEY'] ?? '';
@@ -175,7 +179,10 @@ class AppInitializer {
       // and email verification inside the app.
       // Guard with try-catch: Supabase.instance throws if not initialized.
       try {
-        Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
+        // Cancel any previous auth listener (e.g. on hot restart) to prevent
+        // duplicate subscriptions from accumulating.
+        await _authStateSub?.cancel();
+        _authStateSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
           final AuthChangeEvent type = event.event;
           // When a password recovery link is opened, the session is updated
           // and event type is passwordRecovery. Route to reset screen.
@@ -290,41 +297,23 @@ class AppInitializer {
           try {
             // Query employment_type and badges directly to decide navigation
             final client = Supabase.instance.client;
-            final profileData =
-                await client
-                    .from('users_profile')
-                    .select('employment_type')
-                    .eq('user_id', userId)
-                    .maybeSingle();
-
-            final badgesData = await client
-                .from('interpreter_badges')
-                .select('badge')
-                .eq('user_id', userId);
+            final attemptsData = await client
+              .from('quiz_attempts')
+              .select('quiz_type')
+              .eq('user_id', userId)
+              .eq('quiz_type', 'general');
             final fluencyData = await client
                 .from('voice_samples')
                 .select('id')
                 .eq('user_id', userId)
                 .eq('sentence_type', advancedFluencySentenceType);
 
-            final employmentType =
-                profileData?['employment_type'] ?? 'volunteer';
-            final badges =
-                (badgesData as List)
-                    .map((b) => b['badge']?.toString() ?? '')
-                    .where((b) => b.isNotEmpty)
-                    .toSet();
-
-            final hasGeneral = badges.contains('general');
-            final medicalCount = badges.where((b) => b != 'general').length;
+            final hasGeneralAttempt = (attemptsData as List).isNotEmpty;
             final hasAdvancedFluency =
                 (fluencyData as List).length >= advancedFluencyQuestionCount;
 
-            final bool isExperienced = employmentType == 'paid';
             final bool allComplete =
-                isExperienced
-                    ? (hasGeneral && medicalCount >= 10 && hasAdvancedFluency)
-                    : (hasGeneral && hasAdvancedFluency);
+              hasGeneralAttempt && hasAdvancedFluency;
 
             if (allComplete) {
               await appPrefs.setQuizOnboardingDone();

@@ -28,17 +28,6 @@ String _trimTrailingSlash(String value) {
   return value;
 }
 
-String _callbackUrlFromBase(
-  String base, {
-  String callbackPath = '/login-callback',
-}) {
-  final normalized = _trimTrailingSlash(base);
-  if (callbackPath.startsWith('/')) {
-    return '$normalized$callbackPath';
-  }
-  return '$normalized/$callbackPath';
-}
-
 String _currentWebPortalHint() {
   final host = Uri.base.host.toLowerCase();
   final path = Uri.base.path.toLowerCase();
@@ -62,41 +51,43 @@ String getAuthCallbackUrl({String? portalHint}) {
     final host = Uri.base.host.toLowerCase();
     final origin = Uri.base.origin;
 
+    // Update: Safely returning to the base URL on Web without the 
+    // '/login-callback' path to prevent cPanel 404 routing errors.
     if (hint == 'admin') {
       if (_webAdminPortalBase.isNotEmpty) {
-        return _callbackUrlFromBase(_webAdminPortalBase);
+        return _trimTrailingSlash(_webAdminPortalBase);
       }
       if (host.startsWith('admin.')) {
-        return '$origin/login-callback';
+        return origin;
       }
-      return '$origin/admin/login-callback';
+      return '$origin/admin';
     }
 
     if (hint == 'organization') {
       if (_webOrganizationPortalBase.isNotEmpty) {
-        return _callbackUrlFromBase(_webOrganizationPortalBase);
+        return _trimTrailingSlash(_webOrganizationPortalBase);
       }
       if (host.startsWith('organization.')) {
-        return '$origin/login-callback';
+        return origin;
       }
-      return '$origin/organization/login-callback';
+      return '$origin/organization';
     }
 
     if (hint == 'interpreter') {
       if (_webInterpreterPortalBase.isNotEmpty) {
-        return _callbackUrlFromBase(_webInterpreterPortalBase);
+        return _trimTrailingSlash(_webInterpreterPortalBase);
       }
       if (host.startsWith('interpreter.')) {
-        return '$origin/login-callback';
+        return origin;
       }
-      return '$origin/interpreter/login-callback';
+      return '$origin/interpreter';
     }
 
     if (_webSharedPortalBase.isNotEmpty) {
-      return _callbackUrlFromBase(_webSharedPortalBase);
+      return _trimTrailingSlash(_webSharedPortalBase);
     }
 
-    return '$origin/login-callback';
+    return origin;
   }
 
   return '$kDeepLinkScheme://$kAuthCallbackHost';

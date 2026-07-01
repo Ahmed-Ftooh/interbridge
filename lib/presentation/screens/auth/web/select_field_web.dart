@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/resources/strings_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectFieldBloc/select_field_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/selectFieldBloc/select_field_event.dart';
@@ -174,10 +175,10 @@ void dispose(){
       builder: (context, state) {
         final bloc = context.read<SelectFieldBloc>();
 
-        return AuthWebWrapper(
-          fullScreen: fullScreenResume,
-          title: 'Specializations',
-          subtitle: 'Select the areas you specialize in',
+        return InterpreterOnboardingWrapper(
+          currentStepIndex: 2,
+          stepTitle: "Select Specializations",
+          stepSubtitle: "Select the areas you specialize in",
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

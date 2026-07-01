@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
+import 'package:interbridge/presentation/screens/auth/web/auth_web_palette.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/registerBloc/register_bloc.dart';
 import 'package:interbridge/presentation/screens/auth/register_screen/view_model/registerBloc/register_event.dart';
@@ -11,21 +12,23 @@ import 'package:interbridge/presentation/screens/auth/register_screen/view_model
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:interbridge/presentation/widgets/country_picker_sheet.dart';
 
-/// Professional web register screen — interpreter-focused final step
+/// Perfectly symmetrical, professional grid web register screen.
 class RegisterViewWeb extends StatelessWidget {
   const RegisterViewWeb({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // FIX: If data is null (e.g. user refreshed the page), default safely to 'interpreter'
+    // instead of kicking them back to the login screen.
     final Map<String, dynamic> data =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
+        {'role': 'interpreter'};
+        
     return _RegisterViewWebBody(data: data);
   }
 }
 
 class _RegisterViewWebBody extends StatefulWidget {
-  
   final Map<String, dynamic> data;
   const _RegisterViewWebBody({required this.data});
 
@@ -34,7 +37,6 @@ class _RegisterViewWebBody extends StatefulWidget {
 }
 
 class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
-  
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -47,7 +49,6 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   String? _selectedGender;
   String? _selectedCountry;
   String? _selectedCountryFlag;
-  String? _hoveredField;
 
   // Profile picture
   Uint8List? _profileImageBytes;
@@ -62,23 +63,11 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
   @override
   void initState() {
     super.initState();
-    
     _initializeData();
-  // Add this block to catch browser refreshes
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args == null) {
-      // The user refreshed the page and lost their session arguments.
-      // Send them to the dashboard gate, which will re-fetch their progress
-      // from Supabase and route them back here with the correct args!
-      Navigator.of(context).pushReplacementNamed(Routes.interpreterPortalDashboardRoute);
-    }
-  });
-
+    // FIX: The aggressive "kick out" trap has been completely removed from here.
   }
 
   void _initializeData() {
-    // Doctor invite / incoming role
     _incomingRole = widget.data['role'] as String?;
     _inviteOrganizationId = widget.data['organization_id'] as String?;
     _inviteOrgRole = widget.data['organization_role'] as String? ?? 'doctor';
@@ -166,6 +155,8 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
       ),
     );
   }
+  
+  // ... Keep the entire build() method exactly as you have it! ...
 
   @override
   Widget build(BuildContext context) {
@@ -188,165 +179,159 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
         final isLoading = state is RegisterLoading;
 
         return AuthWebWrapper(
+          maxWidth: 680, // Wide enough for a beautiful 2-column grid
           title: 'Create your account',
           subtitle:
               _incomingRole == 'doctor_with_invite'
-                  ? 'Final step — complete your doctor profile'
-                  : 'Final step — set up your interpreter profile ',
+                  ? 'Please complete your doctor profile'
+                  : 'Please set up your professional profile',
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Profile picture
-                _buildProfilePicturePicker(),
-                const SizedBox(height: 24),
-
-                // Username field
-                _buildTextField(
-                  controller: _usernameController,
-                  fieldName: 'username',
-                  label: 'Username',
-                  hint: 'Choose a username',
-                  icon: Icons.person_outline,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter a username';
-                    }
-                    if (value.trim().length < 3) {
-                      return 'Username must be at least 3 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Email field
-                _buildTextField(
-                  controller: _emailController,
-                  fieldName: 'email',
-                  label: 'Email Address',
-                  hint: 'Enter your email',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!RegExp(
-                      r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
-                    ).hasMatch(value.trim())) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Password field
-                _buildTextField(
-                  controller: _passwordController,
-                  fieldName: 'password',
-                  label: 'Password',
-                  hint: 'Create a password',
-                  icon: Icons.lock_outline,
-                  obscureText: !_isPasswordVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: const Color(0xFF64748B),
-                    ),
-                    onPressed:
-                        () => setState(
-                          () => _isPasswordVisible = !_isPasswordVisible,
-                        ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Confirm password field
-                _buildTextField(
-                  controller: _confirmPasswordController,
-                  fieldName: 'confirmPassword',
-                  label: 'Confirm Password',
-                  hint: 'Confirm your password',
-                  icon: Icons.lock_outline,
-                  obscureText: !_isConfirmPasswordVisible,
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isConfirmPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: const Color(0xFF64748B),
-                    ),
-                    onPressed:
-                        () => setState(
-                          () =>
-                              _isConfirmPasswordVisible =
-                                  !_isConfirmPasswordVisible,
-                        ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please confirm your password';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Gender
-                _buildGenderDropdown(),
-                const SizedBox(height: 20),
-
-                // Country
-                _buildCountrySelector(),
-
-                const SizedBox(height: 24),
-
-                // Privacy policy checkbox
-                _buildPrivacyCheckbox(),
-
+                
+                // 1. Centered Profile Picture
+                Center(child: _buildProfilePicturePicker()),
                 const SizedBox(height: 32),
 
-                // Register button
-                _buildRegisterButton(isLoading),
+                // 2. ROW 1: Username & Email
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        controller: _usernameController,
+                        fieldName: 'username',
+                        label: 'Username',
+                        hint: 'Choose a username',
+                        icon: Icons.person_outline,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Required';
+                          if (value.trim().length < 3) return 'Min 3 chars';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 20), // Uniform spacing between columns
+                    Expanded(
+                      child: _buildTextField(
+                        controller: _emailController,
+                        fieldName: 'email',
+                        label: 'Email Address',
+                        hint: 'name@company.com',
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Required';
+                          if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim())) {
+                            return 'Invalid email';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24), // Uniform spacing between rows
 
+                // 3. ROW 2: Password & Confirm Password
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        controller: _passwordController,
+                        fieldName: 'password',
+                        label: 'Password',
+                        hint: '••••••••',
+                        icon: Icons.lock_outline,
+                        obscureText: !_isPasswordVisible,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            color: AuthWebPalette.textMuted,
+                            size: 20,
+                          ),
+                          onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Required';
+                          if (value.length < 6) return 'Min 6 chars';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: _buildTextField(
+                        controller: _confirmPasswordController,
+                        fieldName: 'confirmPassword',
+                        label: 'Confirm Password',
+                        hint: '••••••••',
+                        icon: Icons.lock_outline,
+                        obscureText: !_isConfirmPasswordVisible,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isConfirmPasswordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            color: AuthWebPalette.textMuted,
+                            size: 20,
+                          ),
+                          onPressed: () => setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Required';
+                          if (value != _passwordController.text) return 'Does not match';
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 24),
 
-                // Back to login
+                // 4. ROW 3: Gender & Country
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildGenderDropdown()),
+                    const SizedBox(width: 20),
+                    Expanded(child: _buildCountrySelector()),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // 5. Privacy Checkbox
+                _buildPrivacyCheckbox(),
+                const SizedBox(height: 32),
+
+                // 6. Register Button
+                _buildRegisterButton(isLoading),
+                const SizedBox(height: 24),
+
+                // 7. Back to Login
                 Center(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
                         'Already have an account? ',
-                        style: TextStyle(color: Color(0xFF64748B)),
+                        style: TextStyle(color: AuthWebPalette.textSecondary, fontSize: 14),
                       ),
                       TextButton(
-                        onPressed:
-                            () => Navigator.of(
-                              context,
-                            ).pushReplacementNamed(Routes.loginRoute),
+                        onPressed: () => Navigator.of(context).pushReplacementNamed(Routes.loginRoute),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                         child: const Text(
                           'Sign In',
                           style: TextStyle(
-                            color: Color(0xFF3B82F6),
+                            color: AuthWebPalette.primary,
                             fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
                         ),
                       ),
@@ -372,88 +357,51 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
     Widget? suffixIcon,
     String? Function(String?)? validator,
   }) {
-    final isHovered = _hoveredField == fieldName;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hoveredField = fieldName),
-      onExit: (_) => setState(() => _hoveredField = null),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF374151),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AuthWebPalette.textPrimary,
           ),
-          const SizedBox(height: 8),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow:
-                  isHovered
-                      ? [
-                        BoxShadow(
-                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                      : null,
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          obscureText: obscureText,
+          validator: validator,
+          style: const TextStyle(fontSize: 14, color: AuthWebPalette.textPrimary),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: AuthWebPalette.textMuted, fontSize: 14),
+            prefixIcon: Icon(icon, color: AuthWebPalette.textMuted, size: 20),
+            suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AuthWebPalette.border),
             ),
-            child: TextFormField(
-              controller: controller,
-              keyboardType: keyboardType,
-              obscureText: obscureText,
-              validator: validator,
-              style: const TextStyle(fontSize: 15, color: Color(0xFF0F172A)),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                prefixIcon: Icon(
-                  icon,
-                  color: const Color(0xFF64748B),
-                  size: 20,
-                ),
-                suffixIcon: suffixIcon,
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color:
-                        isHovered
-                            ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
-                            : const Color(0xFFE2E8F0),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF3B82F6),
-                    width: 2,
-                  ),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFEF4444)),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-              ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AuthWebPalette.border),
             ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AuthWebPalette.primary, width: 1.5),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Colors.redAccent),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -465,52 +413,31 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
           'Gender',
           style: TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF374151),
+            fontWeight: FontWeight.w600,
+            color: AuthWebPalette.textPrimary,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color:
-                  _selectedGender != null
-                      ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
-                      : const Color(0xFFE2E8F0),
+              color: _selectedGender != null ? AuthWebPalette.primary : AuthWebPalette.border,
+              width: _selectedGender != null ? 1.5 : 1.0,
             ),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: _selectedGender,
-              hint: const Row(
-                children: [
-                  Icon(
-                    Icons.person_outline,
-                    color: Color(0xFF64748B),
-                    size: 20,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Select Gender',
-                    style: TextStyle(color: Color(0xFF94A3B8)),
-                  ),
-                ],
-              ),
+              hint: const Text('Select Gender', style: TextStyle(color: AuthWebPalette.textMuted, fontSize: 14)),
               isExpanded: true,
-              icon: const Icon(
-                Icons.keyboard_arrow_down,
-                color: Color(0xFF64748B),
-              ),
+              icon: const Icon(Icons.keyboard_arrow_down, color: AuthWebPalette.textMuted),
               items: const [
-                DropdownMenuItem(value: 'male', child: Text('Male')),
-                DropdownMenuItem(value: 'female', child: Text('Female')),
-                DropdownMenuItem(
-                  value: 'prefer_not_to_say',
-                  child: Text('Prefer not to say'),
-                ),
+                DropdownMenuItem(value: 'male', child: Text('Male', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: 'female', child: Text('Female', style: TextStyle(fontSize: 14))),
+                DropdownMenuItem(value: 'prefer_not_to_say', child: Text('Prefer not to say', style: TextStyle(fontSize: 14))),
               ],
               onChanged: (value) => setState(() => _selectedGender = value),
             ),
@@ -528,8 +455,8 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
           'Country',
           style: TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF374151),
+            fontWeight: FontWeight.w600,
+            color: AuthWebPalette.textPrimary,
           ),
         ),
         const SizedBox(height: 8),
@@ -546,44 +473,38 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
               });
             }
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color:
-                    _selectedCountry != null
-                        ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
-                        : const Color(0xFFE2E8F0),
+                color: _selectedCountry != null ? AuthWebPalette.primary : AuthWebPalette.border,
+                width: _selectedCountry != null ? 1.5 : 1.0,
               ),
             ),
             child: Row(
               children: [
                 if (_selectedCountryFlag != null) ...[
-                  Text(
-                    _selectedCountryFlag!,
-                    style: const TextStyle(fontSize: 24),
-                  ),
-                  const SizedBox(width: 12),
+                  Text(_selectedCountryFlag!, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
                 ] else ...[
-                  const Icon(Icons.public, color: Color(0xFF64748B), size: 20),
-                  const SizedBox(width: 12),
+                  const Icon(Icons.public, color: AuthWebPalette.textMuted, size: 20),
+                  const SizedBox(width: 8),
                 ],
                 Expanded(
                   child: Text(
                     _selectedCountry ?? 'Select Country',
                     style: TextStyle(
-                      color:
-                          _selectedCountry != null
-                              ? const Color(0xFF0F172A)
-                              : const Color(0xFF94A3B8),
-                      fontSize: 15,
+                      color: _selectedCountry != null ? AuthWebPalette.textPrimary : AuthWebPalette.textMuted,
+                      fontSize: 14,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
+                const Icon(Icons.keyboard_arrow_down, color: AuthWebPalette.textMuted, size: 20),
               ],
             ),
           ),
@@ -594,66 +515,47 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
 
   Widget _buildPrivacyCheckbox() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: 24,
-          height: 24,
+          width: 20,
+          height: 20,
           child: Checkbox(
             value: _agreedToPrivacy,
-            onChanged:
-                (value) => setState(() => _agreedToPrivacy = value ?? false),
-            activeColor: const Color(0xFF0F172A),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-            ),
+            onChanged: (value) => setState(() => _agreedToPrivacy = value ?? false),
+            activeColor: AuthWebPalette.primary,
+            side: const BorderSide(color: AuthWebPalette.textMuted),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
+              style: const TextStyle(color: AuthWebPalette.textSecondary, fontSize: 13),
               children: [
                 const TextSpan(text: 'I agree to the '),
                 WidgetSpan(
                   child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed(Routes.privacyPolicy);
-                    },
+                    onPressed: () => Navigator.of(context).pushNamed(Routes.privacyPolicy),
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text(
-                      'Privacy Policy',
-                      style: TextStyle(
-                        color: Color(0xFF3B82F6),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                    child: const Text('Privacy Policy', style: TextStyle(color: AuthWebPalette.primary, fontWeight: FontWeight.w600, fontSize: 13)),
                   ),
                 ),
                 const TextSpan(text: ' and '),
                 WidgetSpan(
                   child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed(Routes.termsOfService);
-                    },
+                    onPressed: () => Navigator.of(context).pushNamed(Routes.termsOfService),
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text(
-                      'Terms of Service',
-                      style: TextStyle(
-                        color: Color(0xFF3B82F6),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                    child: const Text('Terms of Service', style: TextStyle(color: AuthWebPalette.primary, fontWeight: FontWeight.w600, fontSize: 13)),
                   ),
                 ),
               ],
@@ -666,96 +568,69 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
 
   Widget _buildRegisterButton(bool isLoading) {
     return SizedBox(
-      height: 52,
+      height: 48,
       child: ElevatedButton(
         onPressed: isLoading ? null : _register,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AuthWebPalette.primary,
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
           ),
-          disabledBackgroundColor: const Color(
-            0xFF0F172A,
-          ).withValues(alpha: 0.6),
         ),
-        child:
-            isLoading
-                ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                : const Text(
-                  'Create Account',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
+              )
+            : const Text('Create Account', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
       ),
     );
   }
 
-  // ─── Profile picture picker ───────────────────────────────────
+  // Centered & Refined Profile Picture Picker
   Widget _buildProfilePicturePicker() {
-    return Center(
-      child: Column(
-        children: [
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: _pickProfileImage,
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  CircleAvatar(
-                    radius: 48,
-                    backgroundColor: const Color(
-                      0xFF3B82F6,
-                    ).withValues(alpha: 0.1),
-                    backgroundImage:
-                        _profileImageBytes != null
-                            ? MemoryImage(_profileImageBytes!)
-                            : null,
-                    child:
-                        _profileImageBytes == null
-                            ? Icon(
-                              Icons.person,
-                              size: 44,
-                              color: const Color(
-                                0xFF3B82F6,
-                              ).withValues(alpha: 0.4),
-                            )
-                            : null,
+    return Column(
+      children: [
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: _pickProfileImage,
+            child: Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                CircleAvatar(
+                  radius: 46, // Slightly larger for the centered hero spot
+                  backgroundColor: AuthWebPalette.border.withValues(alpha: 0.5),
+                  backgroundImage: _profileImageBytes != null ? MemoryImage(_profileImageBytes!) : null,
+                  child: _profileImageBytes == null
+                      ? const Icon(Icons.person, size: 40, color: AuthWebPalette.textMuted)
+                      : null,
+                ),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AuthWebPalette.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                  ),
-                ],
-              ),
+                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            _profileImageBytes != null
-                ? 'Tap to change photo'
-                : 'Add profile photo',
-            style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _profileImageBytes != null ? 'Change profile photo' : 'Upload profile photo',
+          style: const TextStyle(fontSize: 13, color: AuthWebPalette.textSecondary, fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 
@@ -772,8 +647,7 @@ class _RegisterViewWebBodyState extends State<_RegisterViewWebBody> {
         final bytes = await picked.readAsBytes();
         setState(() {
           _profileImageBytes = bytes;
-          _profileImageName =
-              'profile_${DateTime.now().millisecondsSinceEpoch}.${picked.name.split('.').last}';
+          _profileImageName = 'profile_${DateTime.now().millisecondsSinceEpoch}.${picked.name.split('.').last}';
         });
       }
     } catch (e) {

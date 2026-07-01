@@ -525,6 +525,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     organizationEmail: organizationEmail ?? '',
                                     organizationPhone: organizationPhone,
                                     organizationAddress: organizationAddress,
+                                    registrationCode: '', // Passing empty string as this flow doesn't have the code step
                                   ),
                                 );
                               } else {
@@ -568,7 +569,7 @@ class _RegisterViewBodyState extends State<_RegisterViewBody> {
                                     preferredShift: null,
                                     shiftAvailability: null,
                                     isOnlineNow: null,
-                                    employmentType: 'volunteer',
+                                    employmentType: 'paid',
                                   ),
                                 );
                               }

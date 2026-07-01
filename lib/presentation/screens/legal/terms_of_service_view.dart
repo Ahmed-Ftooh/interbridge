@@ -42,7 +42,7 @@ class _TermsBody extends StatelessWidget {
             style: textStyle?.copyWith(fontWeight: FontWeight.bold),
           ),
           Text(
-            'By accessing or using Interbridge, you agree to comply with and be bound by these Terms of Service. If you do not agree, do not use our services.',
+            'By accessing or using Interbridge, you agree to comply with and be bound by these Terms of Service.',
             style: textStyle,
           ),
           const SizedBox(height: AppSize.s12),

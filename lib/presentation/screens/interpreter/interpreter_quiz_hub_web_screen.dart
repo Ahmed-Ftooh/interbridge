@@ -13,8 +13,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 /// Web version of the interpreter quiz hub.
 /// Shown post-signup so interpreters complete required quizzes.
-/// - Volunteer: general quiz only
-/// - Paid: general + all 10 medical quizzes
+/// - All interpreters: advanced fluency + general quiz
+/// - Medical specializations live in the Badges tab after onboarding
 class InterpreterQuizHubWebScreen extends StatefulWidget {
   const InterpreterQuizHubWebScreen({super.key});
 
@@ -27,80 +27,8 @@ class _InterpreterQuizHubWebScreenState
     extends State<InterpreterQuizHubWebScreen> {
   bool _isLoading = true;
   String _employmentType = 'volunteer';
-  Set<String> _attemptedMedicalQuizzes = {};
   bool _hasAttemptedGeneralQuiz = false;
   bool _hasCompletedAdvancedFluencyQuiz = false;
-
-  final List<Map<String, dynamic>> _medicalSections = [
-    {
-      'id': 'neurology',
-      'title': 'Neurology',
-      'icon': FontAwesomeIcons.brain,
-      'color': Colors.purple,
-    },
-    {
-      'id': 'cardiology',
-      'title': 'Cardiology',
-      'icon': FontAwesomeIcons.heartPulse,
-      'color': Colors.red,
-    },
-    {
-      'id': 'emergency',
-      'title': 'Emergency',
-      'icon': FontAwesomeIcons.truckMedical,
-      'color': Colors.blue,
-    },
-    {
-      'id': 'oncology',
-      'title': 'Oncology',
-      'icon': FontAwesomeIcons.ribbon,
-      'color': Colors.pink,
-    },
-    {
-      'id': 'respiratory',
-      'title': 'Respiratory',
-      'icon': FontAwesomeIcons.lungs,
-      'color': Colors.cyan,
-    },
-    {
-      'id': 'gastrointestinal',
-      'title': 'Gastrointestinal',
-      'icon': FontAwesomeIcons.disease,
-      'color': Colors.brown,
-    },
-    {
-      'id': 'endocrinology',
-      'title': 'Endocrinology',
-      'icon': FontAwesomeIcons.vial,
-      'color': Colors.teal,
-    },
-    {
-      'id': 'renal',
-      'title': 'Renal',
-      'icon': FontAwesomeIcons.droplet,
-      'color': Colors.lightBlue,
-    },
-    {
-      'id': 'ob_gyn',
-      'title': 'OB/GYN',
-      'icon': FontAwesomeIcons.personBreastfeeding,
-      'color': Colors.pinkAccent,
-    },
-    {
-      'id': 'dermatology',
-      'title': 'Dermatology',
-      'icon': FontAwesomeIcons.handDots,
-      'color': Colors.orangeAccent,
-    },
-    {
-      'id': 'ear_and_eye',
-      'title': 'Ear and Eye',
-      'icon': FontAwesomeIcons.eye,
-      'color': Colors.indigo,
-    },
-  ];
-
-  int get _totalMedicalQuizzes => _medicalSections.length;
 
   @override
   void initState() {
@@ -116,16 +44,11 @@ class _InterpreterQuizHubWebScreenState
       if (userId == null) return;
 
       final client = Supabase.instance.client;
-      final profileData =
-          await client
-              .from('users_profile')
-              .select('employment_type')
-              .eq('user_id', userId)
-              .maybeSingle();
-      final attemptsData = await client
+        final attemptsData = await client
           .from('quiz_attempts')
-          .select('quiz_type, medical_section')
-          .eq('user_id', userId);
+          .select('quiz_type')
+          .eq('user_id', userId)
+          .eq('quiz_type', 'general');
       final fluencyData = await client
           .from('voice_samples')
           .select('id')
@@ -134,28 +57,12 @@ class _InterpreterQuizHubWebScreenState
 
       if (!mounted) return;
 
-      final employmentType = profileData?['employment_type'] ?? 'volunteer';
-      bool hasGeneralAttempt = false;
-      final attemptedMedical = <String>{};
-      for (final attempt in (attemptsData as List)) {
-        final quizType = attempt['quiz_type']?.toString();
-        final section = attempt['medical_section']?.toString();
-        if (quizType == 'general') {
-          hasGeneralAttempt = true;
-        } else if (quizType == 'medical' && section != null) {
-          attemptedMedical.add(section);
-        }
-      }
+      final hasGeneralAttempt = (attemptsData as List).isNotEmpty;
 
-      final bool isExperienced = employmentType == 'paid';
       final hasAdvancedFluency =
           (fluencyData as List).length >= advancedFluencyQuestionCount;
       final bool allComplete =
-          isExperienced
-              ? (hasGeneralAttempt &&
-                  hasAdvancedFluency 
-                 )
-              : (hasGeneralAttempt && hasAdvancedFluency);
+          hasGeneralAttempt && hasAdvancedFluency;
 
       if (allComplete && mounted) {
         await client
@@ -178,17 +85,22 @@ class _InterpreterQuizHubWebScreenState
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) return;
 
-      final profileData =
-          await Supabase.instance.client
-              .from('users_profile')
-              .select('employment_type')
-              .eq('user_id', userId)
-              .maybeSingle();
+        final detailsData = await Supabase.instance.client
+          .from('interpreter_details')
+          .select('employment_type')
+          .eq('user_id', userId)
+          .maybeSingle();
+        final profileData = await Supabase.instance.client
+          .from('users_profile')
+          .select('employment_type')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-      final attemptsData = await Supabase.instance.client
+        final attemptsData = await Supabase.instance.client
           .from('quiz_attempts')
-          .select('quiz_type, medical_section')
-          .eq('user_id', userId);
+          .select('quiz_type')
+          .eq('user_id', userId)
+          .eq('quiz_type', 'general');
       final fluencyData = await Supabase.instance.client
           .from('voice_samples')
           .select('id')
@@ -196,21 +108,13 @@ class _InterpreterQuizHubWebScreenState
           .eq('sentence_type', advancedFluencySentenceType);
 
       if (mounted) {
-        final attemptedQuizzes = <String>{};
-        bool attemptedGeneral = false;
-        for (final attempt in (attemptsData as List)) {
-          final quizType = attempt['quiz_type']?.toString();
-          final section = attempt['medical_section']?.toString();
-          if (quizType == 'general') {
-            attemptedGeneral = true;
-          } else if (quizType == 'medical' && section != null) {
-            attemptedQuizzes.add(section);
-          }
-        }
+        final attemptedGeneral = (attemptsData as List).isNotEmpty;
 
         setState(() {
-          _employmentType = profileData?['employment_type'] ?? 'volunteer';
-          _attemptedMedicalQuizzes = attemptedQuizzes;
+            _employmentType =
+              detailsData?['employment_type'] ??
+              profileData?['employment_type'] ??
+              'volunteer';
           _hasAttemptedGeneralQuiz = attemptedGeneral;
           _hasCompletedAdvancedFluencyQuiz =
               (fluencyData as List).length >= advancedFluencyQuestionCount;
@@ -226,17 +130,8 @@ class _InterpreterQuizHubWebScreenState
   }
 
   Future<void> _checkAndNavigateIfComplete() async {
-    final bool isExperienced = _employmentType == 'paid';
-    bool allQuizzesAttempted;
-
-    if (isExperienced) {
-      allQuizzesAttempted =
-          _hasAttemptedGeneralQuiz &&
-          _hasCompletedAdvancedFluencyQuiz ;
-    } else {
-      allQuizzesAttempted =
-          _hasAttemptedGeneralQuiz && _hasCompletedAdvancedFluencyQuiz;
-    }
+    final bool allQuizzesAttempted =
+      _hasAttemptedGeneralQuiz && _hasCompletedAdvancedFluencyQuiz;
 
     if (allQuizzesAttempted) {
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -305,34 +200,18 @@ class _InterpreterQuizHubWebScreenState
   }
 
   String _getHeaderMessage(bool isExperienced) {
-    if (!isExperienced) {
-      if (!_hasAttemptedGeneralQuiz && !_hasCompletedAdvancedFluencyQuiz) {
-        return 'Complete the Interpreting Mock Test test first, then the general interpreter quiz to qualify.';
-      }
-      if (!_hasAttemptedGeneralQuiz) {
-        return 'Complete the general interpreter quiz to qualify.';
-      }
-      if (!_hasCompletedAdvancedFluencyQuiz) {
-        return 'Complete the Interpreting Mock Test to qualify.';
-      }
-      return 'You have completed all required quizzes!';
+    if (!_hasAttemptedGeneralQuiz && !_hasCompletedAdvancedFluencyQuiz) {
+      return 'Complete the Interpreting Mock Test first, then the general interpreter quiz to qualify.';
     }
-
-    final int remainingMedical =
-        _totalMedicalQuizzes - _attemptedMedicalQuizzes.length;
-
-    if (!_hasAttemptedGeneralQuiz &&
-        !_hasCompletedAdvancedFluencyQuiz &&
-        remainingMedical == _totalMedicalQuizzes) {
-      return 'Complete the Interpreting Mock Test first, then the general quiz, then all 10 core medical specialization modules to unlock your full profile.';
-    } else if (!_hasAttemptedGeneralQuiz) {
-      return 'Complete the general quiz and $remainingMedical more medical quiz${remainingMedical > 1 ? 'zes' : ''} to qualify.';
-    } else if (!_hasCompletedAdvancedFluencyQuiz) {
-      return 'Great progress. Complete the Interpreting Mock Test  to qualify.';
-    } else if (remainingMedical > 0) {
-      return 'Great job! Complete $remainingMedical more medical specialization quiz${remainingMedical > 1 ? 'zes' : ''} to qualify.';
+    if (!_hasAttemptedGeneralQuiz) {
+      return 'Complete the general interpreter quiz to qualify.';
     }
-    return 'You have completed all required quizzes!';
+    if (!_hasCompletedAdvancedFluencyQuiz) {
+      return 'Complete the Interpreting Mock Test to qualify.';
+    }
+    return isExperienced
+        ? 'You have completed all required quizzes! Medical badges are available in the Badges tab.'
+        : 'You have completed all required quizzes!';
   }
 
   @override
@@ -367,8 +246,7 @@ class _InterpreterQuizHubWebScreenState
               // Progress
               _buildProgressCard(isExperienced),
               const SizedBox(height: 16),
-              _buildLearningOfferCard(),
-              const SizedBox(height: 32),
+            
 
               // Advanced speaking must be completed first.
               if (!_hasCompletedAdvancedFluencyQuiz) ...[
@@ -408,10 +286,8 @@ class _InterpreterQuizHubWebScreenState
                 ),
               ],
 
-              // Medical Quizzes moved to Badges tab in the dashboard
 
-              const SizedBox(height: 24),
-              _buildInfoNote(isExperienced),
+        
             ],
           ),
         ),
@@ -580,71 +456,71 @@ class _InterpreterQuizHubWebScreenState
     );
   }
 
-  Widget _buildLearningOfferCard() {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.school_rounded,
-                  color: Color(0xFF1D4ED8),
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Keep growing as an interpreter',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Sharpen your medical and professional interpreting skills with guided courses at InterBridge Ling Academy.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: Color(0xFF475569),
-            ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: _openInterbridgeLingAcademy,
-            icon: const Icon(Icons.open_in_new, size: 18),
-            label: const Text('Start learning at interbridge-ling.com'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildLearningOfferCard() {
+  //   return Container(
+  //     padding: const EdgeInsets.all(22),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(16),
+  //       border: Border.all(color: const Color(0xFFE2E8F0)),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Container(
+  //               width: 48,
+  //               height: 48,
+  //               decoration: BoxDecoration(
+  //                 color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+  //                 borderRadius: BorderRadius.circular(12),
+  //               ),
+  //               child: const Icon(
+  //                 Icons.school_rounded,
+  //                 color: Color(0xFF1D4ED8),
+  //               ),
+  //             ),
+  //             const SizedBox(width: 12),
+  //             const Expanded(
+  //               child: Text(
+  //                 'Keep growing as an interpreter',
+  //                 style: TextStyle(
+  //                   fontSize: 20,
+  //                   fontWeight: FontWeight.w700,
+  //                   color: Color(0xFF0F172A),
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         const SizedBox(height: 10),
+  //         const Text(
+  //           'Sharpen your medical and professional interpreting skills with guided courses at InterBridge Ling Academy.',
+  //           style: TextStyle(
+  //             fontSize: 14,
+  //             height: 1.5,
+  //             color: Color(0xFF475569),
+  //           ),
+  //         ),
+  //         const SizedBox(height: 14),
+  //         FilledButton.icon(
+  //           onPressed: _openInterbridgeLingAcademy,
+  //           icon: const Icon(Icons.open_in_new, size: 18),
+  //           label: const Text('Start learning at interbridge-ling.com'),
+  //           style: FilledButton.styleFrom(
+  //             backgroundColor: const Color(0xFF0F172A),
+  //             foregroundColor: Colors.white,
+  //             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+  //             shape: RoundedRectangleBorder(
+  //               borderRadius: BorderRadius.circular(10),
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildSectionTitle(String title, String subtitle) {
     return Column(
@@ -793,34 +669,4 @@ class _InterpreterQuizHubWebScreenState
       ),
     );
   }
-
-  Widget _buildInfoNote(bool isExperienced) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F9FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFBAE6FD)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.info_outline, color: Color(0xFF0EA5E9), size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              isExperienced
-                  ? 'After completing all required quizzes, your account will be reviewed by an administrator before you can start accepting jobs.'
-                  : 'After completing the general quiz and advanced speaking test, your account will be reviewed by an administrator before you can start accepting jobs.',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF0C4A6E),
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+    }

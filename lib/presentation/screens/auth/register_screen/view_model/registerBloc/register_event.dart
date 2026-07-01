@@ -155,7 +155,6 @@ class RequesterRegisterSubmitted extends RegisterEvent {
   @override
   List<Object?> get props => [email, password, username];
 }
-
 class OrganizationRegisterSubmitted extends RegisterEvent {
   final String email;
   final String password;
@@ -164,6 +163,8 @@ class OrganizationRegisterSubmitted extends RegisterEvent {
   final String organizationEmail;
   final String? organizationPhone;
   final String? organizationAddress;
+  final String registrationCode;
+  final String billingMethod; // <--- ADDED THIS
 
   OrganizationRegisterSubmitted({
     required this.email,
@@ -173,6 +174,8 @@ class OrganizationRegisterSubmitted extends RegisterEvent {
     required this.organizationEmail,
     this.organizationPhone,
     this.organizationAddress,
+    required this.registrationCode,
+    this.billingMethod = 'prepaid', // <--- ADDED THIS (with default)
   });
 
   @override
@@ -184,6 +187,8 @@ class OrganizationRegisterSubmitted extends RegisterEvent {
     organizationEmail,
     organizationPhone,
     organizationAddress,
+    registrationCode,
+    billingMethod, // <--- ADDED THIS
   ];
 }
 

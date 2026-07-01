@@ -6,8 +6,13 @@ import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/data/services/supabase_service.dart';
-import 'package:interbridge/presentation/resources/color_manager.dart';
+import 'package:interbridge/presentation/resources/routes_manager.dart'; // Needed for Session Memory
+import 'package:interbridge/presentation/screens/auth/web/auth_web_palette.dart';
+import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/data/services/compliance_storage.dart';
+import 'package:interbridge/data/services/compliance_storage.dart';
 
 class InterpreterLoginComplianceScreen extends StatefulWidget {
   const InterpreterLoginComplianceScreen({super.key});
@@ -32,6 +37,7 @@ class _InterpreterLoginComplianceScreenState
   bool _cameraReady = false;
   bool _cameraStarting = false;
   String? _cameraError;
+  
   bool _instructionCheck1 = false;
   bool _instructionCheck2 = false;
   bool _instructionCheck3 = false;
@@ -68,7 +74,7 @@ class _InterpreterLoginComplianceScreenState
           'height': {'ideal': 1080},
           'frameRate': {'ideal': 30},
         },
-        'audio': false,
+        'audio': true, 
       });
 
       _cameraStream = stream;
@@ -77,12 +83,12 @@ class _InterpreterLoginComplianceScreenState
           html.VideoElement()
             ..srcObject = stream
             ..autoplay = true
-            ..muted = true
+            ..muted = true 
             ..setAttribute('playsinline', 'true')
             ..style.width = '100%'
             ..style.height = '100%'
             ..style.objectFit = 'cover'
-            ..style.borderRadius = '12px'
+            ..style.borderRadius = '16px'
             ..style.transform = 'scaleX(-1)';
 
       // ignore: undefined_prefixed_name
@@ -98,11 +104,11 @@ class _InterpreterLoginComplianceScreenState
         _cameraReady = true;
       });
     } catch (e) {
-      log('InterpreterLoginComplianceScreen: web camera start failed: $e');
+      log('InterpreterLoginComplianceScreen: web camera/mic start failed: $e');
       if (!mounted) return;
       setState(() {
         _cameraError =
-            'Could not access your camera. Please allow camera access and refresh this page.';
+            'Could not access your camera or microphone. Please click the lock icon in your browser URL bar, allow Camera & Microphone, and refresh the page.';
       });
     } finally {
       if (mounted) {
@@ -124,85 +130,37 @@ class _InterpreterLoginComplianceScreenState
   }
 
   Future<void> _capturePhoto() async {
-    if (!_cameraReady || _videoElement == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Camera is not ready yet. Please wait a moment.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    if (!_cameraReady || _videoElement == null) return;
 
     try {
-      final int width =
-          _videoElement!.videoWidth > 0 ? _videoElement!.videoWidth : 1280;
-      final int height =
-          _videoElement!.videoHeight > 0 ? _videoElement!.videoHeight : 720;
+      final int width = _videoElement!.videoWidth > 0 ? _videoElement!.videoWidth : 1280;
+      final int height = _videoElement!.videoHeight > 0 ? _videoElement!.videoHeight : 720;
 
-      final canvas = html.CanvasElement(width: width, height: height)
-        ..style.display = 'none';
+      final canvas = html.CanvasElement(width: width, height: height)..style.display = 'none';
       final context = canvas.context2D;
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = 'high';
-      context.drawImageScaled(
-        _videoElement!,
-        0,
-        0,
-        width.toDouble(),
-        height.toDouble(),
-      );
+      context.drawImageScaled(_videoElement!, 0, 0, width.toDouble(), height.toDouble());
 
       final dataUrl = canvas.toDataUrl('image/jpeg', 0.98);
       final commaIndex = dataUrl.indexOf(',');
-      if (commaIndex == -1) {
-        throw Exception('Failed to capture camera frame.');
-      }
+      if (commaIndex == -1) throw Exception('Failed to capture camera frame.');
 
       final base64Payload = dataUrl.substring(commaIndex + 1);
       final bytes = base64Decode(base64Payload);
 
       if (!mounted) return;
-      setState(() {
-        _photoBytes = bytes;
-      });
+      setState(() => _photoBytes = bytes);
     } catch (e) {
       log('InterpreterLoginComplianceScreen: web capture failed: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not capture selfie from camera. Please try again.',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
   }
 
   Future<void> _submitPhoto() async {
-    if (!_instructionCheck1 || !_instructionCheck2 || !_instructionCheck3 || !_instructionCheck4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please confirm all compliance checks before submitting.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    if (_photoBytes == null || _photoBytes!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('A compliance photo is required before you continue.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    if (!_instructionCheck1 || !_instructionCheck2 || !_instructionCheck3 || !_instructionCheck4) return;
+    if (_photoBytes == null || _photoBytes!.isEmpty) return;
 
-    setState(() {
-      _isUploading = true;
-    });
+    setState(() => _isUploading = true);
 
     try {
       await _supabaseService.uploadInterpreterLoginCompliancePhoto(
@@ -210,339 +168,330 @@ class _InterpreterLoginComplianceScreenState
         fileName: 'login_compliance.jpg',
       );
 
+      // --- CRITICAL FIX: MARK SESSION AS COMPLIANT SECURELY ---
+      await ComplianceStorage.markCompliancePassed();
+
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        Routes.interpreterPortalDashboardRoute, 
+        (route) => false,
+      );
+      
     } catch (e) {
       log('InterpreterLoginComplianceScreen: web upload failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to upload compliance photo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
+      setState(() => _isUploading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final bool canCapture = !_isUploading && _cameraReady && !_cameraStarting;
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final double screenHeight = MediaQuery.of(context).size.height;
-    final bool compactHeight = screenHeight <= 850;
-    final double previewMaxWidth =
-        compactHeight
-            ? (screenWidth >= 1200 ? 760 : 620)
-            : (screenWidth >= 1200 ? 920 : 760);
-    const double previewAspectRatio = 16 / 9;
+    final bool allChecked = _instructionCheck1 && _instructionCheck2 && _instructionCheck3 && _instructionCheck4;
+    final bool canSubmit = allChecked && _photoBytes != null && !_isUploading;
 
-    return WillPopScope(
-      onWillPop: () async => false,
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: const Text('Pre-Session Compliance Check'),
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: compactHeight ? 14 : 20,
-            ),
+    return AuthWebWrapper(
+      maxWidth: 900, 
+      title: 'Pre-Shift System Check',
+      subtitle: 'For security and compliance, verify your hardware and environment before entering the dashboard.',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'before starting work, confirm the required setup:',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700 ,color: ColorManager.primary),
-                ),
-                const SizedBox(height: 16),
-                 _InstructionItem(
-                  icon: Icons.lock_outline,
-                  text: 'Secure & Private Location: Ensure zero foot traffic and absolute privacy for HIPAA compliance.',
-                   value: _instructionCheck1, onChanged: (bool? p1) { 
-                      setState(() {
-                        _instructionCheck1 = p1 ?? false;
-                      });
-                    },
-
-                ),
-                 _InstructionItem(
-                  icon: Icons.wallpaper_outlined,
-                  text: 'Professional Backdrop: A solid neutral background (White or Light Grey) is required to minimize distractions',
-                   value: _instructionCheck2, onChanged: (bool? p1) { 
-                      setState(() {
-                        _instructionCheck2 = p1 ?? false;
-                      });
-                    },
-                ),
-                 _InstructionItem(
-                  icon: Icons.checkroom_outlined,
-                  text: 'Corporate Attire Please ensure you are wearing the approved InterBridge navy blue uniform.Polo Shirt or Formal Shirt ',
-                   value: _instructionCheck3, onChanged: (bool? p1) { 
-                      setState(() {
-                        _instructionCheck3 = p1 ?? false;
-                      });
-                    },
-                ),
-                 _InstructionItem(
-
-                  icon: Icons.headphones_outlined,
-                  text: 'Technical Readiness: Noise-canceling headset connected and high-speed internet verified.',
-                   value: _instructionCheck4, onChanged: (bool? p1) { 
-                      setState(() {
-                        _instructionCheck4 = p1 ?? false;
-                      });
-                    },
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.blue.shade200),
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.blue.shade50,
-                  ),
-                  child: const Text(
-                    'A compliance photo is required on every interpreter login.',
-                    style: TextStyle(fontSize: 13.5),
-                  ),
-                ),
-                SizedBox(height: compactHeight ? 14 : 20),
                 if (_cameraError != null)
                   Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade200),
+                      color: const Color(0xFFFEF2F2),
+                      border: Border.all(color: const Color(0xFFFECACA)),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      _cameraError!,
-                      style: TextStyle(color: Colors.red.shade700),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: Color(0xFFEF4444)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _cameraError!,
+                            style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 14),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                
-                // 1. The Main Display Area (Toggles between Live Camera and Captured Photo)
-                Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: previewMaxWidth),
-                    child: AspectRatio(
-                      aspectRatio: previewAspectRatio,
-                      child: Container(
-                        clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade300),
-                          color: Colors.black,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
+
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Container(
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AuthWebPalette.border, width: 2),
+                      color: const Color(0xFF0F172A),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
                         ),
-                        child: _photoBytes != null
-                            // If we have a photo, show the captured image
-                            ? Image.memory(
-                                _photoBytes!,
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.high,
-                                gaplessPlayback: true,
-                              )
-                            // If we don't have a photo, show the live camera feed
-                            : Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: _cameraStarting
-                                        ? const Center(
-                                            child: CircularProgressIndicator(),
-                                          )
-                                        : (_cameraReady && _videoElement != null)
-                                            ? HtmlElementView(viewType: _webcamViewId)
-                                            : const Center(
-                                                child: Text(
-                                                  'Camera preview unavailable',
-                                                  style: TextStyle(
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                              ),
-                                  ),
-                                  Positioned(
-                                    top: 10,
-                                    left: 10,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.55),
-                                        borderRadius: BorderRadius.circular(999),
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.fiber_manual_record,
-                                            color: Colors.redAccent,
-                                            size: 12,
+                      ],
+                    ),
+                    child: _photoBytes != null
+                        ? Image.memory(
+                            _photoBytes!,
+                            fit: BoxFit.cover,
+                            filterQuality: FilterQuality.high,
+                            gaplessPlayback: true,
+                          )
+                        : Stack(
+                            children: [
+                              Positioned.fill(
+                                child: _cameraStarting
+                                    ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                                    : (_cameraReady && _videoElement != null)
+                                        ? HtmlElementView(viewType: _webcamViewId)
+                                        : const Center(
+                                            child: Text('Camera preview unavailable', style: TextStyle(color: Colors.white70)),
                                           ),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'Live camera preview',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                              ),
+                              Positioned(
+                                top: 16,
+                                left: 16,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(20),
                                   ),
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      color: Colors.black.withValues(alpha: 0.45),
-                                      child: const Text(
-                                        'Center your face and shoulders in this frame.',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w500,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: _cameraReady ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                          shape: BoxShape.circle,
                                         ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _cameraReady ? 'Mic & Camera Active' : 'Connecting...',
+                                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                      ),
-                    ),
+                            ],
+                          ),
                   ),
                 ),
                 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                // 2. The Centered, Fixed-Width Action Button
-                Center(
-                  child: SizedBox(
-                    height: 48,
-                    width: 220, // Prevents the ugly web stretch
-                    child: ElevatedButton.icon(
-                      // If no photo: Capture it. If photo exists: clear it to retake.
-                      onPressed: _isUploading 
-                          ? null 
-                          : (_photoBytes == null 
-                              ? (canCapture ? _capturePhoto : null) 
-                              : () => setState(() => _photoBytes = null)),
-                      icon: Icon(_photoBytes == null ? Icons.camera_alt : Icons.refresh),
-                      label: Text(_photoBytes == null ? 'Take Photo' : 'Retake Photo'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _photoBytes == null ? Colors.blue.shade600 : Colors.grey.shade200,
-                        foregroundColor: _photoBytes == null ? Colors.white : Colors.black87,
-                        elevation: _photoBytes == null ? 2 : 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24), // Modern pill shape
-                        ),
+                SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _isUploading 
+                        ? null 
+                        : (_photoBytes == null 
+                            ? (canCapture ? _capturePhoto : null) 
+                            : () => setState(() => _photoBytes = null)),
+                    icon: Icon(_photoBytes == null ? Icons.camera_alt_rounded : Icons.refresh_rounded),
+                    label: Text(_photoBytes == null ? 'Capture Compliance Photo' : 'Retake Photo'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _photoBytes == null ? AuthWebPalette.primary : Colors.white,
+                      foregroundColor: _photoBytes == null ? Colors.white : AuthWebPalette.textPrimary,
+                      elevation: 0,
+                      side: BorderSide(
+                        color: _photoBytes == null ? Colors.transparent : AuthWebPalette.border,
                       ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                  ),
-                ),
-
-                SizedBox(height: compactHeight ? 14 : 32),
-
-              // 3. The Submit Button
-                Center(
-                  child: SizedBox(
-                    height: 48,
-                    width: 280, // A bit wider than the capture button to show it's the final step
-                    child: ElevatedButton(
-                      onPressed:
-                          (_isUploading || _photoBytes == null)
-                              ? null
-                              : _submitPhoto,
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24), // Matches the pill shape!
-                        ),
-                      ),
-                      child:
-                          _isUploading
-                              ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                              : const Text('Submit and continue', style: TextStyle(fontSize: 16)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                // 4. The Sign Out Button
-                Center(
-                  child: TextButton(
-                    onPressed:
-                        _isUploading
-                            ? null
-                            : () => Navigator.of(context).pop(false),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey.shade600, // Makes it look less prominent than submit
-                    ),
-                    child: const Text('Sign out'),
                   ),
                 ),
               ],
             ),
           ),
-        ),
+          
+          const SizedBox(width: 48),
+
+          Expanded(
+            flex: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Shift Requirements',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AuthWebPalette.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                
+                _PremiumCheckItem(
+                  icon: Icons.lock_outline,
+                  title: 'Secure & Private Location',
+                  subtitle: 'Zero foot traffic and absolute privacy.',
+                  value: _instructionCheck1,
+                  onTap: () => setState(() => _instructionCheck1 = !_instructionCheck1),
+                ),
+                const SizedBox(height: 12),
+                _PremiumCheckItem(
+                  icon: Icons.wallpaper_outlined,
+                  title: 'Professional Backdrop',
+                  subtitle: 'Solid neutral background (White or Light Grey).',
+                  value: _instructionCheck2,
+                  onTap: () => setState(() => _instructionCheck2 = !_instructionCheck2),
+                ),
+                const SizedBox(height: 12),
+                _PremiumCheckItem(
+                  icon: Icons.checkroom_outlined,
+                  title: 'Corporate Attire',
+                  subtitle: 'InterBridge navy blue uniform or formal wear.',
+                  value: _instructionCheck3,
+                  onTap: () => setState(() => _instructionCheck3 = !_instructionCheck3),
+                ),
+                const SizedBox(height: 12),
+                _PremiumCheckItem(
+                  icon: Icons.headphones_outlined,
+                  title: 'Technical Readiness',
+                  subtitle: 'Headset connected, internet verified.',
+                  value: _instructionCheck4,
+                  onTap: () => setState(() => _instructionCheck4 = !_instructionCheck4),
+                ),
+
+                const SizedBox(height: 32),
+
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: canSubmit ? _submitPhoto : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AuthWebPalette.primary,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      disabledForegroundColor: const Color(0xFF94A3B8),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isUploading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Enter Dashboard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton(
+                    onPressed: _isUploading ? null : () async {
+                      setState(() => _isUploading = true);
+                      try {
+                        await ComplianceStorage.clearCompliance(); // REMOVE FLAG ON LOGOUT!
+                        await Supabase.instance.client.auth.signOut();
+                      } catch (_) {}
+                      if (mounted) {
+                        Navigator.of(context).pushNamedAndRemoveUntil(
+                          Routes.splashRoute, 
+                          (route) => false,
+                        );
+                      }
+                    },
+                    style: TextButton.styleFrom(foregroundColor: AuthWebPalette.textSecondary),
+                    child: const Text('Cancel & Sign Out'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _InstructionItem extends StatelessWidget {
-  const _InstructionItem({required this.icon, required this.text, required this.value,required this.onChanged});
-
+class _PremiumCheckItem extends StatelessWidget {
   final IconData icon;
-  final bool value ;
-  final void Function(bool?) onChanged;
-  final String text;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final VoidCallback onTap;
+
+  const _PremiumCheckItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-            Checkbox(value: value, onChanged: onChanged,activeColor: Colors.blue.shade600,side: const BorderSide(color: Colors.black),),
-         
-          const SizedBox(width: 10),
-          Expanded(child: Padding(
-            padding: const EdgeInsets.only(top: 10.0),
-            child: Text(text, style: const TextStyle(fontSize: 15,fontWeight: FontWeight.bold)),
-          )),
-
-
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: value ? AuthWebPalette.primary.withValues(alpha: 0.05) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: value ? AuthWebPalette.primary : AuthWebPalette.border,
+            width: value ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: value ? AuthWebPalette.primary : const Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: value ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: value ? AuthWebPalette.primary : AuthWebPalette.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 13, color: AuthWebPalette.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              value ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              color: value ? AuthWebPalette.primary : const Color(0xFFCBD5E1),
+              size: 24,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
 import 'package:interbridge/presentation/screens/auth/web/auth_web_wrapper.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:interbridge/presentation/widgets/custom_snackbar.dart';
 import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,6 +28,8 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _playerEnglish;
   late final AudioPlayer _playerNative;
+  StreamSubscription? _playerEnComplSub;
+  StreamSubscription? _playerNatComplSub;
 
   bool _permissionDenied = false;
 
@@ -56,10 +59,10 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
     _playerEnglish = AudioPlayer();
     _playerNative = AudioPlayer();
 
-    _playerEnglish.onPlayerComplete.listen((_) {
+    _playerEnComplSub = _playerEnglish.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlayingEn = false);
     });
-    _playerNative.onPlayerComplete.listen((_) {
+    _playerNatComplSub = _playerNative.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlayingNat = false);
     });
 
@@ -83,6 +86,8 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
   void dispose() {
     _timerEn?.cancel();
     _timerNat?.cancel();
+    _playerEnComplSub?.cancel();
+    _playerNatComplSub?.cancel();
     _audioRecorder.dispose();
     _playerEnglish.dispose();
     _playerNative.dispose();
@@ -246,13 +251,17 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       if (_audioBytesEn != null) {
         await Supabase.instance.client.storage
             .from('voice_samples')
-            .uploadBinary(englishPath, _audioBytesEn!);
-        final url = Supabase.instance.client.storage
-            .from('voice_samples')
-            .getPublicUrl(englishPath);
+            .uploadBinary(
+              englishPath,
+              _audioBytesEn!,
+              fileOptions: const FileOptions(
+                upsert: true,
+                contentType: 'audio/webm',
+              ),
+            );
         await Supabase.instance.client.from('voice_samples').insert({
           'user_id': userId,
-          'url': url,
+          'storage_path': englishPath,
           'prompt': 'English introduction',
           'sentence_type': 'english',
         });
@@ -264,13 +273,17 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
       if (_audioBytesNat != null) {
         await Supabase.instance.client.storage
             .from('voice_samples')
-            .uploadBinary(nativePath, _audioBytesNat!);
-        final url = Supabase.instance.client.storage
-            .from('voice_samples')
-            .getPublicUrl(nativePath);
+            .uploadBinary(
+              nativePath,
+              _audioBytesNat!,
+              fileOptions: const FileOptions(
+                upsert: true,
+                contentType: 'audio/webm',
+              ),
+            );
         await Supabase.instance.client.from('voice_samples').insert({
           'user_id': userId,
-          'url': url,
+          'storage_path': nativePath,
           'prompt': 'Native language introduction',
           'sentence_type': 'native',
         });
@@ -319,11 +332,10 @@ class _VoiceSampleWebScreenState extends State<VoiceSampleWebScreen> {
         {};
     final fullScreenResume = args['authContinuationFullScreen'] == true;
 
-    return AuthWebWrapper(
-      fullScreen: fullScreenResume,
-      title: 'Voice check',
-      subtitle:
-          'Record two short voice samples — one in English and one in your native language',
+    return InterpreterOnboardingWrapper(
+      currentStepIndex: 3,
+      stepTitle: "Record Voice Samples",
+      stepSubtitle: "Provide an audio sample to verify your audio quality and tone",
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -1,5 +1,6 @@
 // Send Invoice Email — delivers invoice link to organization billing contact
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +22,17 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
+    // This function is called internally by generate-invoice (service role) OR by admins.
+    // Require either a valid JWT or the internal INVOICE_CRON_SECRET header.
+    const internalSecret = Deno.env.get("INVOICE_CRON_SECRET") ?? "";
+    const providedSecret = req.headers.get("x-cron-secret") ?? "";
+    const authHeader = req.headers.get("authorization") ?? "";
+
+    // If no internal secret matches AND no bearer token, reject
+    if (!(internalSecret && providedSecret === internalSecret) && !authHeader.startsWith("Bearer ")) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
     const body = await req.json().catch(() => null);
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
@@ -65,7 +77,7 @@ Deno.serve(async (req) => {
       <div class="period">${period ?? "Monthly"}</div>
       ${
         invoice_url
-          ? `<a href="${invoice_url}" class="btn">View Invoice</a>`
+          ? `<a href="${invoice_url}" class="btn">Download Invoice (PDF)</a>`
           : ""
       }
       <p style="color:#64748b;font-size:14px;text-align:center">This amount has been deducted from your prepaid wallet. If you use postpaid billing, please remit payment within 30 days.</p>
@@ -109,9 +121,6 @@ Deno.serve(async (req) => {
 
       // Update invoice status to sent
       if (invoice_id) {
-        const { createClient } = await import(
-          "https://esm.sh/@supabase/supabase-js@2"
-        );
         const supabase = createClient(
           Deno.env.get("SUPABASE_URL") ?? "",
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""

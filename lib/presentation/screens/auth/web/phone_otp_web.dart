@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -301,10 +302,10 @@ void initState() {
         {};
     final fullScreenResume = routeArgs['authContinuationFullScreen'] == true;
 
-    return AuthWebWrapper(
-      fullScreen: fullScreenResume,
-      title: 'Your phone number',
-      subtitle: 'Please add your phone number.',
+    return InterpreterOnboardingWrapper(
+      currentStepIndex: 4,
+      stepTitle: "Your phone number",
+      stepSubtitle: "Please add your phone number.",
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

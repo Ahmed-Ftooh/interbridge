@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:interbridge/admin/services/admin_service.dart';
@@ -1055,13 +1056,14 @@ class _VoiceSampleTile extends StatefulWidget {
 
 class _VoiceSampleTileState extends State<_VoiceSampleTile> {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription? _playerComplSub;
   bool _isPlaying = false;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer.onPlayerComplete.listen((_) {
+    _playerComplSub = _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted) {
         setState(() => _isPlaying = false);
       }
@@ -1070,6 +1072,7 @@ class _VoiceSampleTileState extends State<_VoiceSampleTile> {
 
   @override
   void dispose() {
+    _playerComplSub?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }

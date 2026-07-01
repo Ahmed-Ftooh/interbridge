@@ -58,7 +58,9 @@ class PendingRegistrationService {
           },
         );
     try {
+      
       return await _activeFuture!;
+      
     } finally {
       _activeFuture = null;
     }
@@ -111,7 +113,21 @@ class PendingRegistrationService {
         lastError =
             'An organization with that email is already registered. '
             'Please register again with a different organization email.';
+        
         await _preferences.clearPendingRegistration();
+        
+      } else {
+        // --- ADD THIS ELSE BLOCK ---
+        // Catch all other errors (like RPC signature mismatches) 
+        // so SplashView can display them to the user.
+        lastError = 'Setup failed: ${e.toString().replaceAll('Exception: ', '')}';
+        
+        // -------------------------------------------------------------
+        // THE FIX: You MUST clear the pending registration here too!
+        // This stops the app from getting trapped in an infinite loop
+        // of upgrading the user's role every time they open the app.
+        // -------------------------------------------------------------
+        await _preferences.clearPendingRegistration(); 
       }
       return false;
     }

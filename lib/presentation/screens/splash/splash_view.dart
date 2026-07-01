@@ -48,17 +48,16 @@ class _SplashViewState extends State<SplashView> {
   }
 
   // ─────────────────── Auth Gate Logic ───────────────────
-
-  Future<void> _resolveAuth() async {
-    // Brief settle time so that async deep-link / PKCE operations that
-    // started during AppInitializer.initialize() have a chance to complete.
+Future<void> _resolveAuth() async {
+    // Brief settle time
     await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
 
     // ── 1. Already have a valid session? ──
     final session = Supabase.instance.client.auth.currentSession;
     final user = session?.user;
-    if (user != null && user.emailConfirmedAt != null) {
+    // FIX: Removed the buggy 'emailConfirmedAt != null' check!
+    if (user != null) {
       log('SplashView: User already authenticated: ${user.email}');
       await _finalizeAndNavigate(user.id);
       return;
@@ -71,10 +70,7 @@ class _SplashViewState extends State<SplashView> {
       if (!mounted) return;
       setState(() {}); // trigger rebuild to show "Verifying…" state
 
-      // Subscribe to auth state changes.
-      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((
-        event,
-      ) {
+      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
         if (event.event == AuthChangeEvent.signedIn && event.session != null) {
           log('SplashView: signedIn event received from deep link');
           _authSub?.cancel();
@@ -83,9 +79,9 @@ class _SplashViewState extends State<SplashView> {
         }
       });
 
-      // Re-check immediately in case the event fired between our first check
-      // and the subscription.
+      // Re-check immediately
       final recheck = Supabase.instance.client.auth.currentSession;
+      // FIX: Removed the buggy 'emailConfirmedAt != null' check!
       if (recheck != null) {
         _authSub?.cancel();
         await _finalizeAndNavigate(recheck.user.id);
@@ -106,15 +102,12 @@ class _SplashViewState extends State<SplashView> {
     }
 
     // ── 3. Normal cold start (no deep link) ──
-    // Show the splash logo for the standard delay then check prefs.
     await Future.delayed(const Duration(seconds: AppConstants.splashDelay));
     if (!mounted) return;
     _normalSplashFlow();
   }
 
-  // ─────────────────── Navigation helpers ───────────────────
-
-  /// Finalize pending registration and then navigate based on role.
+  // ────// ─────────────────── Navigation helpers ───────────────────
   Future<void> _finalizeAndNavigate(String userId) async {
     if (_navigated) return;
     AppInitializer.markInitialAuthHandled();
@@ -126,24 +119,31 @@ class _SplashViewState extends State<SplashView> {
       // Surface org-creation errors so the user knows what went wrong.
       if (!success) {
         final regError = PendingRegistrationService().lastError;
-        if (regError != null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(regError),
-              backgroundColor: Colors.red[700],
-              duration: const Duration(seconds: 6),
-            ),
-          );
+        
+        // ONLY stop navigation if there is an actual error message to show.
+        // If regError is null, it just means there was nothing to finalize!
+        if (regError != null && regError.isNotEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(regError),
+                backgroundColor: Colors.red[700],
+                duration: const Duration(seconds: 6),
+              ),
+            );
+          }
+          return; // Stop navigation ONLY so the user can read the error
         }
       }
     } catch (e) {
       log('SplashView: Error finalizing pending registration: $e');
+      // Do NOT put a 'return;' here. If there is a quick network timeout, 
+      // returning here will freeze the splash screen forever. Let it proceed!
     }
+    
     if (!mounted) return;
 
     // On web, always hand off to LoginViewWeb for role + onboarding routing.
-    // This avoids diverging logic where splash may send interpreters directly
-    // to dashboard before onboarding checks run.
     if (kIsWeb) {
       _navigateOnce(() {
         Navigator.pushReplacementNamed(context, _loginRouteForPortal());
@@ -228,7 +228,7 @@ class _SplashViewState extends State<SplashView> {
       final profile = await _supabaseService.getUserProfile(userId);
       log('SplashView: Profile found: role=${profile?.role}');
       if (!mounted) return;
-
+        
       if (profile?.role == 'admin' || profile?.role == 'superadmin') {
         log('SplashView: Navigating to admin portal dashboard');
         _navigateOnce(() {
@@ -253,7 +253,9 @@ class _SplashViewState extends State<SplashView> {
             Routes.interpreterPortalDashboardRoute,
           );
         });
-      } else {
+        
+      
+      }else {
         log('SplashView: Navigating to main route');
         _navigateOnce(() {
           Navigator.pushReplacementNamed(context, Routes.mainRoute);

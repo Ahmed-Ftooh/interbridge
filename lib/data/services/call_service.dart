@@ -327,8 +327,7 @@ class CallService {
         final experience = item['call_experience'] as String;
         callExperience[experience] = (callExperience[experience] ?? 0) + 1;
       }
-
-      return {
+return {
         'total_feedback': response.length,
         'average_rating': averageRating,
         'connection_quality_distribution': connectionQuality,
@@ -351,4 +350,36 @@ class CallService {
     if (uid == null) throw Exception('Not authenticated');
     return uid;
   }
-}
+
+  // 👇 --- PASTE THE NEW FUNCTION HERE --- 👇
+
+  /// Validates if an organization can make a call based on their billing type
+  Future<bool> canOrganizationMakeCall(String organizationId) async {
+    try {
+      final response = await _supabase
+          .from('organizations')
+          .select('wallet_balance, billing_method, is_active')
+          .eq('id', organizationId)
+          .single();
+
+      if (response['is_active'] != true) return false;
+
+      final billingMethod = response['billing_method'] as String? ?? 'prepaid';
+      final walletBalance = (response['wallet_balance'] as num?) ?? 0;
+
+      if (billingMethod == 'postpaid') {
+        // Postpaid users can always make calls (balance represents amount owed when negative)
+        return true;
+      } else {
+        // Prepaid users must have a balance strictly greater than 0
+        return walletBalance > 0;
+      }
+    } catch (e) {
+      log('Error checking organization balance: $e');
+      return false;
+    }
+  }
+  
+  // 👆 --- PASTE THE NEW FUNCTION HERE --- 👆
+
+} // <-- THIS IS THE VERY LAST BRACKET OF THE FILE

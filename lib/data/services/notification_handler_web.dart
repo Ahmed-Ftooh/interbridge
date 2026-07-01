@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'dart:developer';
 
 /// Web-specific notification handler - CallKit not available on web
 /// Web will use browser notifications and in-app UI for incoming calls
-void initializeCallKitListeners({
+StreamSubscription? initializeCallKitListeners({
   required void Function(String requestId, String callType) onCallAccepted,
   required void Function() onCallDeclined,
   required void Function() onCallEnded,
@@ -12,4 +13,5 @@ void initializeCallKitListeners({
   // Incoming calls will be handled via Supabase realtime subscriptions
   // and shown as in-app dialogs/notifications
   log('Web platform: CallKit not available, using browser notifications');
+  return null;
 }

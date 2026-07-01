@@ -1047,11 +1047,11 @@ class _QuizWebScreenState extends State<QuizWebScreen>
                 ),
                 const SizedBox(height: 14),
                 ...[
+                  'please make sure you are in a quiet place in a private room',
                   'Your session will be video recorded',
                   'Switching tabs will be detected and logged',
                   'Copy, paste, and right-click are disabled',
                   'Screenshot attempts will be flagged',
-                  'Questions and options are randomized',
                   'You need 85% to pass',
                 ].map(
                   (rule) => Padding(

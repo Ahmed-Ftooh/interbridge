@@ -92,6 +92,8 @@ class RegisterBloc extends Bloc<RegisterEvent, RegisterState> {
         'organizationEmail': event.organizationEmail,
         'organizationPhone': event.organizationPhone,
         'organizationAddress': event.organizationAddress,
+        'registrationCode': event.registrationCode,
+        'billingMethod': event.billingMethod, // <--- ADD THIS LINE
       };
       await GetIt.I<AppPreferences>().savePendingRegistration(
         jsonEncode(pending),

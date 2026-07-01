@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_initializer.dart';
 import 'package:interbridge/core/deeplink_config.dart';
@@ -112,12 +113,19 @@ class SupabaseService {
     return await _client.auth.signInWithPassword(
       email: email,
       password: password,
+      
     );
   }
-
-  Future<void> signOut() async {
+Future<void> signOut() async {
     // Reset auth state so next login can navigate properly
     AppInitializer.resetAuthState();
+    
+    // Wipe compliance memory so the next login requires a new photo
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('interpreter_compliance_timestamp');
+    } catch (_) {}
+
     await _client.auth.signOut();
   }
 
@@ -550,6 +558,9 @@ class SupabaseService {
     // Voice sample URL - try to store in users_profile if column exists
     // Skip silently if column doesn't exist (migration not applied)
     if (voiceSampleUrl != null) {
+      if (voiceSampleUrl.contains('/storage/v1/object/')) {
+        log('Skipping voice_sample_url update for storage URL');
+      } else {
       try {
         await _client
             .from('users_profile')
@@ -557,6 +568,7 @@ class SupabaseService {
             .eq('user_id', userId);
       } catch (e) {
         log('Skipping voice_sample_url update (column may not exist): $e');
+      }
       }
     }
 
@@ -637,21 +649,25 @@ class SupabaseService {
 
     return languages;
   }
-
-  Future<void> finalizePendingRegistrationData(
+Future<void> finalizePendingRegistrationData(
     Map<String, dynamic> data,
     String userId,
   ) async {
-    final role = (data['role'] as String?) ?? 'requester';
+    // --- NEW FIX: Force detection of organization registration ---
+    String role = (data['role'] as String?) ?? 'requester';
+    
+    // Safety catch: If the payload contains an organization name, they MUST be an admin
+    if (data.containsKey('organizationName') && data['organizationName'] != null && data['organizationName'].toString().isNotEmpty) {
+      role = 'organization_admin';
+    }
+
     // Avoid setting organization_admin role until organization creation succeeds.
     final roleToPersist = role == 'organization_admin' ? 'requester' : role;
-    log(
-      'finalizePendingRegistrationData: Starting for userId=$userId, role=$role',
-    );
+    
+    log('finalizePendingRegistrationData: Starting for userId=$userId, role=$role');
     log('finalizePendingRegistrationData: data=$data');
-
     final username = (data['username'] as String?) ?? '';
-    final employmentType = (data['employmentType'] as String?) ?? 'volunteer';
+    final employmentType = (data['employmentType'] as String?) ?? 'paid';
 
     // --- Upload profile image if provided ---
     Uint8List? profileImageBytes;
@@ -762,6 +778,10 @@ class SupabaseService {
             .from('users_profile')
             .update({'employment_type': employmentType})
             .eq('user_id', userId);
+        await _client
+            .from('interpreter_details')
+            .update({'employment_type': employmentType})
+            .eq('user_id', userId);
         log(
           'finalizePendingRegistrationData: Employment type set to $employmentType',
         );
@@ -788,31 +808,23 @@ class SupabaseService {
           'finalizePendingRegistrationData: User registered with invite code for org $organizationId',
         );
 
-        // Add user to organization_members
         try {
-          await _client.from('organization_members').insert({
-            'organization_id': organizationId,
-            'user_id': userId,
-            'role': organizationRole,
-            'is_active': true,
-            'spending_limit': null,
-            'total_spent': 0,
-          });
-          log(
-            'finalizePendingRegistrationData: Added user to organization_members',
-          );
-
-          // Mark invite as accepted if there's an invite ID
           if (inviteId != null) {
-            await _client
-                .from('organization_invites')
-                .update({
-                  'status': 'accepted',
-                  'redeemed_by': userId,
-                  'redeemed_at': DateTime.now().toIso8601String(),
-                })
-                .eq('id', inviteId);
-            log('finalizePendingRegistrationData: Marked invite as accepted');
+            await _client.rpc('accept_organization_invite_rpc', params: {
+              'p_invite_id': inviteId,
+            });
+            log('finalizePendingRegistrationData: Accepted invite via RPC');
+          } else {
+            // Fallback for legacy flows without an invite ID
+            await _client.from('organization_members').insert({
+              'organization_id': organizationId,
+              'user_id': userId,
+              'role': organizationRole,
+              'is_active': true,
+              'spending_limit': null,
+              'total_spent': 0,
+            });
+            log('finalizePendingRegistrationData: Added user to organization_members manually');
           }
         } catch (e) {
           log(
@@ -842,6 +854,8 @@ class SupabaseService {
     }
 
     // Handle organization_admin role - create organization and membership
+    // Handle organization_admin role - create organization and membership
+ // Handle organization_admin role - create organization and membership
     if (role == 'organization_admin') {
       // Check if organization membership already exists
       final existingMembership =
@@ -852,15 +866,23 @@ class SupabaseService {
               .maybeSingle();
 
       if (existingMembership != null) {
-        log(
-          'finalizePendingRegistrationData: Organization membership already exists for user',
-        );
-        return;
+        log('finalizePendingRegistrationData: Organization membership already exists');
+      } else {
+        log('finalizePendingRegistrationData: Creating organization for admin');
+        await _createOrganizationFromRegistration(data, userId);
       }
-
-      log('finalizePendingRegistrationData: Creating organization for admin');
-      await _createOrganizationFromRegistration(data, userId);
-      // Role promotion is now handled atomically inside the RPC.
+      
+      // --- NEW FIX: Absolutely guarantee the user profile gets promoted to admin ---
+      log('Forcing users_profile role to organization_admin...');
+      try {
+        await _client.from('users_profile').update({
+          'role': 'organization_admin'
+        }).eq('user_id', userId);
+        log('Profile successfully promoted to organization_admin!');
+      } catch (e) {
+        log('Error forcing role update: $e');
+      }
+      
       return;
     }
 
@@ -1458,7 +1480,7 @@ class SupabaseService {
     }
   }
 
-  /// Upload a voice sample file to Supabase storage and return its public URL
+  /// Upload a voice sample file to Supabase storage and return a signed URL
   Future<String> uploadVoiceSampleFromPath(
     String absoluteFilePath, {
     String? prompt,
@@ -1508,21 +1530,23 @@ class SupabaseService {
             ),
           );
 
-      final publicUrl = _client.storage
-          .from('voice_samples')
-          .getPublicUrl(objectPath);
+      final signedUrl = await _createSignedUrl(
+        'voice_samples',
+        objectPath,
+      );
 
       // Store metadata in database
       await _storeVoiceSampleMetadata(
         userId: user.id,
-        url: publicUrl,
+        url: null,
+        storagePath: objectPath,
         prompt: prompt,
         sentenceType: sentenceType ?? 'professional_sentence',
         fileSize: fileSize,
         timestamp: DateTime.now(),
       );
 
-      return publicUrl;
+      return signedUrl;
     } catch (e) {
       throw Exception('Failed to upload voice sample: $e');
     }
@@ -1531,7 +1555,8 @@ class SupabaseService {
   /// Store voice sample metadata in the database
   Future<void> _storeVoiceSampleMetadata({
     required String userId,
-    required String url,
+    String? url,
+    required String storagePath,
     required String? prompt,
     required String sentenceType,
     required int fileSize,
@@ -1540,7 +1565,8 @@ class SupabaseService {
     try {
       await _client.from('voice_samples').insert({
         'user_id': userId,
-        'url': url,
+        if (url != null && url.isNotEmpty) 'url': url,
+        'storage_path': storagePath,
         'prompt': prompt,
         'sentence_type': sentenceType,
         'file_size': fileSize,
@@ -1553,7 +1579,7 @@ class SupabaseService {
     }
   }
 
-  /// Upload a voice sample from raw bytes (web-compatible)
+  /// Upload a voice sample from raw bytes (web-compatible) and return a signed URL
   Future<String> uploadVoiceSampleFromBytes(
     Uint8List bytes, {
     String? fileName,
@@ -1600,23 +1626,39 @@ class SupabaseService {
             ),
           );
 
-      final publicUrl = _client.storage
-          .from('voice_samples')
-          .getPublicUrl(objectPath);
+      final signedUrl = await _createSignedUrl(
+        'voice_samples',
+        objectPath,
+      );
 
       // Store metadata in database
       await _storeVoiceSampleMetadata(
         userId: user.id,
-        url: publicUrl,
+        url: null,
+        storagePath: objectPath,
         prompt: prompt,
         sentenceType: sentenceTypeStr,
         fileSize: bytes.length,
         timestamp: DateTime.now(),
       );
 
-      return publicUrl;
+      return signedUrl;
     } catch (e) {
       throw Exception('Failed to upload voice sample from bytes: $e');
+    }
+  }
+
+  Future<String> _createSignedUrl(
+    String bucket,
+    String objectPath, {
+    int expiresInSeconds = 3600,
+  }) async {
+    try {
+      return await _client.storage
+          .from(bucket)
+          .createSignedUrl(objectPath, expiresInSeconds);
+    } catch (_) {
+      return _client.storage.from(bucket).getPublicUrl(objectPath);
     }
   }
 
@@ -1977,15 +2019,17 @@ class SupabaseService {
             fileOptions: const FileOptions(upsert: true),
           );
 
-      final publicUrl = _client.storage
-          .from('government-ids')
-          .getPublicUrl(path);
+      final signedUrl = await _createSignedUrl(
+        'government-ids',
+        path,
+      );
 
       // Insert metadata row
       await _client.from('government_ids').insert({
         'user_id': userId,
-        'file_url': publicUrl,
+        'storage_path': path,
         'file_name': fileName,
+        'file_url': signedUrl,
         'status': 'pending',
       });
 
@@ -1993,13 +2037,12 @@ class SupabaseService {
       await _client
           .from('users_profile')
           .update({
-            'government_id_url': publicUrl,
             'government_id_status': 'pending',
           })
           .eq('user_id', userId);
 
-      log('Government ID uploaded: $publicUrl');
-      return publicUrl;
+      log('Government ID uploaded: $signedUrl');
+      return signedUrl;
     } catch (e) {
       log('Error uploading government ID: $e');
       return null;
@@ -2035,41 +2078,28 @@ class SupabaseService {
     } catch (e) {
       log('Error recording phone verification: $e');
     }
-  }
-
-  /// Creates an organization and adds the user as organization_admin
-  /// Uses an atomic RPC so org + member + role promotion happen in one transaction.
-  Future<void> _createOrganizationFromRegistration(
+  }Future<void> _createOrganizationFromRegistration(
     Map<String, dynamic> data,
     String userId,
   ) async {
     log('_createOrganizationFromRegistration: Starting for userId=$userId');
 
     final orgName = data['organizationName'] as String? ?? '';
-    final orgEmail =
-        (data['organizationEmail'] as String? ?? '').trim().toLowerCase();
+    final orgEmail = (data['organizationEmail'] as String? ?? '').trim().toLowerCase();
     final orgPhone = data['organizationPhone'] as String?;
     final orgAddress = data['organizationAddress'] as String?;
-
-    log(
-      '_createOrganizationFromRegistration: orgName=$orgName, orgEmail=$orgEmail',
-    );
+    final registrationCode = data['registrationCode'] as String?;
+    final billingMethod = data['billingMethod'] as String? ?? 'prepaid';
 
     if (orgName.isEmpty || orgEmail.isEmpty) {
-      log(
-        '_createOrganizationFromRegistration: Organization name or email is empty, skipping organization creation. orgName="$orgName", orgEmail="$orgEmail"',
-      );
       return;
     }
 
     try {
       final inviteCode = _generateInviteCode();
-      log(
-        '_createOrganizationFromRegistration: Generated invite code: $inviteCode',
-      );
 
-      // Atomic RPC: creates org, member, and promotes role in one transaction.
-      final orgId = await _client.rpc(
+      // 1. Call the RPC to create the organization
+      final rpcResult = await _client.rpc(
         'create_organization_with_admin',
         params: {
           'p_org_name': orgName,
@@ -2077,16 +2107,73 @@ class SupabaseService {
           'p_org_phone': orgPhone,
           'p_org_address': orgAddress,
           'p_invite_code': inviteCode,
+          'p_registration_code': registrationCode,
+          'p_billing_method': billingMethod, 
         },
       );
 
-      log('Organization created successfully: $orgId');
+      log('RPC returned: $rpcResult');
+
+      // 2. Safely extract the Organization ID
+      String? actualOrgId;
+      if (rpcResult != null && rpcResult.toString() != 'null') {
+        if (rpcResult is Map) {
+          actualOrgId = rpcResult['id']?.toString() ?? rpcResult['organization_id']?.toString();
+        } else {
+          actualOrgId = rpcResult.toString();
+        }
+      }
+
+      // If the RPC returned void (null), manually fetch the organization we just created
+      if (actualOrgId == null) {
+        log('RPC did not return an ID. Fetching organization manually by email...');
+        final orgData = await _client.from('organizations')
+            .select('id')
+            .eq('email', orgEmail)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+            
+        if (orgData != null) {
+          actualOrgId = orgData['id'].toString();
+          log('Manually fetched Organization ID: $actualOrgId');
+        }
+      }
+
+      // 3. Force the user link to the organization
+      if (actualOrgId != null) {
+        log('Checking if user is already in organization_members...');
+        final existingMember = await _client.from('organization_members')
+            .select('id')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (existingMember == null) {
+          log('User not linked. Inserting into organization_members...');
+          await _client.from('organization_members').insert({
+            'organization_id': actualOrgId,
+            'user_id': userId,
+            'role': 'organization_admin', // Explicitly setting admin role
+            'is_active': true,
+            'total_spent': 0,
+          });
+          log('User successfully linked to organization!');
+        } else {
+          log('User already in members. Forcing role update...');
+          await _client.from('organization_members').update({
+            'role': 'organization_admin',
+            'organization_id': actualOrgId,
+          }).eq('user_id', userId);
+        }
+      } else {
+        log('CRITICAL ERROR: Could not resolve Organization ID. User not linked.');
+      }
+
     } catch (e) {
       log('Error creating organization: $e');
       rethrow;
     }
   }
-
   /// Uploads organization verification documents to Supabase storage
   Future<void> _uploadOrganizationDocuments({
     required String orgId,
@@ -2281,7 +2368,6 @@ class SupabaseService {
     }
   }
 
-  /// Accept an organization invitation and add user as member
   Future<bool> acceptOrganizationInvite({
     required String inviteId,
     required String organizationId,
@@ -2289,32 +2375,14 @@ class SupabaseService {
     required String role,
   }) async {
     try {
-      // Update invite status to accepted
-      await _client
-          .from('organization_invites')
-          .update({
-            'status': 'accepted',
-            'redeemed_by': userId,
-            'redeemed_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', inviteId);
-
-      // Add user to organization_members
-      await _client.from('organization_members').insert({
-        'organization_id': organizationId,
-        'user_id': userId,
-        'role': role,
-        'is_active': true,
-        'spending_limit': null,
-        'total_spent': 0,
+      await _client.rpc('accept_organization_invite_rpc', params: {
+        'p_invite_id': inviteId,
       });
 
-      log(
-        'Organization invite accepted: user $userId joined org $organizationId',
-      );
+      log('Organization invite accepted via RPC: user $userId joined org $organizationId');
       return true;
     } catch (e) {
-      log('Error accepting organization invite: $e');
+      log('Error accepting organization invite via RPC: $e');
       return false;
     }
   }

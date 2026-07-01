@@ -112,10 +112,13 @@ class SessionService {
   static Future<void> endSession({String? requestId}) async {
     if (requestId != null) {
       try {
+        // Only mark as completed if the request is currently in an active state.
+        // This prevents overwriting 'cancelled' or other terminal statuses.
         await Supabase.instance.client
             .from('interpreter_requests')
             .update({'status': 'completed'})
-            .eq('id', requestId);
+            .eq('id', requestId)
+            .inFilter('status', ['accepted', 'in_progress']);
         log('Session marked as completed in DB');
       } catch (e) {
         log('Error updating session status in DB: $e');

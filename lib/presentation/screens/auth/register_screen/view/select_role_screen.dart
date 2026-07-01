@@ -134,16 +134,16 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'Join Organization',
+                                            'Join Your Healthcare Organization',
                                             style: TextStyle(
-                                              fontSize: AppSize.s18,
+                                              fontSize: AppSize.s16,
                                               fontWeight: FontWeight.bold,
                                               color: ColorManager.textPrimary,
                                             ),
                                           ),
                                           const SizedBox(height: AppSize.s8),
                                           Text(
-                                            'Join as a doctor with an invite code',
+                                            'Already invited? Join your healthcare team using your invitation code.',
                                             style: TextStyle(
                                               fontSize: AppSize.s14,
                                               color: ColorManager.textSecondary,
@@ -155,93 +155,6 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                                     Icon(
                                       Icons.arrow_forward_ios,
                                       color: ColorManager.primary,
-                                      size: AppSize.s20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // I am an Interpreter Card
-                        Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: AppSize.s20),
-                          decoration: BoxDecoration(
-                            color: ColorManager.backgroundCard,
-                            borderRadius: BorderRadius.circular(AppSize.s20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: ColorManager.primary2.withValues(
-                                  alpha: 0.1,
-                                ),
-                                blurRadius: AppSize.s12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.of(context).pushNamed(
-                                  Routes.registerRoute,
-                                  arguments: {'role': 'interpreter'},
-                                );
-                              },
-                              borderRadius: BorderRadius.circular(AppSize.s20),
-                              child: Padding(
-                                padding: const EdgeInsets.all(AppSize.s24),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(
-                                        AppSize.s16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: ColorManager.primary2.withValues(
-                                          alpha: 0.1,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          AppSize.s16,
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        Icons.translate,
-                                        color: ColorManager.primary2,
-                                        size: AppSize.s30,
-                                      ),
-                                    ),
-                                    const SizedBox(width: AppSize.s20),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            AppStrings.iAmanInterpreter,
-                                            style: TextStyle(
-                                              fontSize: AppSize.s18,
-                                              fontWeight: FontWeight.bold,
-                                              color: ColorManager.textPrimary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: AppSize.s8),
-                                          Text(
-                                            AppStrings
-                                                .offerYourInterpretationServices,
-                                            style: TextStyle(
-                                              fontSize: AppSize.s14,
-                                              color: ColorManager.textSecondary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.arrow_forward_ios,
-                                      color: ColorManager.primary2,
                                       size: AppSize.s20,
                                     ),
                                   ],
@@ -306,16 +219,16 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'Organization',
+                                            'Register Your Healthcare Organization',
                                             style: TextStyle(
-                                              fontSize: AppSize.s18,
+                                              fontSize: AppSize.s16,
                                               fontWeight: FontWeight.bold,
                                               color: ColorManager.textPrimary,
                                             ),
                                           ),
                                           const SizedBox(height: AppSize.s8),
                                           Text(
-                                            'Register your organization to manage doctors and calls',
+                                            'Create a secure workspace to manage users, interpreter access, departments, and medical calls.',
                                             style: TextStyle(
                                               fontSize: AppSize.s14,
                                               color: ColorManager.textSecondary,
@@ -336,7 +249,132 @@ class _SelectRoleScreenState extends State<SelectRoleScreen>
                           ),
                         ),
 
-                        // Info Section
+                        // Contact Us Section
+                        const SizedBox(height: AppSize.s12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Partner With InterBridge',
+                            style: TextStyle(
+                              fontSize: AppSize.s18,
+                              fontWeight: FontWeight.bold,
+                              color: ColorManager.textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSize.s16),
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: AppSize.s20),
+                          decoration: BoxDecoration(
+                            color: ColorManager.backgroundCard,
+                            borderRadius: BorderRadius.circular(AppSize.s20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: ColorManager.primary2.withValues(
+                                  alpha: 0.1,
+                                ),
+                                blurRadius: AppSize.s12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSize.s20),
+                            child: Column(
+                              children: [
+                                // Email Info
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(AppSize.s12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(AppSize.s12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.email_outlined,
+                                        color: Colors.blue,
+                                        size: AppSize.s24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: AppSize.s16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Email',
+                                            style: TextStyle(
+                                              fontSize: AppSize.s12,
+                                              color: ColorManager.textSecondary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'marwa@interbridge-ling.com',
+                                            style: TextStyle(
+                                              fontSize: AppSize.s14,
+                                              fontWeight: FontWeight.w600,
+                                              color: ColorManager.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: AppSize.s16),
+                                  child: Divider(height: 1, thickness: 1),
+                                ),
+                                
+                                // Phone Info
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(AppSize.s12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(AppSize.s12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.phone_outlined,
+                                        color: Colors.green,
+                                        size: AppSize.s24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: AppSize.s16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Phone',
+                                            style: TextStyle(
+                                              fontSize: AppSize.s12,
+                                              color: ColorManager.textSecondary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '+1 202 949 7587',
+                                            style: TextStyle(
+                                              fontSize: AppSize.s14,
+                                              fontWeight: FontWeight.w600,
+                                              color: ColorManager.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),

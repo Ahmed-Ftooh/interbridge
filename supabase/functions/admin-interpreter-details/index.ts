@@ -98,9 +98,46 @@ Deno.serve(async (req) => {
     // Get government IDs
     const governmentIds = await svc
       .from("government_ids")
-      .select("id, file_url, file_name, status, uploaded_at, reviewer_notes")
+      .select("id, file_url, storage_path, file_name, status, uploaded_at, reviewer_notes")
       .eq("user_id", id)
       .order("uploaded_at", { ascending: false });
+
+    let governmentIdsList: any[] = [];
+    try {
+      const rows = governmentIds.data ?? [];
+      governmentIdsList = await Promise.all(
+        rows.map(async (row: any) => {
+          let signedUrl: string | null = row.file_url ?? null;
+          if (row.storage_path) {
+            const { data: sd } = await svc.storage
+              .from("government-ids")
+              .createSignedUrl(row.storage_path, 3600);
+            signedUrl = sd?.signedUrl ?? signedUrl;
+          } else if (row.file_url) {
+            const pathMatch = row.file_url.match(
+              /(?:\/storage\/v1)?\/object\/(?:sign|public)\/government-ids\/(.+?)(?:\?|$)/
+            );
+            if (pathMatch) {
+              const objectPath = pathMatch[1];
+              const { data: sd } = await svc.storage
+                .from("government-ids")
+                .createSignedUrl(objectPath, 3600);
+              signedUrl = sd?.signedUrl ?? row.file_url ?? null;
+            }
+          }
+          return {
+            id: row.id,
+            file_url: signedUrl,
+            file_name: row.file_name,
+            status: row.status,
+            uploaded_at: row.uploaded_at,
+            reviewer_notes: row.reviewer_notes,
+          };
+        })
+      );
+    } catch (e) {
+      console.error("Error processing government IDs:", e);
+    }
 
     // Get phone verification status.
     // There may be multiple rows over time, so do not use maybeSingle().
@@ -166,7 +203,7 @@ Deno.serve(async (req) => {
     // Fetch voice samples from DB table (metadata + URLs stored on upload)
     const voiceSamplesQuery = await svc
       .from("voice_samples")
-      .select("id, url, prompt, sentence_type, file_size, created_at, is_verified")
+      .select("id, url, storage_path, prompt, sentence_type, file_size, created_at, is_verified")
       .eq("user_id", id)
       .order("created_at", { ascending: false });
 
@@ -177,7 +214,12 @@ Deno.serve(async (req) => {
       voiceSamplesList = await Promise.all(
         rows.map(async (row: any) => {
           let signedUrl: string | null = null;
-          if (row.url) {
+          if (row.storage_path) {
+            const { data: sd } = await svc.storage
+              .from("voice_samples")
+              .createSignedUrl(row.storage_path, 3600);
+            signedUrl = sd?.signedUrl ?? row.url ?? null;
+          } else if (row.url) {
             // Extract object path from either public or signed storage URL.
             // Works for both:
             // .../storage/v1/object/public/voice_samples/{path}
@@ -228,7 +270,7 @@ Deno.serve(async (req) => {
       voiceSamples: voiceSamplesList,
       quizAttempts: dedupedQuizAttempts,
       badges: badges.data ?? [],
-      governmentIds: governmentIds.data ?? [],
+      governmentIds: governmentIdsList,
       phoneVerification: phoneVerificationData,
     });
   } catch (e) {

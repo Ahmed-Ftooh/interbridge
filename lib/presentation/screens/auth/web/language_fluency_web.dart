@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/core/language_mapping_utility.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -131,16 +132,10 @@ void initState() {
         final langCount = state.selectedLanguages.length;
         final langIndex = state.currentLanguageIndex;
 
-        return AuthWebWrapper(
-          fullScreen: fullScreenResume,
-          title:
-              state.isSelectingFluency
-                  ? 'Fluency in $currentLang'
-                  : 'Skills in $currentLang',
-          subtitle:
-              state.isSelectingFluency
-                  ? 'How well do you know this language?'
-                  : 'Select what you can do in this language',
+        return InterpreterOnboardingWrapper(
+         currentStepIndex: 1,
+         stepTitle: "Select your Fluency in $currentLang",
+         stepSubtitle: "Indicate your proficiency level for each selected language.",
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

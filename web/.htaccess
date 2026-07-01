@@ -10,13 +10,22 @@
         Header set Expires "0"
     </IfModule>
 </FilesMatch>
-RewriteEngine On
-RewriteBase /
 
-# Keep existing files and folders as-is.
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+# ----------------------------------------------------------------------
+# SINGLE PAGE APPLICATION ROUTING FOR FLUTTER
+# ----------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Stop processing if the request is already explicitly for index.html
+  RewriteRule ^index\.html$ - [L]
+  
+  # If the requested file or directory does not exist on the server...
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  
+  # ...route the request directly to index.html so Flutter's router can handle it
+  RewriteRule . /index.html [L]
+</IfModule>
 
-# Send all other requests to Flutter entrypoint.
-RewriteRule ^ index.html [L]

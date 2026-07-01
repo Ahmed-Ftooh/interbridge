@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AdminService {
@@ -88,7 +90,7 @@ class AdminService {
     );
   }
 
-  Future<void> setInterpreterVerification(
+  Future<String?> setInterpreterVerification(
     String userId, {
     required bool verified,
   }) async {
@@ -97,6 +99,69 @@ class AdminService {
         .from('interpreter_details')
         .update({'is_verified': verified})
         .eq('user_id', userId);
+
+    if (verified) {
+      return _cleanupVoiceSamples(userId);
+    }
+
+    return null;
+  }
+
+  Future<String?> _cleanupVoiceSamples(String userId) async {
+    final errors = <String>[];
+
+    try {
+      final rows = await _client
+          .from('voice_samples')
+          .select('id, storage_path, url')
+          .eq('user_id', userId);
+
+      final paths = <String>{};
+      for (final row in rows as List) {
+        final storagePath = row['storage_path']?.toString();
+        if (storagePath != null && storagePath.isNotEmpty) {
+          paths.add(storagePath);
+          continue;
+        }
+        final url = row['url']?.toString();
+        final extracted = _extractStoragePathFromUrl(url, 'voice_samples');
+        if (extracted != null && extracted.isNotEmpty) {
+          paths.add(extracted);
+        }
+      }
+
+      if (paths.isNotEmpty) {
+        final list = paths.toList();
+        for (var i = 0; i < list.length; i += 100) {
+          var end = i + 100;
+          if (end > list.length) end = list.length;
+          final batch = list.sublist(i, end);
+          await _client.storage.from('voice_samples').remove(batch);
+        }
+      }
+    } catch (e) {
+      log('Voice samples storage cleanup failed: $e');
+      errors.add('storage cleanup failed');
+    }
+
+    try {
+      await _client.from('voice_samples').delete().eq('user_id', userId);
+    } catch (e) {
+      log('Voice samples metadata cleanup failed: $e');
+      errors.add('metadata cleanup failed');
+    }
+
+    if (errors.isEmpty) return null;
+    return 'Interpreter verified, but voice samples cleanup failed.';
+  }
+
+  String? _extractStoragePathFromUrl(String? url, String bucket) {
+    if (url == null || url.isEmpty) return null;
+    final pattern = RegExp(
+      '(?:/storage/v1)?/object/(?:public|sign)/${RegExp.escape(bucket)}/(.+?)(?:\\?|\$)',
+    );
+    final match = pattern.firstMatch(url);
+    return match?.group(1);
   }
 
   /// Send a verification-approved email to the interpreter.

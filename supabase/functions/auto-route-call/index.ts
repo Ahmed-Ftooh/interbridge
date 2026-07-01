@@ -21,26 +21,51 @@ Deno.serve(async (req) => {
 
   try {
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+
+    // AUTH: require a valid Supabase JWT
+    const authHeader = req.headers.get("authorization") ?? "";
+    const callerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!callerToken) return json({ error: "Unauthorized" }, 401);
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
+    const { data: userData, error: userError } = await supabase.auth.getUser(callerToken);
+    if (userError || !userData?.user) return json({ error: "Unauthorized" }, 401);
+    const callerId = userData.user.id;
+
     const body = await req.json().catch(() => null);
     if (!body) return json({ error: "Invalid JSON body" }, 400);
 
-    const {
-      request_id,
-      from_language,
-      to_language,
-      specialization,
-      organization_id,
-    } = body;
+    const { request_id, from_language, to_language, specialization, organization_id } = body;
 
     if (!request_id || !from_language || !to_language) {
-      return json({
-        error: "Missing required fields: request_id, from_language, to_language",
-      }, 400);
+      return json({ error: "Missing required fields: request_id, from_language, to_language" }, 400);
+    }
+
+    // AUTHZ: caller must own the request or be an org member
+    const { data: requestRow } = await supabase
+      .from("interpreter_requests")
+      .select("requester_id, organization_id")
+      .eq("id", request_id)
+      .maybeSingle();
+
+    if (!requestRow) return json({ error: "Request not found" }, 404);
+
+    if (requestRow.requester_id !== callerId) {
+      if (requestRow.organization_id) {
+        const { data: membership } = await supabase
+          .from("organization_members")
+          .select("role")
+          .eq("user_id", callerId)
+          .eq("organization_id", requestRow.organization_id)
+          .maybeSingle();
+        if (!membership) return json({ error: "Forbidden" }, 403);
+      } else {
+        return json({ error: "Forbidden" }, 403);
+      }
     }
 
     // Call the DB function to auto-route
@@ -59,11 +84,9 @@ Deno.serve(async (req) => {
 
     const result = data as Record<string, unknown>;
 
-    // If matched, send push notification to the interpreter to auto-accept
     if (result.status === "matched" || result.status === "overflow") {
       const interpreterId = result.interpreter_id as string;
 
-      // Get interpreter's OneSignal player IDs
       const { data: playerRows } = await supabase
         .from("onesignal_player_ids")
         .select("player_id")
@@ -74,34 +97,23 @@ Deno.serve(async (req) => {
         .filter((id: string) => id);
 
       if (playerIds.length > 0) {
-        // Get language names for notification
-        const { data: fromLang } = await supabase
-          .from("languages")
-          .select("name")
-          .eq("id", from_language)
-          .single();
-        const { data: toLang } = await supabase
-          .from("languages")
-          .select("name")
-          .eq("id", to_language)
-          .single();
-
+        const { data: fromLang } = await supabase.from("languages").select("name").eq("id", from_language).single();
+        const { data: toLang } = await supabase.from("languages").select("name").eq("id", to_language).single();
         const fromName = fromLang?.name ?? from_language;
         const toName = toLang?.name ?? to_language;
 
-        // Send notification to matched interpreter
         try {
           await supabase.functions.invoke("send-notification", {
             body: {
-              title: "Incoming Call — Auto-Assigned",
-              body: `${fromName} → ${toName}${specialization ? ` (${specialization})` : ""}`,
+              title: "Incoming Call \u2014 Auto-Assigned",
+              body: `${fromName} \u2192 ${toName}${specialization ? ` (${specialization})` : ""}`,
               data: {
                 request_id,
                 from_language: fromName,
                 to_language: toName,
                 type: "INCOMING_CALL",
                 auto_routed: "true",
-                caller_name: `${fromName} → ${toName}`,
+                caller_name: `${fromName} \u2192 ${toName}`,
                 caller_id: request_id,
               },
               player_ids: playerIds,
@@ -112,14 +124,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Auto-accept the request on behalf of the interpreter
       const { error: acceptErr } = await supabase
         .from("interpreter_requests")
-        .update({
-          status: "accepted",
-          accepted_by: interpreterId,
-          accepted_at: new Date().toISOString(),
-        })
+        .update({ status: "accepted", accepted_by: interpreterId, accepted_at: new Date().toISOString() })
         .eq("id", request_id)
         .eq("status", "pending");
 

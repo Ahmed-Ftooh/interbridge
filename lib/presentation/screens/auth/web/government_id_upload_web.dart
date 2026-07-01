@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:interbridge/presentation/screens/auth/web/interpreter_onboarding_wrapper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:interbridge/presentation/resources/routes_manager.dart';
@@ -102,14 +103,15 @@ void dispose(){
           .from('government-ids')
           .uploadBinary(path, _idBytes!);
 
-      final url = Supabase.instance.client.storage
+      final signedUrl = await Supabase.instance.client.storage
           .from('government-ids')
-          .getPublicUrl(path);
+          .createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
 
       await Supabase.instance.client.from('government_ids').insert({
         'user_id': userId,
-        'file_url': url,
+        'storage_path': path,
         'file_name': _fileName,
+        'file_url': signedUrl,
         'status': 'pending',
       });
 
@@ -143,11 +145,11 @@ void dispose(){
         {};
     final fullScreenResume = args['authContinuationFullScreen'] == true;
 
-    return AuthWebWrapper(
-      fullScreen: fullScreenResume,
-      title: 'Identity verification',
-      subtitle:
-          'Upload a government-issued ID for verification. This helps us keep the platform safe.',
+    return InterpreterOnboardingWrapper(
+      currentStepIndex: 5,
+      stepTitle: "Identity verification",
+      stepSubtitle:
+          'Upload a clear photo of a valid government-issued ID',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

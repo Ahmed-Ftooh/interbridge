@@ -19,14 +19,18 @@ class ErrorService {
   /// Stream of errors that can be listened to globally
   Stream<AppError> get errorStream => _errorController.stream;
 
+  StreamSubscription? _connectivitySub;
+
   /// Current error state
   AppError? _currentError;
   AppError? get currentError => _currentError;
 
   /// Initialize the error service
   Future<void> initialize() async {
+    // Cancel any previous subscription to prevent duplicates on re-init.
+    _connectivitySub?.cancel();
     // Listen to network connectivity changes
-    _networkService.connectivityStream.listen((isConnected) {
+    _connectivitySub = _networkService.connectivityStream.listen((isConnected) {
       if (!isConnected && _currentError?.type != ErrorType.network) {
         _handleNetworkDisconnection();
       } else if (isConnected && _currentError?.type == ErrorType.network) {
@@ -198,6 +202,7 @@ class ErrorService {
 
   /// Dispose resources
   void dispose() {
+    _connectivitySub?.cancel();
     _errorController.close();
   }
 }

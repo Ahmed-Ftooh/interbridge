@@ -1,4 +1,5 @@
 // lib/previews/audio_player_widget.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:interbridge/presentation/resources/color_manager.dart';
@@ -22,6 +23,7 @@ class AudioPlayerWidget extends StatefulWidget {
 
 class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   late AudioPlayer _audioPlayer;
+  StreamSubscription? _playerStateSub;
   PlayerState _playerState = PlayerState.stopped;
   bool _isLoading = false;
 
@@ -32,7 +34,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     _playerState = PlayerState.stopped;
 
     // Listen to player state changes
-    _audioPlayer.onPlayerStateChanged.listen((state) {
+    _playerStateSub = _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() => _playerState = state);
       }
@@ -66,7 +68,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
   @override
   void dispose() {
-    // Release the player
+    // Release the player and cancel subscriptions
+    _playerStateSub?.cancel();
     _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();

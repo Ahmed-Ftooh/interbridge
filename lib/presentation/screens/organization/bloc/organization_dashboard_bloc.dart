@@ -371,9 +371,14 @@ class OrganizationDashboardBloc
       final orgId = currentState.organizationId;
 
       // Call the create-payment-intent edge function
+      // Call the create-payment-intent edge function
       final response = await _supabaseService.client.functions.invoke(
         'create-payment-intent',
-        body: {'organization_id': orgId, 'amount': event.amount},
+        body: {
+          'organization_id': orgId, 
+          'amount': event.amount,
+          if (event.minutes != null) 'minutes': event.minutes, // <-- ADD THIS LINE
+        },
       );
 
       final data = response.data as Map<String, dynamic>?;

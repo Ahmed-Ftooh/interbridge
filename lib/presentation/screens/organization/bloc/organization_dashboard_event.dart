@@ -83,14 +83,14 @@ class OpenStripeCheckout extends OrganizationDashboardEvent {
   @override
   List<Object?> get props => [amount];
 }
-
-/// Open Stripe native Payment Sheet on mobile
 class OpenMobilePaymentSheet extends OrganizationDashboardEvent {
   final double amount;
-  const OpenMobilePaymentSheet(this.amount);
-
+  final int? minutes; // <-- Add this optional parameter
+  
+  const OpenMobilePaymentSheet(this.amount, {this.minutes}); // <-- Update constructor
+  
   @override
-  List<Object?> get props => [amount];
+  List<Object?> get props => [amount, minutes];
 }
 
 /// Clear the checkout URL after it has been consumed by the UI

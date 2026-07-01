@@ -1,8 +1,13 @@
 import 'dart:developer';
-
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Added SharedPreferences
+import 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen.dart' // Your mobile version
+    if (dart.library.html) 'package:interbridge/presentation/screens/interpreter/interpreter_login_compliance_screen_web.dart'; // Your web version
+import 'package:interbridge/presentation/screens/auth/web/auth_selection_web.dart';
+import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
 import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:interbridge/app/app_prf.dart';
@@ -67,7 +72,7 @@ import 'package:interbridge/presentation/screens/quiz/quiz_web_screen_stub.dart'
     if (dart.library.html) 'package:interbridge/presentation/screens/quiz/quiz_web_screen.dart';
 import 'package:interbridge/presentation/screens/auth/web/phone_otp_web.dart';
 import 'package:interbridge/presentation/screens/auth/web/government_id_upload_web.dart';
-import 'package:interbridge/presentation/screens/quiz/advanced_fluency_quiz_constants.dart';
+import 'package:interbridge/data/services/compliance_storage.dart';
 
 class Routes {
   static const String splashRoute = "/";
@@ -76,11 +81,9 @@ class Routes {
   static const String loginRoute = "/login";
   static const String interpreterPortalLoginRoute = "/interpreter/login";
   static const String interpreterPortalSignupRoute = "/interpreter/signup";
-  static const String interpreterPortalDashboardRoute =
-      "/interpreter/dashboard";
+  static const String interpreterPortalDashboardRoute = "/interpreter/dashboard";
   static const String organizationPortalLoginRoute = "/organization/login";
-  static const String organizationPortalDashboardRoute =
-      "/organization/dashboard";
+  static const String organizationPortalDashboardRoute = "/organization/dashboard";
   static const String adminPortalLoginRoute = "/admin/login";
   static const String adminPortalDashboardRoute = "/admin/dashboard";
   static const String registerRoute = "/register";
@@ -99,10 +102,8 @@ class Routes {
   static const String certificateUploadRoute = "/certificateUpload";
   static const String generalQuizRoute = "/generalQuiz";
   static const String medicalSectionsRoute = "/medicalSections";
-  static const String medicalQuizRoute =
-      "/medicalQuiz"; // deprecated - keeping for backward compatibility
-  static const String interpreterOnboardingRoute =
-      "/interpreterOnboarding"; // deprecated
+  static const String medicalQuizRoute = "/medicalQuiz";
+  static const String interpreterOnboardingRoute = "/interpreterOnboarding"; 
   static const String interpreterFieldScreen = "/InterpreterFieldScreen";
   static const String requestWaiting = "/requestWaiting";
   static const String accepteddocument = "/accepteddocument";
@@ -118,10 +119,10 @@ class Routes {
   static const String organizationSettingsRoute = "/organizationSettings";
   static const String interpreterQuizHubRoute = "/interpreterQuizHub";
   static const String doctorJoinOrganizationRoute = "/doctorJoinOrganization";
-  static const String doctorRegisterWithInviteRoute =
-      "/doctorRegisterWithInvite";
+  static const String doctorRegisterWithInviteRoute = "/doctorRegisterWithInvite";
   static const String phoneOtpRoute = "/phoneOtp";
   static const String governmentIdUploadRoute = "/governmentIdUpload";
+  static const String interpreterComplianceRoute = "/interpreter/compliance";
 }
 
 enum _WebPortalKind { interpreter, organization, admin }
@@ -129,21 +130,14 @@ enum _WebPortalKind { interpreter, organization, admin }
 class RouteGenerator {
   static _WebPortalKind? _portalFromCurrentHost() {
     if (!kIsWeb) return null;
-
     final host = Uri.base.host.toLowerCase();
-    if (host.startsWith('interpreter.')) {
-      return _WebPortalKind.interpreter;
-    }
-    if (host.startsWith('organization.')) {
-      return _WebPortalKind.organization;
-    }
-    if (host.startsWith('admin.')) {
-      return _WebPortalKind.admin;
-    }
+    if (host.startsWith('interpreter.')) return _WebPortalKind.interpreter;
+    if (host.startsWith('organization.')) return _WebPortalKind.organization;
+    if (host.startsWith('admin.')) return _WebPortalKind.admin;
     return null;
   }
 
-  static String _loginRouteForPortal(_WebPortalKind kind) {
+  static String _loginRouteForPortal(_WebPortalKind? kind) {
     switch (kind) {
       case _WebPortalKind.interpreter:
         return Routes.interpreterPortalLoginRoute;
@@ -151,57 +145,53 @@ class RouteGenerator {
         return Routes.organizationPortalLoginRoute;
       case _WebPortalKind.admin:
         return Routes.adminPortalLoginRoute;
+      default:
+        return Routes.loginRoute;
     }
   }
 
+  static Route<dynamic> _buildRoute(Widget webScreen, Widget mobileScreen, {RouteSettings? settings}) {
+    return MaterialPageRoute(
+      builder: (_) => kIsWeb ? webScreen : mobileScreen,
+      settings: settings,
+    );
+  }
+
   static Route<dynamic> getRoute(RouteSettings settings) {
-    // Extract the path without query parameters for matching
     final String? routeName = settings.name;
     final Uri? parsedUri = routeName != null ? Uri.tryParse(routeName) : null;
-    final String? basePath =
-        parsedUri?.path.isNotEmpty == true
-            ? parsedUri!.path
-            : routeName?.split('?').first;
+    final String? basePath = parsedUri?.path.isNotEmpty == true ? parsedUri!.path : routeName?.split('?').first;
     final String? host = parsedUri?.host;
     final String scheme = parsedUri?.scheme ?? '';
     final Map<String, String> queryParams = parsedUri?.queryParameters ?? const {};
-    final Map<String, String> webQueryParams =
-      kIsWeb ? Uri.base.queryParameters : const {};
+    final Map<String, String> webQueryParams = kIsWeb ? Uri.base.queryParameters : const {};
     final String webFragment = kIsWeb ? Uri.base.fragment : '';
 
-    // Handle auth callbacks even when hosting rewrites callback URLs to
-    // a different path (for example /login?code=...).
+    final bool isInitialRoute = settings.name == '/' || settings.name == null;
+
     final bool hasAuthQueryParams =
         queryParams.containsKey('code') ||
         queryParams.containsKey('token_hash') ||
         queryParams.containsKey('access_token') ||
-      queryParams.containsKey('refresh_token') ||
-      webQueryParams.containsKey('code') ||
-      webQueryParams.containsKey('token_hash') ||
-      webQueryParams.containsKey('access_token') ||
-      webQueryParams.containsKey('refresh_token');
+        queryParams.containsKey('refresh_token') ||
+        webQueryParams.containsKey('code') ||
+        webQueryParams.containsKey('token_hash') ||
+        webQueryParams.containsKey('access_token') ||
+        webQueryParams.containsKey('refresh_token');
+        
     final bool hasAuthFragmentToken =
         (parsedUri?.fragment.contains('access_token=') ?? false) ||
-      (parsedUri?.fragment.contains('refresh_token=') ?? false) ||
-      webFragment.contains('access_token=') ||
-      webFragment.contains('refresh_token=');
+        (parsedUri?.fragment.contains('refresh_token=') ?? false) ||
+        webFragment.contains('access_token=') ||
+        webFragment.contains('refresh_token=');
 
-    if (hasAuthQueryParams || hasAuthFragmentToken) {
+    if (isInitialRoute && (hasAuthQueryParams || hasAuthFragmentToken)) {
       log('RouteGenerator: Matched auth callback via query/fragment');
-      return MaterialPageRoute(
-        builder: (_) => const _AuthCallbackLoadingScreen(),
-      );
+      return MaterialPageRoute(builder: (_) => const _AuthCallbackLoadingScreen(), settings: settings);
     }
 
-    // Debug logging to track deep link routing
-    log(
-      'RouteGenerator: routeName=$routeName, basePath=$basePath, host=$host, scheme=$scheme',
-    );
+    log('RouteGenerator: routeName=$routeName, basePath=$basePath, host=$host, scheme=$scheme');
 
-    // Handle deep link callback routes (may include query parameters)
-    // The deep link format is: io.supabase.flutter://login-callback?token=xxx
-    // In this case, 'login-callback' is the HOST, not the path
-    // Also handle various URL formats that might come from different platforms
     final bool isSupabaseScheme = scheme == 'io.supabase.flutter';
     final bool isLoginCallback =
         host == 'login-callback' ||
@@ -210,477 +200,285 @@ class RouteGenerator {
         basePath == 'login-callback' ||
         basePath?.startsWith('/login-callback') == true ||
         routeName?.contains('login-callback') == true ||
-        isSupabaseScheme; // Catch ALL supabase scheme URLs
+        isSupabaseScheme;
 
     if (isLoginCallback) {
-      log(
-        'RouteGenerator: Matched login-callback route (isSupabaseScheme=$isSupabaseScheme)',
-      );
-      return MaterialPageRoute(
-        builder: (_) => const _AuthCallbackLoadingScreen(),
-      );
+      log('RouteGenerator: Matched login-callback route');
+      return MaterialPageRoute(builder: (_) => const _AuthCallbackLoadingScreen(), settings: settings);
     }
 
     switch (basePath ?? settings.name) {
       case Routes.splashRoute:
         if (kIsWeb) {
           final portalKind = _portalFromCurrentHost();
-          if (portalKind != null) {
-            return MaterialPageRoute(
-              builder: (_) => _WebPortalEntryResolver(kind: portalKind),
-            );
-          }
-          return MaterialPageRoute(builder: (_) => const LoginViewWeb());
+          return MaterialPageRoute(builder: (_) => _WebPortalEntryResolver(kind: portalKind), settings: settings);
         }
-        return MaterialPageRoute(builder: (_) => const SplashView());
+        return MaterialPageRoute(builder: (_) => const SplashView(), settings: settings);
+
       case Routes.interpreterPortalRootRoute:
         if (kIsWeb) {
-          return MaterialPageRoute(
-            builder:
-                (_) => const _WebPortalEntryResolver(
-                  kind: _WebPortalKind.interpreter,
-                ),
-          );
+          return MaterialPageRoute(builder: (_) => const _WebPortalEntryResolver(kind: _WebPortalKind.interpreter), settings: settings);
         }
-        return MaterialPageRoute(builder: (_) => const LoginView());
+        return MaterialPageRoute(builder: (_) => const LoginView(), settings: settings);
+
       case Routes.organizationPortalRootRoute:
         if (kIsWeb) {
-          return MaterialPageRoute(
-            builder:
-                (_) => const _WebPortalEntryResolver(
-                  kind: _WebPortalKind.organization,
-                ),
-          );
+          return MaterialPageRoute(builder: (_) => const _WebPortalEntryResolver(kind: _WebPortalKind.organization), settings: settings);
         }
-        return MaterialPageRoute(builder: (_) => const LoginView());
+        return MaterialPageRoute(builder: (_) => const LoginView(), settings: settings);
+
       case Routes.emailVerificationRoute:
         return MaterialPageRoute(
           builder: (_) => const EmailVerificationView(),
-          settings: RouteSettings(arguments: settings.arguments),
+          settings: settings,
         );
+
       case Routes.confirmEmailRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const ConfirmEmailPendingViewWeb(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const ConfirmEmailPendingView(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const ConfirmEmailPendingViewWeb(), const ConfirmEmailPendingView(), settings: settings);
+
       case Routes.resetPasswordRoute:
         return MaterialPageRoute(
           builder: (_) => const ResetPasswordView(),
-          settings: RouteSettings(arguments: settings.arguments),
+          settings: settings,
         );
+
       case Routes.accepteddocument:
-        return MaterialPageRoute(
-          builder: (_) => const InterpreterDocumentView(),
-        );
+        return MaterialPageRoute(builder: (_) => const InterpreterDocumentView(), settings: settings);
+
       case Routes.loginRoute:
       case Routes.interpreterPortalLoginRoute:
       case Routes.organizationPortalLoginRoute:
       case Routes.adminPortalLoginRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(builder: (_) => const LoginViewWeb());
-        }
-        return MaterialPageRoute(builder: (_) => const LoginView());
+        return _buildRoute(const LoginViewWeb(), const LoginView(), settings: settings);
+
       case Routes.interpreterPortalSignupRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const InterpreterTrackSelectionWebScreen(),
-            settings: RouteSettings(
-              arguments: settings.arguments ?? {'role': 'interpreter'},
-            ),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const InterpreterTrackSelectionScreen(),
-          settings: RouteSettings(
-            arguments: settings.arguments ?? {'role': 'interpreter'},
-          ),
-        );
+        final defaultArgs = settings.arguments ?? {'role': 'interpreter'};
+        return _buildRoute(const InterpreterTrackSelectionWebScreen(), const InterpreterTrackSelectionScreen(), settings: RouteSettings(name: settings.name, arguments: defaultArgs));
+
       case Routes.onBoardingRoute:
-        return MaterialPageRoute(builder: (_) => const OnboardingView());
+        return MaterialPageRoute(builder: (_) => const OnboardingView(), settings: settings);
+
       case Routes.registerRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const RegisterViewWeb(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const RegisterView(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const RegisterViewWeb(), const RegisterView(), settings: settings);
+
       case Routes.forgotPasswordRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const ForgotPasswordViewWeb(),
-          );
-        }
-        return MaterialPageRoute(builder: (_) => const ForgotPasswordView());
+        return _buildRoute(const ForgotPasswordViewWeb(), const ForgotPasswordView(), settings: settings);
+
       case Routes.selectRole:
-        if (kIsWeb) {
-          return MaterialPageRoute(builder: (_) => const SelectRoleScreenWeb());
-        }
-        return MaterialPageRoute(builder: (_) => const SelectRoleScreen());
+        return _buildRoute(const SelectRoleScreenWeb(), const SelectRoleScreen(), settings: settings);
+
       case Routes.interpreterTrackSelection:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const InterpreterTrackSelectionWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const InterpreterTrackSelectionScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const InterpreterTrackSelectionWebScreen(), const InterpreterTrackSelectionScreen(), settings: settings);
+
       case Routes.interpreterFieldScreen:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const SelectFieldWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const InterpreterFieldScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const SelectFieldWebScreen(), const InterpreterFieldScreen(), settings: settings);
+
       case Routes.selectLanguage:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const LanguageSelectionWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const LanguageSelectionScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const LanguageSelectionWebScreen(), const LanguageSelectionScreen(), settings: settings);
+
       case Routes.languageFluencyScreen:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const LanguageFluencyWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const LanguageFluencyScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const LanguageFluencyWebScreen(), const LanguageFluencyScreen(), settings: settings);
 
       case Routes.voiceSampleRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const VoiceSampleWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const VoiceSampleScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const VoiceSampleWebScreen(), const VoiceSampleScreen(), settings: settings);
+
       case Routes.certificateUploadRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const CertificateUploadWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const CertificateUploadScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const CertificateUploadWebScreen(), const CertificateUploadScreen(), settings: settings);
+
       case Routes.generalQuizRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const _GeneralQuizRouteWrapperWeb(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const _GeneralQuizRouteWrapper(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const _GeneralQuizRouteWrapperWeb(), const _GeneralQuizRouteWrapper(), settings: settings);
+
       case Routes.medicalSectionsRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const _MedicalSectionsRouteWrapperWeb(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const _MedicalSectionsRouteWrapper(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const _MedicalSectionsRouteWrapperWeb(), const _MedicalSectionsRouteWrapper(), settings: settings);
+
       case Routes.medicalQuizRoute:
         return MaterialPageRoute(
           builder: (_) => const MedicalQuizScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
+          settings: settings,
         );
+
       case Routes.volunteerSuccessRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const VolunteerSuccessWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const VolunteerSuccessScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
-
+        return _buildRoute(const VolunteerSuccessWebScreen(), const VolunteerSuccessScreen(), settings: settings);
+       
+      case Routes.interpreterComplianceRoute:
+        return MaterialPageRoute(builder: (_) => const InterpreterLoginComplianceScreen(), settings: settings);
+        
       case Routes.organizationRegisterRoute:
-        return MaterialPageRoute(
-          builder: (_) => const OrganizationRegistrationScreen(),
-        );
+        return MaterialPageRoute(builder: (_) => const OrganizationRegistrationScreen(), settings: settings);
+
       case Routes.organizationDashboardRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder:
-                (_) => _PortalRoleGateWeb(
-                  allowedRoles: const {'organization_admin'},
-                  unauthenticatedRoute: Routes.organizationPortalLoginRoute,
-                  child: BlocProvider(
-                    create: (context) => instance<OrganizationDashboardBloc>(),
-                    child: const OrganizationDashboardWebView(),
-                  ),
-                ),
-          );
-        }
-        return MaterialPageRoute(
-          builder:
-              (_) => BlocProvider(
-                create: (context) => instance<OrganizationDashboardBloc>(),
-                child: const OrganizationDashboardView(),
-              ),
-        );
-      case Routes.joinOrganizationRoute:
-        return MaterialPageRoute(builder: (_) => const JoinOrganizationView());
-      case Routes.organizationSettingsRoute:
-        return MaterialPageRoute(
-          builder: (_) => const OrganizationSettingsView(),
-        );
-      case Routes.interpreterQuizHubRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const InterpreterQuizHubWebScreen(),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const InterpreterQuizHubScreen(),
-        );
-      case Routes.doctorJoinOrganizationRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const DoctorJoinOrganizationWebScreen(),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const DoctorJoinOrganizationScreen(),
-        );
-      case Routes.doctorRegisterWithInviteRoute:
-        return MaterialPageRoute(
-          builder: (_) => const DoctorRegisterWithInviteScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
-
-      // Routes.interpreterOnboardingRoute is deprecated and not used anymore
-
-      case Routes.mainRoute:
-        // Use web-specific main view on web platform
-        if (kIsWeb) {
-          return MaterialPageRoute(builder: (_) => const MainViewWeb());
-        }
-        return MaterialPageRoute(builder: (_) => const MainView());
-      case Routes.interpreterPortalDashboardRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder:
-                (_) => const _InterpreterPortalGateWeb(child: MainViewWeb()),
-          );
-        }
-        return MaterialPageRoute(builder: (_) => const MainView());
       case Routes.organizationPortalDashboardRoute:
         if (kIsWeb) {
           return MaterialPageRoute(
-            builder:
-                (_) => _PortalRoleGateWeb(
-                  allowedRoles: const {'organization_admin'},
-                  unauthenticatedRoute: Routes.organizationPortalLoginRoute,
-                  child: BlocProvider(
-                    create: (context) => instance<OrganizationDashboardBloc>(),
-                    child: const OrganizationDashboardWebView(),
-                  ),
-                ),
-          );
-        }
-        return MaterialPageRoute(
-          builder:
-              (_) => BlocProvider(
+            builder: (_) => _PortalRoleGateWeb(
+              allowedRoles: const {'organization_admin'},
+              unauthenticatedRoute: Routes.organizationPortalLoginRoute,
+              child: BlocProvider(
                 create: (context) => instance<OrganizationDashboardBloc>(),
-                child: const OrganizationDashboardView(),
+                child: const OrganizationDashboardWebView(),
               ),
-        );
-      case Routes.adminPortalDashboardRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder:
-                (_) => const _PortalRoleGateWeb(
-                  allowedRoles: {'admin', 'superadmin'},
-                  unauthenticatedRoute: Routes.adminPortalLoginRoute,
-                  child: AdminDashboardWeb(),
-                ),
+            ),
+            settings: settings,
           );
         }
-        return MaterialPageRoute(builder: (_) => const AdminListScreen());
-      case Routes.chatRoute:
-        final args = settings.arguments as Map<String, dynamic>?;
         return MaterialPageRoute(
-          builder:
-              (_) => ChatView(
-                requestId: args?['requestId'],
-                requesterId: args?['requesterId'],
-                interpreterId: args?['interpreterId'],
-              ),
+          builder: (_) => BlocProvider(
+            create: (context) => instance<OrganizationDashboardBloc>(),
+            child: const OrganizationDashboardView(),
+          ),
+          settings: settings,
         );
-      case Routes.requestWaiting:
-        final args = settings.arguments as Map<String, dynamic>;
+
+      case Routes.joinOrganizationRoute:
+        return MaterialPageRoute(builder: (_) => const JoinOrganizationView(), settings: settings);
+
+      case Routes.organizationSettingsRoute:
+        return MaterialPageRoute(builder: (_) => const OrganizationSettingsView(), settings: settings);
+
+      case Routes.interpreterQuizHubRoute:
+        return _buildRoute(const InterpreterQuizHubWebScreen(), const InterpreterQuizHubScreen(), settings: settings);
+
+      case Routes.doctorJoinOrganizationRoute:
+        return _buildRoute(const DoctorJoinOrganizationWebScreen(), const DoctorJoinOrganizationScreen(), settings: settings);
+
+      case Routes.doctorRegisterWithInviteRoute:
         return MaterialPageRoute(
-          builder:
-              (_) => RequestWaitingView(
-                fromLanguageId: args['fromLanguageId'],
-                toLanguageId: args['toLanguageId'],
-                specialization: args['specialization'],
-                urgency: args['urgency'],
-                description: args['description'],
-              ),
+          builder: (_) => const DoctorRegisterWithInviteScreen(),
+          settings: settings,
         );
-      case Routes.documentTranslation:
-        return MaterialPageRoute(
-          builder: (_) => const DocumentTranslationView(),
-        );
-      case Routes.privacyPolicy:
-        return MaterialPageRoute(builder: (_) => const PrivacyPolicyView());
-      case Routes.termsOfService:
-        return MaterialPageRoute(builder: (_) => const TermsOfServiceView());
-      case Routes.changePassword:
-        return MaterialPageRoute(builder: (_) => const ChangePasswordView());
+
+      case Routes.mainRoute:
+        return _buildRoute(const MainViewWeb(), const MainView(), settings: settings);
+
+      case Routes.interpreterPortalDashboardRoute:
+        return _buildRoute(const _InterpreterPortalGateWeb(child: MainViewWeb()), const MainView(), settings: settings);
+
+      case Routes.adminPortalDashboardRoute:
       case Routes.adminRoute:
         if (kIsWeb) {
           return MaterialPageRoute(
-            builder:
-                (_) => const _PortalRoleGateWeb(
-                  allowedRoles: {'admin', 'superadmin'},
-                  unauthenticatedRoute: Routes.adminPortalLoginRoute,
-                  child: AdminDashboardWeb(),
-                ),
+            builder: (_) => const _PortalRoleGateWeb(
+              allowedRoles: {'admin', 'superadmin'},
+              unauthenticatedRoute: Routes.adminPortalLoginRoute,
+              child: AdminDashboardWeb(),
+            ),
+            settings: settings,
           );
         }
-        return MaterialPageRoute(builder: (_) => const AdminListScreen());
+        return MaterialPageRoute(builder: (_) => const AdminListScreen(), settings: settings);
+
+      case Routes.chatRoute:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return MaterialPageRoute(
+          builder: (_) => ChatView(
+            requestId: args?['requestId'],
+            requesterId: args?['requesterId'],
+            interpreterId: args?['interpreterId'],
+          ),
+          settings: settings,
+        );
+
+      case Routes.requestWaiting:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => RequestWaitingView(
+            fromLanguageId: args['fromLanguageId'],
+            toLanguageId: args['toLanguageId'],
+            specialization: args['specialization'],
+            urgency: args['urgency'],
+            description: args['description'],
+          ),
+          settings: settings,
+        );
+
+      case Routes.documentTranslation:
+        return MaterialPageRoute(builder: (_) => const DocumentTranslationView(), settings: settings);
+
+      case Routes.privacyPolicy:
+        return MaterialPageRoute(builder: (_) => const PrivacyPolicyView(), settings: settings);
+
+      case Routes.termsOfService:
+        return MaterialPageRoute(builder: (_) => const TermsOfServiceView(), settings: settings);
+
+      case Routes.changePassword:
+        return MaterialPageRoute(builder: (_) => const ChangePasswordView(), settings: settings);
+
       case Routes.phoneOtpRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const PhoneOtpWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        // Mobile fallback — reuse web screen for now
-        return MaterialPageRoute(
-          builder: (_) => const PhoneOtpWebScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const PhoneOtpWebScreen(), const PhoneOtpWebScreen(), settings: settings);
+
       case Routes.governmentIdUploadRoute:
-        if (kIsWeb) {
-          return MaterialPageRoute(
-            builder: (_) => const GovernmentIdUploadWebScreen(),
-            settings: RouteSettings(arguments: settings.arguments),
-          );
-        }
-        return MaterialPageRoute(
-          builder: (_) => const GovernmentIdUploadWebScreen(),
-          settings: RouteSettings(arguments: settings.arguments),
-        );
+        return _buildRoute(const GovernmentIdUploadWebScreen(), const GovernmentIdUploadWebScreen(), settings: settings);
+
       default:
         log('RouteGenerator: Unmatched route - ${settings.name}');
-        log('RouteGenerator: Stack trace: ${StackTrace.current}');
-        // If it looks like a deep link URL, treat it as auth callback
         if (settings.name?.contains('://') == true ||
             settings.name?.contains('code=') == true ||
             settings.name?.contains('token=') == true ||
-          settings.name?.contains('token_hash=') == true ||
-          settings.name?.contains('type=magiclink') == true ||
+            settings.name?.contains('token_hash=') == true ||
+            settings.name?.contains('type=magiclink') == true ||
             settings.name?.contains('access_token=') == true) {
-          log(
-            'RouteGenerator: Detected URL-like or auth route, treating as auth callback',
-          );
-          return MaterialPageRoute(
-            builder: (_) => const _AuthCallbackLoadingScreen(),
-          );
+          return MaterialPageRoute(builder: (_) => const _AuthCallbackLoadingScreen(), settings: settings);
         }
         return unDefinedRoute();
     }
   }
 
   static Route<dynamic> unDefinedRoute() {
-    return MaterialPageRoute(
-      builder: (_) => const _UnknownRouteRecoveryScreen(),
-    );
+    return MaterialPageRoute(builder: (_) => const _UnknownRouteRecoveryScreen());
   }
 }
 
-/// Recovery screen that replaces the dead-end "no route found" page.
-/// Checks current auth state and redirects to the appropriate screen.
+Future<User?> _waitForAuthSession() async {
+  User? user = Supabase.instance.client.auth.currentUser;
+  int attempts = 0;
+  while (user == null && attempts < 15) {
+    await Future.delayed(const Duration(milliseconds: 200));
+    user = Supabase.instance.client.auth.currentUser;
+    if (user != null) break;
+    attempts++;
+  }
+  return user;
+}
+
 class _UnknownRouteRecoveryScreen extends StatefulWidget {
   const _UnknownRouteRecoveryScreen();
 
   @override
-  State<_UnknownRouteRecoveryScreen> createState() =>
-      _UnknownRouteRecoveryScreenState();
+  State<_UnknownRouteRecoveryScreen> createState() => _UnknownRouteRecoveryScreenState();
 }
 
-class _UnknownRouteRecoveryScreenState
-    extends State<_UnknownRouteRecoveryScreen> {
+class _UnknownRouteRecoveryScreenState extends State<_UnknownRouteRecoveryScreen> {
   @override
   void initState() {
     super.initState();
     _recover();
   }
-
-  Future<void> _recover() async {
-    // Give a brief pause for any pending navigation to settle
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-
-    final user = Supabase.instance.client.auth.currentUser;
+Future<void> _recover() async {
+    final user = await _waitForAuthSession();
 
     if (user != null && user.emailConfirmedAt != null) {
       try {
         final profile = await SupabaseService().getUserProfile(user.id);
         final role = profile?.role;
-        final route =
-            role == 'interpreter'
+        
+        // FIX: Let the _InterpreterPortalGateWeb handle compliance and onboarding!
+        // Do not check compliance here.
+        final route = role == 'interpreter'
             ? Routes.interpreterPortalDashboardRoute
-                : role == 'organization_admin'
+            : role == 'organization_admin'
                 ? Routes.organizationPortalDashboardRoute
                 : role == 'admin' || role == 'superadmin'
-                ? Routes.adminPortalDashboardRoute
-                : Routes.mainRoute;
+                    ? Routes.adminPortalDashboardRoute
+                    : Routes.mainRoute;
+        
         log('UnknownRouteRecovery: User authenticated, going to $route');
         Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
       } catch (_) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       }
     } else {
-      // Not authenticated — go to splash (clean start)
       log('UnknownRouteRecovery: No auth, going to splash');
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.splashRoute, (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(Routes.splashRoute, (route) => false);
     }
   }
 
@@ -729,7 +527,8 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
     }
 
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = await _waitForAuthSession();
+
       if (user == null) {
         _redirect(widget.unauthenticatedRoute);
         return;
@@ -768,7 +567,7 @@ class _PortalRoleGateWebState extends State<_PortalRoleGateWeb> {
     }
   }
 
-void _redirect(String route) {
+  void _redirect(String route) {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -779,24 +578,18 @@ void _redirect(String route) {
 
   @override
   Widget build(BuildContext context) {
-    if (_isChecking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (!_isAllowed) {
-      return const SizedBox.shrink();
-    }
+    if (_isChecking) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_isAllowed) return const SizedBox.shrink();
     return widget.child;
   }
 }
 
 class _InterpreterPortalGateWeb extends StatefulWidget {
   const _InterpreterPortalGateWeb({required this.child});
-
   final Widget child;
 
   @override
-  State<_InterpreterPortalGateWeb> createState() =>
-      _InterpreterPortalGateWebState();
+  State<_InterpreterPortalGateWeb> createState() => _InterpreterPortalGateWebState();
 }
 
 class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
@@ -823,7 +616,8 @@ class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
 
   Future<void> _checkAccess() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = await _waitForAuthSession();
+
       if (user == null) {
         _redirect(Routes.interpreterPortalLoginRoute);
         return;
@@ -838,26 +632,21 @@ class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
       }
 
       final client = Supabase.instance.client;
-      final profileData =
-          await client
-              .from('users_profile')
-              .select('employment_type')
-              .eq('user_id', user.id)
-              .maybeSingle();
-      final detailsData =
-          await client
-              .from('interpreter_details')
-              .select('onboarding_status, is_verified')
-              .eq('user_id', user.id)
-              .maybeSingle();
+      final profileData = await client.from('users_profile').select('employment_type').eq('user_id', user.id).maybeSingle();
+      final detailsData = await client.from('interpreter_details').select('onboarding_status, is_verified, employment_type').eq('user_id', user.id).maybeSingle();
 
-      final employmentType =
-          profileData?['employment_type'] as String? ?? 'volunteer';
-      final onboardingStatus =
-          detailsData?['onboarding_status'] as String? ?? 'not_started';
+      final employmentType = detailsData?['employment_type'] as String? ?? profileData?['employment_type'] as String? ?? 'paid';
+      final onboardingStatus = detailsData?['onboarding_status'] as String? ?? 'not_started';
       final isVerified = detailsData?['is_verified'] == true;
 
       if (isVerified || onboardingStatus == 'under_review') {
+        final hasPassed = await ComplianceStorage.hasPassedCompliance(); // Read LocalStorage
+        
+        if (!hasPassed) {
+          _redirect(Routes.interpreterComplianceRoute);
+          return;
+        }
+        
         if (!mounted) return;
         setState(() {
           _isAllowed = true;
@@ -877,22 +666,10 @@ class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
           return;
         case 'languages_selected':
           try {
-            final rows = await client
-                .from('interpreter_languages')
-                .select('language_id')
-                .eq('user_id', user.id);
-            final languageIds =
-                (rows as List)
-                    .map((row) => row['language_id'])
-                    .whereType<num>()
-                    .map((id) => id.toInt())
-                    .toList();
-            if (languageIds.isNotEmpty) {
-              resumeArgs['languages'] = languageIds;
-            }
-          } catch (_) {
-            // Keep fallback route to language selection.
-          }
+            final rows = await client.from('interpreter_languages').select('language_id').eq('user_id', user.id);
+            final languageIds = (rows as List).map((row) => row['language_id']).whereType<num>().map((id) => id.toInt()).toList();
+            if (languageIds.isNotEmpty) resumeArgs['languages'] = languageIds;
+          } catch (_) {}
 
           if ((resumeArgs['languages'] as List?)?.isNotEmpty == true) {
             _redirect(Routes.languageFluencyScreen, arguments: resumeArgs);
@@ -935,13 +712,12 @@ class _InterpreterPortalGateWebState extends State<_InterpreterPortalGateWeb> {
       case 'admin':
       case 'superadmin':
         return Routes.adminPortalDashboardRoute;
-      case 'interpreter':
       default:
         return Routes.interpreterPortalLoginRoute;
     }
   }
 
-void _redirect(String route, {Object? arguments}) {
+  void _redirect(String route, {Object? arguments}) {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -952,63 +728,67 @@ void _redirect(String route, {Object? arguments}) {
 
   @override
   Widget build(BuildContext context) {
-    if (_isChecking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (!_isAllowed) {
-      return const SizedBox.shrink();
-    }
+    if (_isChecking) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_isAllowed) return const SizedBox.shrink();
     return widget.child;
   }
 }
 
 class _WebPortalEntryResolver extends StatefulWidget {
-  const _WebPortalEntryResolver({required this.kind});
-
-  final _WebPortalKind kind;
+  const _WebPortalEntryResolver({this.kind});
+  final _WebPortalKind? kind;
 
   @override
-  State<_WebPortalEntryResolver> createState() =>
-      _WebPortalEntryResolverState();
+  State<_WebPortalEntryResolver> createState() => _WebPortalEntryResolverState();
 }
 
 class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
+  bool _isResolving = true;
+  Widget? _resolvedWidget;
+
   @override
   void initState() {
     super.initState();
     _resolve();
   }
-
-  Future<void> _resolve() async {
+Future<void> _resolve() async {
     final targetLogin = RouteGenerator._loginRouteForPortal(widget.kind);
-
     if (!kIsWeb) {
       _redirect(targetLogin);
       return;
     }
 
-    final user = Supabase.instance.client.auth.currentUser;
-    // Allow users to skip email confirmation check if they were already authenticated
-    // Some older accounts or specific flows might not have emailConfirmedAt set.
+    final user = await _waitForAuthSession();
+
     if (user == null) {
-      _redirect(targetLogin);
+      if (widget.kind == _WebPortalKind.organization) {
+        _redirect(Routes.organizationPortalLoginRoute);
+      } else if (widget.kind == _WebPortalKind.admin) {
+        _redirect(Routes.adminPortalLoginRoute);
+      } else {
+        if (mounted) {
+          setState(() {
+            _resolvedWidget = const AuthSelectionWeb();
+            _isResolving = false;
+          });
+        }
+      }
       return;
     }
 
     try {
       final profile = await SupabaseService().getUserProfile(user.id);
       final role = profile?.role;
-      final allowed =
-          (widget.kind == _WebPortalKind.organization &&
-              role == 'organization_admin') ||
-          (widget.kind == _WebPortalKind.interpreter &&
-              role == 'interpreter') ||
-          (widget.kind == _WebPortalKind.admin &&
-              (role == 'admin' || role == 'superadmin'));
+      final allowed = (widget.kind == _WebPortalKind.organization && role == 'organization_admin') ||
+                      (widget.kind == _WebPortalKind.interpreter && role == 'interpreter') ||
+                      (widget.kind == _WebPortalKind.admin && (role == 'admin' || role == 'superadmin'));
 
       if (allowed) {
         if (widget.kind == _WebPortalKind.interpreter) {
-          _redirect(Routes.interpreterPortalLoginRoute);
+          // FIX: Removed the manual compliance check! 
+          // Redirecting to the Dashboard route forces the _InterpreterPortalGateWeb 
+          // to correctly check onboarding status first.
+          _redirect(Routes.interpreterPortalDashboardRoute);
         } else if (widget.kind == _WebPortalKind.organization) {
           _redirect(Routes.organizationPortalDashboardRoute);
         } else {
@@ -1018,39 +798,51 @@ class _WebPortalEntryResolverState extends State<_WebPortalEntryResolver> {
       }
 
       await SupabaseService().signOut();
-      _redirect(targetLogin);
+      if (widget.kind == _WebPortalKind.interpreter) {
+        _redirect(Routes.interpreterPortalRootRoute);
+      } else {
+        _redirect(targetLogin);
+      }
     } catch (e) {
       log('WebPortalEntryResolver error: $e');
-      _redirect(targetLogin);
+      if (mounted) {
+        setState(() {
+          _resolvedWidget = const AuthSelectionWeb();
+          _isResolving = false;
+        });
+      }
     }
   }
-void _redirect(String route) {
+
+  void _redirect(String route) {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
-      }
-    });
+    Navigator.of(context).pushNamedAndRemoveUntil(route, (route) => false);
   }
+
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isResolving) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF1F5F9),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF0F4C81))),
+      );
+    }
+    return _resolvedWidget ?? const AuthSelectionWeb();
   }
 }
 
-/// Loading screen shown while the auth deep-link callback is processed.
 class _AuthCallbackLoadingScreen extends StatefulWidget {
   const _AuthCallbackLoadingScreen();
 
   @override
-  State<_AuthCallbackLoadingScreen> createState() =>
-      _AuthCallbackLoadingScreenState();
+  State<_AuthCallbackLoadingScreen> createState() => _AuthCallbackLoadingScreenState();
 }
 
-class _AuthCallbackLoadingScreenState
-    extends State<_AuthCallbackLoadingScreen> {
-  String _statusMessage = 'Verifying your email...';
+class _AuthCallbackLoadingScreenState extends State<_AuthCallbackLoadingScreen> {
+  String _statusMessage = 'Authenticating your secure link...';
   bool _hasError = false;
+  
+  late final StreamSubscription<AuthState> _authSub;
 
   @override
   void initState() {
@@ -1058,79 +850,75 @@ class _AuthCallbackLoadingScreenState
     _handleAuthCallback();
   }
 
-  Future<void> _handleAuthCallback() async {
-    log('_AuthCallbackLoadingScreen: Starting auth callback handling');
-
-    try {
-      // Wait a moment for Supabase to process the deep link tokens
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (!mounted) return;
-
-      // Check if we have a session now
-      final session = Supabase.instance.client.auth.currentSession;
-      final user = Supabase.instance.client.auth.currentUser;
-
-      log(
-        '_AuthCallbackLoadingScreen: session=${session != null}, user=${user?.email}, emailConfirmed=${user?.emailConfirmedAt}',
-      );
-
-      if (user != null && user.emailConfirmedAt != null) {
-        // Try to finalize pending registration
-        try {
-          if (!mounted) return;
-          setState(() => _statusMessage = 'Setting up your account...');
-
-          final didFinalize =
-              await PendingRegistrationService().finalizePendingRegistration();
-          log(
-            '_AuthCallbackLoadingScreen: finalizePendingRegistration=$didFinalize',
-          );
-
-          if (!mounted) return;
-
-          // Navigate based on user role (profile may or may not exist)
-          await _navigateBasedOnRole(user.id);
-        } catch (e) {
-          log('_AuthCallbackLoadingScreen: Error finalizing registration: $e');
-          if (!mounted) return;
-          // Try to navigate based on role, fallback to main if profile doesn't exist
-          await _navigateBasedOnRole(user.id);
-        }
-      } else {
-        // No confirmed user, wait a bit more then fallback
-        if (!mounted) return;
-        setState(() => _statusMessage = 'Waiting for confirmation...');
-
-        await Future.delayed(const Duration(seconds: 3));
-        if (!mounted) return;
-
-        // Check again
-        final refreshedUser = Supabase.instance.client.auth.currentUser;
-        if (refreshedUser != null && refreshedUser.emailConfirmedAt != null) {
-          await _navigateBasedOnRole(refreshedUser.id);
-        } else {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
-        }
-      }
-    } catch (e) {
-      log('_AuthCallbackLoadingScreen: Unexpected error: $e');
-      if (!mounted) return;
-      setState(() {
-        _hasError = true;
-        _statusMessage = 'An error occurred. Please try again.';
-      });
-      // Wait a moment then navigate to login
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
-    }
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 
+  void _handleAuthCallback() {
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      if (session != null) {
+        _authSub.cancel();
+        await _finalizeAndNavigate(session.user.id);
+      }
+    });
+
+    Future.delayed(const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      final session = Supabase.instance.client.auth.currentSession;
+      
+      if (session != null) {
+        _authSub.cancel();
+        await _finalizeAndNavigate(session.user.id);
+      } else {
+        if (mounted) setState(() => _statusMessage = 'Waiting for secure connection...');
+        
+        Future.delayed(const Duration(seconds: 4), () {
+          if (!mounted) return;
+          final retrySession = Supabase.instance.client.auth.currentSession;
+          if (retrySession != null) {
+            _authSub.cancel();
+            _finalizeAndNavigate(retrySession.user.id);
+          } else {
+            _authSub.cancel();
+            if (mounted) Navigator.of(context).pushNamedAndRemoveUntil(Routes.loginRoute, (route) => false);
+          }
+        });
+      }
+    });
+  }Future<void> _finalizeAndNavigate(String userId) async {
+    if (!mounted) return;
+    setState(() => _statusMessage = 'Email verified! Setting up your workspace...');
+    
+    try {
+      await PendingRegistrationService().finalizePendingRegistration();
+    } catch (e) {
+      log('AuthCallback Error finalizing data: $e');
+    }
+
+    if (!mounted) return;
+    
+    // We removed the signOut() command! 
+    // The magic link securely authenticates the user. We just pass them to 
+    // the dashboard router. The _InterpreterPortalGateWeb will seamlessly 
+    // bypass the camera screen and drop them directly at Select Language.
+    try {
+      final profile = await SupabaseService().getUserProfile(userId);
+      if (profile?.role == 'interpreter') {
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterPortalDashboardRoute, (route) => false);
+      } else if (profile?.role == 'organization_admin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.organizationPortalDashboardRoute, (route) => false);
+      } else if (profile?.role == 'admin' || profile?.role == 'superadmin') {
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.adminPortalDashboardRoute, (route) => false);
+      } else {
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      }
+    } catch (_) {
+      Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+    }
+  }
   Map<String, dynamic> _buildInterpreterResumeArgs(String employmentType) {
     final isPaid = employmentType == 'paid';
     return {
@@ -1152,10 +940,7 @@ class _AuthCallbackLoadingScreenState
   }) async {
     if (isVerified || onboardingStatus == 'under_review') {
       if (!mounted) return true;
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        Routes.interpreterPortalDashboardRoute,
-        (route) => false,
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterPortalDashboardRoute, (route) => false);
       return true;
     }
 
@@ -1164,100 +949,49 @@ class _AuthCallbackLoadingScreenState
     switch (onboardingStatus) {
       case 'not_started':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.interpreterTrackSelection,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterTrackSelection, (route) => false, arguments: resumeArgs);
         return true;
       case 'track_selected':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.selectLanguage,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.selectLanguage, (route) => false, arguments: resumeArgs);
         return true;
       case 'languages_selected':
         try {
-          final rows = await client
-              .from('interpreter_languages')
-              .select('language_id')
-              .eq('user_id', userId);
-          final languageIds =
-              (rows as List)
-                  .map((row) => row['language_id'])
-                  .whereType<num>()
-                  .map((id) => id.toInt())
-                  .toList();
-          if (languageIds.isNotEmpty) {
-            resumeArgs['languages'] = languageIds;
-          }
-        } catch (_) {
-          // Fall back to language selection if data hydration fails.
-        }
+          final rows = await client.from('interpreter_languages').select('language_id').eq('user_id', userId);
+          final languageIds = (rows as List).map((row) => row['language_id']).whereType<num>().map((id) => id.toInt()).toList();
+          if (languageIds.isNotEmpty) resumeArgs['languages'] = languageIds;
+        } catch (_) {}
 
         if (!mounted) return true;
         if ((resumeArgs['languages'] as List?)?.isNotEmpty == true) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.languageFluencyScreen,
-            (route) => false,
-            arguments: resumeArgs,
-          );
+          Navigator.of(context).pushNamedAndRemoveUntil(Routes.languageFluencyScreen, (route) => false, arguments: resumeArgs);
         } else {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.selectLanguage,
-            (route) => false,
-            arguments: resumeArgs,
-          );
+          Navigator.of(context).pushNamedAndRemoveUntil(Routes.selectLanguage, (route) => false, arguments: resumeArgs);
         }
         return true;
       case 'fluency_selected':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.interpreterFieldScreen,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterFieldScreen, (route) => false, arguments: resumeArgs);
         return true;
       case 'specialization_selected':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.voiceSampleRoute,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.voiceSampleRoute, (route) => false, arguments: resumeArgs);
         return true;
       case 'voice_sample_uploaded':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.phoneOtpRoute,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.phoneOtpRoute, (route) => false, arguments: resumeArgs);
         return true;
       case 'phone_entered':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.governmentIdUploadRoute,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.governmentIdUploadRoute, (route) => false, arguments: resumeArgs);
         return true;
       case 'government_id_uploaded':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.certificateUploadRoute,
-          (route) => false,
-          arguments: resumeArgs,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.certificateUploadRoute, (route) => false, arguments: resumeArgs);
         return true;
       case 'document_uploaded':
         if (!mounted) return true;
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.interpreterQuizHubRoute,
-          (route) => false,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterQuizHubRoute, (route) => false);
         return true;
       default:
         return false;
@@ -1266,156 +1000,94 @@ class _AuthCallbackLoadingScreenState
 
   Future<void> _navigateBasedOnRole(String userId) async {
     try {
-      final supabaseService = SupabaseService();
-      final profile = await supabaseService.getUserProfile(userId);
+      final profile = await SupabaseService().getUserProfile(userId);
       if (!mounted) return;
 
       if (profile == null) {
-        // Profile doesn't exist yet - this can happen if:
-        // 1. User clicked magic link on different device
-        // 2. Pending registration data was lost
-        // Navigate to main and let the app handle missing profile
-        log('_AuthCallbackLoadingScreen: No profile found, navigating to main');
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
         return;
       }
 
       if (profile.role == 'organization_admin') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.organizationPortalDashboardRoute,
-          (route) => false,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.organizationPortalDashboardRoute, (route) => false);
       } else if (profile.role == 'admin' || profile.role == 'superadmin') {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          Routes.adminPortalDashboardRoute,
-          (route) => false,
-        );
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.adminPortalDashboardRoute, (route) => false);
       } else if (profile.role == 'interpreter') {
         final appPrefs = instance<AppPreferences>();
-        // For interpreters, check if they still need to complete quizzes
         try {
           final client = Supabase.instance.client;
-          final profileFuture =
-              client
-                  .from('users_profile')
-                  .select('employment_type')
-                  .eq('user_id', userId)
-                  .maybeSingle();
-          final detailsFuture =
-              client
-                  .from('interpreter_details')
-                  .select('onboarding_status, is_verified')
-                  .eq('user_id', userId)
-                  .maybeSingle();
-          final badgesFuture = client
-              .from('interpreter_badges')
-              .select('badge')
-              .eq('user_id', userId);
-          final fluencyFuture = client
-              .from('voice_samples')
-              .select('id')
-              .eq('user_id', userId)
-              .eq('sentence_type', advancedFluencySentenceType);
+          final profileFuture = client.from('users_profile').select('employment_type').eq('user_id', userId).maybeSingle();
+          final detailsFuture = client.from('interpreter_details').select('onboarding_status, is_verified, employment_type').eq('user_id', userId).maybeSingle();
+          final attemptsFuture = client.from('quiz_attempts').select('quiz_type').eq('user_id', userId).eq('quiz_type', 'general');
+          final fluencyFuture = client.from('voice_samples').select('id').eq('user_id', userId).eq('sentence_type', advancedFluencySentenceType);
 
-          final results = await Future.wait<dynamic>([
-            profileFuture,
-            detailsFuture,
-            badgesFuture,
-            fluencyFuture,
-          ]);
-
+          final results = await Future.wait<dynamic>([profileFuture, detailsFuture, attemptsFuture, fluencyFuture]);
           final profileData = results[0] as Map<String, dynamic>?;
           final detailsData = results[1] as Map<String, dynamic>?;
-          final badgesData = results[2] as List<dynamic>;
+          final attemptsData = results[2] as List<dynamic>;
           final fluencyData = results[3] as List<dynamic>;
 
-          final employmentType =
-              profileData?['employment_type'] as String? ?? 'volunteer';
-          final onboardingStatus =
-              detailsData?['onboarding_status'] as String? ?? 'not_started';
+          final employmentType = detailsData?['employment_type'] as String? ?? profileData?['employment_type'] as String? ?? 'paid';
+          final onboardingStatus = detailsData?['onboarding_status'] as String? ?? 'not_started';
           final isVerified = detailsData?['is_verified'] == true;
 
-          final resumed = await _resumeInterpreterOnboarding(
-            client: client,
-            userId: userId,
-            onboardingStatus: onboardingStatus,
-            employmentType: employmentType,
-            isVerified: isVerified,
-          );
+          final resumed = await _resumeInterpreterOnboarding(client: client, userId: userId, onboardingStatus: onboardingStatus, employmentType: employmentType, isVerified: isVerified);
           if (resumed) return;
 
-          final badges =
-              badgesData
-                  .map((b) => b['badge']?.toString() ?? '')
-                  .where((b) => b.isNotEmpty)
-                  .toSet();
-
-          final hasGeneral = badges.contains('general');
-          final medicalCount = badges.where((b) => b != 'general').length;
-          final hasAdvancedFluency =
-              fluencyData.length >= advancedFluencyQuestionCount;
-          final bool isExperienced = employmentType == 'paid';
-          final bool allComplete =
-              isExperienced
-                  ? (hasGeneral && medicalCount >= 10 && hasAdvancedFluency)
-                  : (hasGeneral && hasAdvancedFluency);
+          final hasGeneralAttempt = attemptsData.isNotEmpty;
+          final hasAdvancedFluency = fluencyData.length >= advancedFluencyQuestionCount;
+          final bool allComplete = hasGeneralAttempt && hasAdvancedFluency;
 
           if (!mounted) return;
-
           if (allComplete) {
             await appPrefs.setQuizOnboardingDone();
+            
+            final hasPassed = await ComplianceStorage.hasPassedCompliance(); // Read LocalStorage
             if (!mounted) return;
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              Routes.interpreterPortalDashboardRoute,
-              (route) => false,
-            );
+            
+            if (!hasPassed) {
+              Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterComplianceRoute, (route) => false);
+            } else {
+              Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterPortalDashboardRoute, (route) => false);
+            }
+            
           } else {
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              Routes.interpreterQuizHubRoute,
-              (route) => false,
-            );
+            Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterQuizHubRoute, (route) => false);
           }
         } catch (e) {
-          log(
-            '_AuthCallbackLoadingScreen: Error checking interpreter quiz status: $e',
-          );
           if (!mounted) return;
-          // Fallback to quiz hub for new interpreters
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            Routes.interpreterQuizHubRoute,
-            (route) => false,
-          );
+          Navigator.of(context).pushNamedAndRemoveUntil(Routes.interpreterQuizHubRoute, (route) => false);
         }
       } else {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
       }
     } catch (e) {
-      log('_AuthCallbackLoadingScreen: Error getting user profile: $e');
       if (!mounted) return;
-      // If we can't get profile, navigate to main anyway
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(Routes.mainRoute, (route) => false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_hasError)
-              const Icon(Icons.error_outline, size: 48, color: Colors.red)
-            else
-              const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(_statusMessage),
+            if (_hasError) 
+              const Icon(Icons.error_outline, size: 48, color: Colors.red) 
+            else 
+              const CircularProgressIndicator(color: Color(0xFF0F4C81)),
+            const SizedBox(height: 24),
+            Text(
+              _statusMessage,
+              style: const TextStyle(
+                fontSize: 16, 
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -1423,85 +1095,47 @@ class _AuthCallbackLoadingScreenState
   }
 }
 
-// Wrapper to handle medical section quiz completion and route back with updated args
 class _MedicalSectionsRouteWrapper extends StatefulWidget {
   const _MedicalSectionsRouteWrapper();
 
   @override
-  State<_MedicalSectionsRouteWrapper> createState() =>
-      _MedicalSectionsRouteWrapperState();
+  State<_MedicalSectionsRouteWrapper> createState() => _MedicalSectionsRouteWrapperState();
 }
 
-class _MedicalSectionsRouteWrapperState
-    extends State<_MedicalSectionsRouteWrapper> {
-  final List<String> _allSections = [
-    'neurology',
-    'cardiology',
-    'respiratory',
-    'gastrointestinal',
-    'endocrinology',
-    'renal',
-    'ob_gyn',
-    'oncology',
-    'emergency',
-    'psychology',
-    'musculoskeletal',
-  ];
-
+class _MedicalSectionsRouteWrapperState extends State<_MedicalSectionsRouteWrapper> {
+  final List<String> _allSections = ['neurology', 'cardiology', 'respiratory', 'gastrointestinal', 'endocrinology', 'renal', 'ob_gyn', 'oncology', 'emergency', 'psychology', 'musculoskeletal'];
   Set<String> _earnedSections = {};
   int _currentSectionIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startSequentialQuizzes();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startSequentialQuizzes());
   }
 
   Future<void> _startSequentialQuizzes() async {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+    _earnedSections = (args['medicalSectionsPassed'] as Set<String>?) ?? <String>{};
 
-    // Load existing sections if any
-    _earnedSections =
-        (args['medicalSectionsPassed'] as Set<String>?) ?? <String>{};
-
-    // Start sequential quizzes
     while (_currentSectionIndex < _allSections.length && mounted) {
       final sectionId = _allSections[_currentSectionIndex];
-
       final result = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute(
-          builder:
-              (_) => QuizScreen(quizType: 'medical', medicalSection: sectionId),
-        ),
+        MaterialPageRoute(builder: (_) => QuizScreen(quizType: 'medical', medicalSection: sectionId)),
       );
 
       if (!mounted) return;
-
       if (result != null && result['passed'] == true) {
-        setState(() {
-          _earnedSections.add(sectionId);
-        });
+        setState(() => _earnedSections.add(sectionId));
       }
-
       _currentSectionIndex++;
     }
 
-    // All sections completed - update args and continue
     if (!mounted) return;
     args['medicalSectionsPassed'] = _earnedSections;
 
-    // Check if at least one section is earned
     if (_earnedSections.isNotEmpty) {
-      // All quizzes done - go to register
-      Navigator.of(
-        context,
-      ).pushReplacementNamed(Routes.registerRoute, arguments: args);
+      Navigator.of(context).pushReplacementNamed(Routes.registerRoute, arguments: args);
     } else {
-      // No badges earned - go back
       Navigator.of(context).pop();
     }
   }
@@ -1512,96 +1146,40 @@ class _MedicalSectionsRouteWrapperState
   }
 }
 
-class _MedicalSectionSelectorWithCallback extends StatefulWidget {
-  final Function(String sectionId) onSectionPassed;
-
-  const _MedicalSectionSelectorWithCallback({required this.onSectionPassed});
-
-  @override
-  State<_MedicalSectionSelectorWithCallback> createState() =>
-      _MedicalSectionSelectorWithCallbackState();
-}
-
-class _MedicalSectionSelectorWithCallbackState
-    extends State<_MedicalSectionSelectorWithCallback> {
-  Future<void> _startSection(String sectionId) async {
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(
-        builder:
-            (_) => QuizScreen(quizType: 'medical', medicalSection: sectionId),
-      ),
-    );
-
-    if (result != null && result['passed'] == true) {
-      widget.onSectionPassed(sectionId);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MedicalSectionSelectorScreen(onSectionTap: _startSection);
-  }
-}
-
-// Wrapper for general quiz route with navigation handling
 class _GeneralQuizRouteWrapper extends StatefulWidget {
   const _GeneralQuizRouteWrapper();
 
   @override
-  State<_GeneralQuizRouteWrapper> createState() =>
-      _GeneralQuizRouteWrapperState();
+  State<_GeneralQuizRouteWrapper> createState() => _GeneralQuizRouteWrapperState();
 }
 
 class _GeneralQuizRouteWrapperState extends State<_GeneralQuizRouteWrapper> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _navigateToQuiz();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToQuiz());
   }
 
   Future<void> _navigateToQuiz() async {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
-
-    // Launch general quiz
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(
-        builder: (_) => const QuizScreen(quizType: 'general', isRequired: true),
-      ),
+      MaterialPageRoute(builder: (_) => const QuizScreen(quizType: 'general', isRequired: true)),
     );
 
     if (!mounted) return;
-
-    // Handle navigation based on quiz outcome and selected track
     if (result != null && result['passed'] == true) {
       args['generalQuizPassed'] = true;
       args['generalQuizScore'] = result['score'];
 
-      final track =
-          args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];
-      final isPaid =
-          track == 'paid' ||
-          track == 'pro' ||
-          (track is String &&
-              (track.toLowerCase().contains('paid') ||
-                  track.toLowerCase().contains('pro')));
+      final track = args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];
+      final isPaid = track == 'paid' || track == 'pro' || (track is String && (track.toLowerCase().contains('paid') || track.toLowerCase().contains('pro')));
 
       if (isPaid) {
-        // Paid: proceed to sequential medical sections
-        Navigator.of(
-          context,
-        ).pushReplacementNamed(Routes.medicalSectionsRoute, arguments: args);
+        Navigator.of(context).pushReplacementNamed(Routes.medicalSectionsRoute, arguments: args);
       } else {
-        // Volunteer: proceed to success screen
-        Navigator.of(
-          context,
-        ).pushReplacementNamed(Routes.volunteerSuccessRoute, arguments: args);
+        Navigator.of(context).pushReplacementNamed(Routes.volunteerSuccessRoute, arguments: args);
       }
     } else {
-      // Not passed or cancelled: return to previous screen
       Navigator.of(context).pop();
     }
   }
@@ -1612,66 +1190,39 @@ class _GeneralQuizRouteWrapperState extends State<_GeneralQuizRouteWrapper> {
   }
 }
 
-// Web wrapper for general quiz route with navigation handling
 class _GeneralQuizRouteWrapperWeb extends StatefulWidget {
   const _GeneralQuizRouteWrapperWeb();
 
   @override
-  State<_GeneralQuizRouteWrapperWeb> createState() =>
-      _GeneralQuizRouteWrapperWebState();
+  State<_GeneralQuizRouteWrapperWeb> createState() => _GeneralQuizRouteWrapperWebState();
 }
 
-class _GeneralQuizRouteWrapperWebState
-    extends State<_GeneralQuizRouteWrapperWeb> {
+class _GeneralQuizRouteWrapperWebState extends State<_GeneralQuizRouteWrapperWeb> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _navigateToQuiz();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToQuiz());
   }
 
   Future<void> _navigateToQuiz() async {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
-
-    // Launch NEW advanced fluency quiz (web version)
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
     final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => const AdvancedFluencyQuizScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const AdvancedFluencyQuizScreen()),
     );
 
     if (!mounted) return;
-
-    // Handle navigation based on new quiz outcome (which returns a bool)
     if (result == true) {
       args['generalQuizPassed'] = true;
-      // Note: We removed the score since the new quiz just returns true/false
 
-      final track =
-          args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];
-      final isPaid =
-          track == 'paid' ||
-          track == 'pro' ||
-          (track is String &&
-              (track.toLowerCase().contains('paid') ||
-                  track.toLowerCase().contains('pro')));
+      final track = args['interpreterTrack'] ?? args['track'] ?? args['interpreterLevel'];
+      final isPaid = track == 'paid' || track == 'pro' || (track is String && (track.toLowerCase().contains('paid') || track.toLowerCase().contains('pro')));
 
       if (isPaid) {
-        // Paid: proceed to medical sections (web)
-        Navigator.of(
-          context,
-        ).pushReplacementNamed(Routes.medicalSectionsRoute, arguments: args);
+        Navigator.of(context).pushReplacementNamed(Routes.medicalSectionsRoute, arguments: args);
       } else {
-        // Volunteer: proceed to success screen
-        Navigator.of(
-          context,
-        ).pushReplacementNamed(Routes.volunteerSuccessRoute, arguments: args);
+        Navigator.of(context).pushReplacementNamed(Routes.volunteerSuccessRoute, arguments: args);
       }
     } else {
-      // Not passed or cancelled: return to previous screen
       Navigator.of(context).pop();
     }
   }
@@ -1682,86 +1233,47 @@ class _GeneralQuizRouteWrapperWebState
   }
 }
 
-// Web wrapper for medical sections route
 class _MedicalSectionsRouteWrapperWeb extends StatefulWidget {
   const _MedicalSectionsRouteWrapperWeb();
 
   @override
-  State<_MedicalSectionsRouteWrapperWeb> createState() =>
-      _MedicalSectionsRouteWrapperWebState();
+  State<_MedicalSectionsRouteWrapperWeb> createState() => _MedicalSectionsRouteWrapperWebState();
 }
 
-class _MedicalSectionsRouteWrapperWebState
-    extends State<_MedicalSectionsRouteWrapperWeb> {
-  final List<String> _allSections = [
-    'neurology',
-    'cardiology',
-    'respiratory',
-    'gastrointestinal',
-    'endocrinology',
-    'renal',
-    'ob_gyn',
-    'oncology',
-    'emergency',
-    'psychology',
-    'musculoskeletal',
-  ];
-
+class _MedicalSectionsRouteWrapperWebState extends State<_MedicalSectionsRouteWrapperWeb> {
+  final List<String> _allSections = ['neurology', 'cardiology', 'respiratory', 'gastrointestinal', 'endocrinology', 'renal', 'ob_gyn', 'oncology', 'emergency', 'psychology', 'musculoskeletal'];
   Set<String> _earnedSections = {};
   int _currentSectionIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startSequentialQuizzes();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startSequentialQuizzes());
   }
 
   Future<void> _startSequentialQuizzes() async {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ??
-        {};
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+    _earnedSections = (args['medicalSectionsPassed'] as Set<String>?) ?? <String>{};
 
-    // Load existing sections if any
-    _earnedSections =
-        (args['medicalSectionsPassed'] as Set<String>?) ?? <String>{};
-
-    // Start sequential quizzes using web quiz screen
     while (_currentSectionIndex < _allSections.length && mounted) {
       final sectionId = _allSections[_currentSectionIndex];
-
       final result = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute(
-          builder:
-              (_) =>
-                  QuizWebScreen(quizType: 'medical', medicalSection: sectionId),
-        ),
+        MaterialPageRoute(builder: (_) => QuizWebScreen(quizType: 'medical', medicalSection: sectionId)),
       );
 
       if (!mounted) return;
-
       if (result != null && result['passed'] == true) {
-        setState(() {
-          _earnedSections.add(sectionId);
-        });
+        setState(() => _earnedSections.add(sectionId));
       }
-
       _currentSectionIndex++;
     }
 
-    // All sections completed - update args and continue
     if (!mounted) return;
     args['medicalSectionsPassed'] = _earnedSections;
 
-    // Check if at least one section is earned
     if (_earnedSections.isNotEmpty) {
-      // All quizzes done - go to register
-      Navigator.of(
-        context,
-      ).pushReplacementNamed(Routes.registerRoute, arguments: args);
+      Navigator.of(context).pushReplacementNamed(Routes.registerRoute, arguments: args);
     } else {
-      // No badges earned - go back
       Navigator.of(context).pop();
     }
   }

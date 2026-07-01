@@ -52,14 +52,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => null);
     if (!body) return json({ error: "Invalid JSON body" }, 400);
-
-    const { organization_id, amount } = body;
+const { organization_id, amount, minutes } = body;
 
     if (!organization_id || !amount) {
-      return json(
-        { error: "Missing required fields: organization_id, amount" },
-        400
-      );
+      return json({ error: "Missing required fields: organization_id, amount" }, 400);
     }
 
     if (amount < 5 || amount > 10000) {
@@ -160,13 +156,16 @@ Deno.serve(async (req) => {
           "metadata[amount]": String(amount),
           "metadata[user_id]": user.id,
           "metadata[source]": "mobile_payment_sheet",
-          description: `$${Number(amount).toFixed(2)} wallet top-up for ${
-            org?.name ?? "Organization"
-          }`,
+          // ADD THIS LINE TO ATTACH MINUTES IF IT'S A SUBSCRIPTION:
+          ...(minutes ? { "metadata[minutes]": String(minutes) } : {}),
+          
+          // Make the Stripe receipt look correct:
+          description: minutes 
+            ? `Subscription Plan: ${minutes} minutes` 
+            : `$${Number(amount).toFixed(2)} wallet top-up for ${org?.name ?? "Organization"}`,
         }),
       }
     );
-
     const paymentIntent = await paymentIntentRes.json();
     if (!paymentIntentRes.ok) {
       console.error("PaymentIntent error:", paymentIntent);

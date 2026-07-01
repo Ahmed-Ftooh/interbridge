@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
@@ -3102,6 +3103,17 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
                 },
               ),
               const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _generateRegistrationCode,
+                icon: const Icon(Icons.vpn_key),
+                label: const Text('Generate Code'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ColorManager.primary2,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+              const SizedBox(width: 12),
               IconButton(
                 onPressed: _loadOrganizations,
                 icon: const Icon(Icons.refresh),
@@ -3350,6 +3362,73 @@ class _AdminDashboardWebState extends State<AdminDashboardWeb> {
         ],
       ),
     );
+  }
+
+  Future<void> _generateRegistrationCode() async {
+    try {
+      final code = 'ORG-${_generateRandomString(4)}-${_generateRandomString(4)}'.toUpperCase();
+      
+      await Supabase.instance.client.from('organization_registration_codes').insert({
+        'code': code,
+      });
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Registration Code Generated'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Give this code to the hospital/clinic so they can register:'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: SelectableText(
+                    code,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2,
+                      color: ColorManager.primary2,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'This is a single-use code.',
+                  style: TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating code: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  String _generateRandomString(int length) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0
+    final rnd = math.Random();
+    return String.fromCharCodes(Iterable.generate(
+        length, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
   }
 
   Widget _buildOrganizationsTableRow({

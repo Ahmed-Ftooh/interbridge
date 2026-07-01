@@ -32,6 +32,7 @@ function jsonResponse(body: unknown, status = 200) {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
     },
   })
 }
@@ -149,6 +150,7 @@ serve(async (req) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
     })
   }
@@ -159,6 +161,13 @@ serve(async (req) => {
       return jsonResponse({ error: 'Method Not Allowed' }, 405)
     }
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return jsonResponse({
+        error: 'Missing Supabase credentials',
+        details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set',
+      }, 500)
+    }
+
     // Validate Twilio credentials
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
       return jsonResponse({
@@ -167,25 +176,65 @@ serve(async (req) => {
       }, 500)
     }
 
+    const authHeader = req.headers.get('authorization') || ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    if (!token) {
+      return jsonResponse({ error: 'Unauthorized' }, 401)
+    }
+
     // Initialize Supabase client
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+    const { data: userData, error: userError } = await supabase.auth.getUser(token)
+    const user = userData?.user
+    if (userError || !user) {
+      return jsonResponse({ error: 'Unauthorized' }, 401)
+    }
+
     // Parse request body
-    const body = await req.json() as CallRequest
+    const body = await req.json().catch(() => null) as CallRequest | null
+    if (!body) {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400)
+    }
 
     switch (body.action) {
       case 'initiate': {
-        if (!body.toPhoneNumber || !body.requestId || !body.callerId) {
+        if (!body.toPhoneNumber || !body.requestId) {
           return jsonResponse({
             error: 'Missing required fields',
-            details: 'toPhoneNumber, requestId, and callerId are required for initiate action',
+            details: 'toPhoneNumber and requestId are required for initiate action',
           }, 400)
+        }
+
+        if (body.callerId && body.callerId !== user.id) {
+          return jsonResponse({ error: 'Forbidden' }, 403)
+        }
+
+        const { data: requestRow, error: requestError } = await supabase
+          .from('interpreter_requests')
+          .select('requester_id, accepted_by')
+          .eq('id', body.requestId)
+          .maybeSingle()
+
+        if (requestError) {
+          return jsonResponse({ error: 'Request lookup failed' }, 500)
+        }
+
+        if (!requestRow) {
+          return jsonResponse({ error: 'Request not found' }, 404)
+        }
+
+        const isParticipant =
+          user.id === requestRow.requester_id || user.id === requestRow.accepted_by
+
+        if (!isParticipant) {
+          return jsonResponse({ error: 'Forbidden' }, 403)
         }
 
         const callData = await initiateCall(
           body.toPhoneNumber, 
           body.requestId,
-          body.callerId,
+          user.id,
           supabase
         )
         
@@ -205,6 +254,24 @@ serve(async (req) => {
           }, 400)
         }
 
+        const { data: callRow, error: callError } = await supabase
+          .from('phone_calls')
+          .select('caller_id')
+          .eq('call_sid', body.callSid)
+          .maybeSingle()
+
+        if (callError) {
+          return jsonResponse({ error: 'Call lookup failed' }, 500)
+        }
+
+        if (!callRow) {
+          return jsonResponse({ error: 'Call not found' }, 404)
+        }
+
+        if (callRow.caller_id !== user.id) {
+          return jsonResponse({ error: 'Forbidden' }, 403)
+        }
+
         const callData = await getCallStatus(body.callSid)
         
         return jsonResponse({
@@ -219,6 +286,24 @@ serve(async (req) => {
           return jsonResponse({
             error: 'Missing callSid for end call',
           }, 400)
+        }
+
+        const { data: callRow, error: callError } = await supabase
+          .from('phone_calls')
+          .select('caller_id')
+          .eq('call_sid', body.callSid)
+          .maybeSingle()
+
+        if (callError) {
+          return jsonResponse({ error: 'Call lookup failed' }, 500)
+        }
+
+        if (!callRow) {
+          return jsonResponse({ error: 'Call not found' }, 404)
+        }
+
+        if (callRow.caller_id !== user.id) {
+          return jsonResponse({ error: 'Forbidden' }, 403)
         }
 
         const callData = await endCall(body.callSid, supabase)

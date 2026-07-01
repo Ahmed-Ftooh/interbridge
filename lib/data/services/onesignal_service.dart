@@ -21,6 +21,7 @@ class OneSignalService {
 
   String? _playerId;
   bool _isInitialized = false;
+  StreamSubscription? _authStateSub;
 
   // Track if we're currently showing an incoming call to prevent duplicates
   String? _activeIncomingCallId;
@@ -102,7 +103,9 @@ class OneSignalService {
       }
 
       // Listen for auth changes to register player ID when user logs in
-      _client.auth.onAuthStateChange.listen((data) {
+      // Cancel any previous subscription to avoid duplicates on re-init.
+      _authStateSub?.cancel();
+      _authStateSub = _client.auth.onAuthStateChange.listen((data) {
         final event = data.event;
         if (event == AuthChangeEvent.signedIn ||
             event == AuthChangeEvent.tokenRefreshed ||

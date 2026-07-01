@@ -56,6 +56,12 @@ class OrganizationDashboardLoaded extends OrganizationDashboardState {
   double get walletBalance =>
       (organization['wallet_balance'] as num?)?.toDouble() ?? 0.0;
 
+
+
+  /// Get the billing method
+  /// (Will return 'prepaid', 'pay_as_you_go', or 'subscription')
+  String get billingMethod => 
+      organization['billing_method'] as String? ?? 'prepaid';
   /// Get the rate per minute
   double get ratePerMinute =>
       (organization['rate_per_minute'] as num?)?.toDouble() ?? 1.0;

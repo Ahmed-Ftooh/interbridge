@@ -8,7 +8,7 @@ class InterpreterJobService {
   factory InterpreterJobService() => _instance;
   InterpreterJobService._internal();
 
-  final SupabaseClient _client = Supabase.instance.client;
+  SupabaseClient get _client => Supabase.instance.client;
 
   /// Get available jobs for the current interpreter
   Future<List<InterpreterRequest>> getAvailableJobs() async {
@@ -38,18 +38,27 @@ class InterpreterJobService {
 
       // Fetch this interpreter's employment type so we only show matching
       // request types: volunteer → general requests, paid → specialist requests.
-      // employment_type is stored in users_profile, NOT interpreter_details.
+      // Source of truth: interpreter_details, with users_profile fallback.
       String employmentType = 'volunteer'; // safe default
       try {
         final detailsRow =
             await _client
-                .from('users_profile')
+                .from('interpreter_details')
                 .select('employment_type')
                 .eq('user_id', user.id)
                 .maybeSingle();
-        if (detailsRow != null) {
+        final detailsType = detailsRow?['employment_type'] as String?;
+        if (detailsType != null && detailsType.isNotEmpty) {
+          employmentType = detailsType;
+        } else {
+          final profileRow =
+              await _client
+                  .from('users_profile')
+                  .select('employment_type')
+                  .eq('user_id', user.id)
+                  .maybeSingle();
           employmentType =
-              (detailsRow['employment_type'] as String?) ?? 'volunteer';
+              (profileRow?['employment_type'] as String?) ?? employmentType;
         }
       } catch (e) {
         log(

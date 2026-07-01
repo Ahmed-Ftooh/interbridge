@@ -91,7 +91,7 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView>
       final interpreterData =
           await Supabase.instance.client
               .from('interpreter_details')
-              .select('is_verified, is_suspended, is_online')
+            .select('is_verified, is_suspended, is_online, employment_type')
               .eq('user_id', userId)
               .maybeSingle();
 
@@ -116,7 +116,10 @@ class _InterpreterHomeViewState extends State<InterpreterHomeView>
           _isSuspended = interpreterData?['is_suspended'] ?? false;
           _isOnline = interpreterData?['is_online'] ?? false;
           _totalSessions = sessionsCount;
-          _employmentType = profileData?['employment_type'] ?? 'volunteer';
+            _employmentType =
+              interpreterData?['employment_type'] ??
+              profileData?['employment_type'] ??
+              'volunteer';
           _isLoadingProfile = false;
         });
       }

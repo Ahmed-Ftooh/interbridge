@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/config.dart';
 import 'package:interbridge/core/services/agora_dialer_service.dart';
@@ -54,6 +55,110 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   String? _patientCallSid;
   String _patientCallStatus = '';
   bool _isPatientCallLoading = false;
+  String? _selectedCountryCode = '+1';
+
+  static const _countryCodes = [
+    ('+1', 'US/CA +1'),
+    ('+7', 'RU +7'),
+    ('+20', 'EG +20'),
+    ('+27', 'ZA +27'),
+    ('+30', 'GR +30'),
+    ('+31', 'NL +31'),
+    ('+32', 'BE +32'),
+    ('+33', 'FR +33'),
+    ('+34', 'ES +34'),
+    ('+36', 'HU +36'),
+    ('+39', 'IT +39'),
+    ('+40', 'RO +40'),
+    ('+41', 'CH +41'),
+    ('+43', 'AT +43'),
+    ('+44', 'UK +44'),
+    ('+45', 'DK +45'),
+    ('+46', 'SE +46'),
+    ('+47', 'NO +47'),
+    ('+48', 'PL +48'),
+    ('+49', 'DE +49'),
+    ('+51', 'PE +51'),
+    ('+52', 'MX +52'),
+    ('+53', 'CU +53'),
+    ('+54', 'AR +54'),
+    ('+55', 'BR +55'),
+    ('+56', 'CL +56'),
+    ('+57', 'CO +57'),
+    ('+58', 'VE +58'),
+    ('+60', 'MY +60'),
+    ('+61', 'AU +61'),
+    ('+62', 'ID +62'),
+    ('+63', 'PH +63'),
+    ('+64', 'NZ +64'),
+    ('+65', 'SG +65'),
+    ('+66', 'TH +66'),
+    ('+81', 'JP +81'),
+    ('+82', 'KR +82'),
+    ('+84', 'VN +84'),
+    ('+86', 'CN +86'),
+    ('+90', 'TR +90'),
+    ('+91', 'IN +91'),
+    ('+92', 'PK +92'),
+    ('+93', 'AF +93'),
+    ('+94', 'LK +94'),
+    ('+95', 'MM +95'),
+    ('+98', 'IR +98'),
+    ('+212', 'MA +212'),
+    ('+213', 'DZ +213'),
+    ('+216', 'TN +216'),
+    ('+218', 'LY +218'),
+    ('+220', 'GM +220'),
+    ('+221', 'SN +221'),
+    ('+233', 'GH +233'),
+    ('+234', 'NG +234'),
+    ('+249', 'SD +249'),
+    ('+250', 'RW +250'),
+    ('+251', 'ET +251'),
+    ('+252', 'SO +252'),
+    ('+253', 'DJ +253'),
+    ('+254', 'KE +254'),
+    ('+255', 'TZ +255'),
+    ('+256', 'UG +256'),
+    ('+260', 'ZM +260'),
+    ('+263', 'ZW +263'),
+    ('+353', 'IE +353'),
+    ('+354', 'IS +354'),
+    ('+358', 'FI +358'),
+    ('+370', 'LT +370'),
+    ('+371', 'LV +371'),
+    ('+372', 'EE +372'),
+    ('+380', 'UA +380'),
+    ('+381', 'RS +381'),
+    ('+385', 'HR +385'),
+    ('+386', 'SI +386'),
+    ('+420', 'CZ +420'),
+    ('+421', 'SK +421'),
+    ('+880', 'BD +880'),
+    ('+960', 'MV +960'),
+    ('+961', 'LB +961'),
+    ('+962', 'JO +962'),
+    ('+963', 'SY +963'),
+    ('+964', 'IQ +964'),
+    ('+965', 'KW +965'),
+    ('+966', 'SA +966'),
+    ('+967', 'YE +967'),
+    ('+968', 'OM +968'),
+    ('+970', 'PS +970'),
+    ('+971', 'AE +971'),
+    ('+972', 'IL +972'),
+    ('+973', 'BH +973'),
+    ('+974', 'QA +974'),
+    ('+975', 'BT +975'),
+    ('+976', 'MN +976'),
+    ('+977', 'NP +977'),
+    ('+992', 'TJ +992'),
+    ('+993', 'TM +993'),
+    ('+994', 'AZ +994'),
+    ('+995', 'GE +995'),
+    ('+996', 'KG +996'),
+    ('+998', 'UZ +998'),
+  ];
 
   // Cached video controllers — prevents recreation on every rebuild
   // (timer ticks every 1s). Recreating controllers can destroy the
@@ -147,6 +252,9 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
   }
 
   void _endCallLocally() {
+    if (_patientCallSid != null) {
+      unawaited(_hangupPatientCall(silent: true));
+    }
     _notifyRemoteCallEnded();
     context.read<CallBloc>().add(EndCall());
   }
@@ -184,52 +292,257 @@ class _EnhancedCallScreenBodyState extends State<_EnhancedCallScreenBody> {
 
   // ===== Third-party Dial Methods =====
 
+  Future<String?> _pickCountryCode(BuildContext context) async {
+    final searchController = TextEditingController();
+    try {
+      return await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              final query = searchController.text.toLowerCase();
+              final filtered =
+                  _countryCodes.where((c) {
+                    return c.$2.toLowerCase().contains(query) ||
+                        c.$1.contains(query);
+                  }).toList();
+              final sheetHeight =
+                  MediaQuery.of(context).size.height * 0.72;
+
+              return Container(
+                height: sheetHeight,
+                decoration: BoxDecoration(
+                  color: ColorManager.primary2Dark,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: ColorManager.white.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Select Country Code',
+                              style: TextStyle(
+                                color: ColorManager.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: Icon(
+                              Icons.close,
+                              color: ColorManager.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: (_) => setSheetState(() {}),
+                        style: TextStyle(color: ColorManager.white),
+                        decoration: InputDecoration(
+                          hintText: 'Search country or code...',
+                          hintStyle: TextStyle(
+                            color: ColorManager.white.withValues(alpha: 0.5),
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: ColorManager.white.withValues(alpha: 0.6),
+                          ),
+                          filled: true,
+                          fillColor: ColorManager.primary.withValues(alpha: 0.15),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: filtered.length,
+                        separatorBuilder:
+                            (_, __) => Divider(
+                              height: 1,
+                              color: ColorManager.white.withValues(alpha: 0.08),
+                            ),
+                        itemBuilder: (context, index) {
+                          final c = filtered[index];
+                          final isSelected = c.$1 == _selectedCountryCode;
+                          return ListTile(
+                            onTap: () => Navigator.pop(context, c.$1),
+                            title: Text(
+                              c.$2,
+                              style: TextStyle(
+                                color:
+                                    isSelected
+                                        ? ColorManager.primary
+                                        : ColorManager.white,
+                                fontWeight:
+                                    isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                              ),
+                            ),
+                            trailing: Text(
+                              c.$1,
+                              style: TextStyle(
+                                color: ColorManager.white.withValues(alpha: 0.7),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            tileColor:
+                                isSelected
+                                    ? ColorManager.primary.withValues(alpha: 0.12)
+                                    : Colors.transparent,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      searchController.dispose();
+    }
+  }
+
   void _showCallPatientDialog() {
     final phoneController = TextEditingController();
 
     showDialog(
       context: context,
       builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Add Third Party'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    hintText: '+1 (555) 123-4567',
-                    prefixIcon: Icon(Icons.phone),
-                    border: OutlineInputBorder(),
+          (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              final selectedCode = _selectedCountryCode ?? '+1';
+              return AlertDialog(
+                title: const Text('Add Third Party'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () async {
+                            final result = await _pickCountryCode(context);
+                            if (result != null && mounted) {
+                              setState(() => _selectedCountryCode = result);
+                              setDialogState(() {});
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: ColorManager.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: ColorManager.primary.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  selectedCode,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: ColorManager.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.keyboard_arrow_down,
+                                  color: ColorManager.white.withValues(alpha: 0.7),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: phoneController,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(15),
+                            ],
+                            style: const TextStyle(color: Colors.black),
+                            decoration: const InputDecoration(
+                              labelText: 'Phone number',
+                              hintText: '5551234567',
+                              prefixIcon: Icon(Icons.phone),
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Enter the phone number without the country code.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Enter the interpreter\'s phone number to add them to the call.',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  _initiatePatientCall(phoneController.text.trim());
-                },
-                icon: const Icon(Icons.call),
-                label: const Text('Call'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      final digits = phoneController.text.trim();
+                      if (digits.isEmpty) {
+                        _showSnackBar(
+                          'Please enter a phone number',
+                          isError: true,
+                        );
+                        return;
+                      }
+                      Navigator.pop(dialogContext);
+                      final fullNumber = '$selectedCode$digits';
+                      _initiatePatientCall(fullNumber);
+                    },
+                    icon: const Icon(Icons.call),
+                    label: const Text('Call'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
     );
   }
@@ -263,7 +576,7 @@ Future<void> _initiatePatientCall(String phoneNumber) async {
       log('2. Token fetched successfully! Token: $botToken'); 
       
       log('3. Calling dialer edge function...'); 
-      await _agoraDialerService.callInterpreter(
+      final callId = await _agoraDialerService.callInterpreter(
         phoneNumber,
         widget.channelId,
         fromNumber,
@@ -274,7 +587,7 @@ Future<void> _initiatePatientCall(String phoneNumber) async {
 
       if (!mounted) return;
       setState(() {
-        _patientCallSid = 'agora';
+        _patientCallSid = callId;
         _patientCallStatus = 'Dialing $phoneNumber...';
         _isPatientCallLoading = false;
       });
@@ -293,19 +606,44 @@ Future<void> _initiatePatientCall(String phoneNumber) async {
   }
 
   Future<void> _endPatientCall() async {
-    if (_patientCallSid == null) return;
+    await _hangupPatientCall();
+  }
 
-    setState(() => _isPatientCallLoading = true);
-
-    if (!mounted) return;
+  Future<void> _hangupPatientCall({bool silent = false}) async {
+    final callId = _patientCallSid;
+    if (callId == null) {
+      if (!silent) {
+        _showSnackBar('No call id found to hang up', isError: true);
+      }
+      return;
+    }
 
     setState(() {
-      _isPatientCallLoading = false;
-      _patientCallSid = null;
-      _patientCallStatus = '';
+      _isPatientCallLoading = true;
+      _patientCallStatus = 'Ending third-party call...';
     });
 
-    _showSnackBar('Third-party call state cleared');
+    try {
+      await _agoraDialerService.hangupCall(
+        callId: callId,
+        channelName: widget.channelId,
+      );
+      if (!silent) {
+        _showSnackBar('Third-party call ended');
+      }
+    } catch (e) {
+      if (!silent) {
+        _showSnackBar('Failed to end third-party call', isError: true);
+      }
+      log('Failed to hang up third party: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isPatientCallLoading = false;
+        _patientCallSid = null;
+        _patientCallStatus = '';
+      });
+    }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {

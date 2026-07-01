@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -1828,7 +1829,7 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
     }
 
     try {
-      await _service.setInterpreterVerification(
+      final cleanupWarning = await _service.setInterpreterVerification(
         widget.userId,
         verified: verify,
       );
@@ -1853,6 +1854,10 @@ class _AdminDetailsWebState extends State<AdminDetailsWeb>
         verify ? 'Interpreter verified' : 'Verification revoked',
         color: verify ? const Color(0xFF10B981) : Colors.orange,
       );
+
+      if (cleanupWarning != null) {
+        _snack(cleanupWarning, color: Colors.orange);
+      }
 
       if (emailWarning != null) {
         _snack(emailWarning, color: Colors.orange);
@@ -2220,19 +2225,21 @@ class _WebVoiceSampleTile extends StatefulWidget {
 
 class _WebVoiceSampleTileState extends State<_WebVoiceSampleTile> {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription? _playerComplSub;
   bool _isPlaying = false;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer.onPlayerComplete.listen((_) {
+    _playerComplSub = _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlaying = false);
     });
   }
 
   @override
   void dispose() {
+    _playerComplSub?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -2249,7 +2256,8 @@ class _WebVoiceSampleTileState extends State<_WebVoiceSampleTile> {
     try {
       final url = widget.voiceSample['url'] as String?;
       if (url == null || url.isEmpty) throw Exception('No URL');
-      await _audioPlayer.play(UrlSource(url));
+      final mimeType = _guessMimeType(url);
+      await _audioPlayer.play(UrlSource(url, mimeType: mimeType));
       setState(() {
         _isPlaying = true;
         _isLoading = false;
@@ -2262,6 +2270,16 @@ class _WebVoiceSampleTileState extends State<_WebVoiceSampleTile> {
         );
       }
     }
+  }
+
+  String? _guessMimeType(String url) {
+    final lower = url.toLowerCase();
+    if (lower.contains('.webm')) return 'audio/webm';
+    if (lower.contains('.m4a')) return 'audio/mp4';
+    if (lower.contains('.mp3')) return 'audio/mpeg';
+    if (lower.contains('.wav')) return 'audio/wav';
+    if (lower.contains('.aac')) return 'audio/aac';
+    return null;
   }
 
   @override

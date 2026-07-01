@@ -213,7 +213,7 @@ class _ConfirmEmailPendingViewWebState
                         ),
                         child: Column(
                           children: [
-                            _buildStep(1, 'Open the email we sent you'),
+                            _buildStep(1, 'Cheeck your inbox for the confirmation email'),
                             const SizedBox(height: 12),
                             _buildStep(2, 'Click the confirmation link'),
                             const SizedBox(height: 12),

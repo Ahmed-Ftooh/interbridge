@@ -4,6 +4,7 @@ import 'dart:developer';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:interbridge/config.dart';
 import 'package:interbridge/core/services/agora_dialer_service.dart';
@@ -63,6 +64,111 @@ class _EnhancedCallScreenWebBody extends StatefulWidget {
 class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     with SingleTickerProviderStateMixin {
   static const String _kRuntimeMarker = 'WEB_CALL_VIEW_MARKER_20260329_A';
+
+  String? _selectedCountryCode = '+1';
+
+  static const _countryCodes = [
+    ('+1', 'US/CA +1'),
+    ('+7', 'RU +7'),
+    ('+20', 'EG +20'),
+    ('+27', 'ZA +27'),
+    ('+30', 'GR +30'),
+    ('+31', 'NL +31'),
+    ('+32', 'BE +32'),
+    ('+33', 'FR +33'),
+    ('+34', 'ES +34'),
+    ('+36', 'HU +36'),
+    ('+39', 'IT +39'),
+    ('+40', 'RO +40'),
+    ('+41', 'CH +41'),
+    ('+43', 'AT +43'),
+    ('+44', 'UK +44'),
+    ('+45', 'DK +45'),
+    ('+46', 'SE +46'),
+    ('+47', 'NO +47'),
+    ('+48', 'PL +48'),
+    ('+49', 'DE +49'),
+    ('+51', 'PE +51'),
+    ('+52', 'MX +52'),
+    ('+53', 'CU +53'),
+    ('+54', 'AR +54'),
+    ('+55', 'BR +55'),
+    ('+56', 'CL +56'),
+    ('+57', 'CO +57'),
+    ('+58', 'VE +58'),
+    ('+60', 'MY +60'),
+    ('+61', 'AU +61'),
+    ('+62', 'ID +62'),
+    ('+63', 'PH +63'),
+    ('+64', 'NZ +64'),
+    ('+65', 'SG +65'),
+    ('+66', 'TH +66'),
+    ('+81', 'JP +81'),
+    ('+82', 'KR +82'),
+    ('+84', 'VN +84'),
+    ('+86', 'CN +86'),
+    ('+90', 'TR +90'),
+    ('+91', 'IN +91'),
+    ('+92', 'PK +92'),
+    ('+93', 'AF +93'),
+    ('+94', 'LK +94'),
+    ('+95', 'MM +95'),
+    ('+98', 'IR +98'),
+    ('+212', 'MA +212'),
+    ('+213', 'DZ +213'),
+    ('+216', 'TN +216'),
+    ('+218', 'LY +218'),
+    ('+220', 'GM +220'),
+    ('+221', 'SN +221'),
+    ('+233', 'GH +233'),
+    ('+234', 'NG +234'),
+    ('+249', 'SD +249'),
+    ('+250', 'RW +250'),
+    ('+251', 'ET +251'),
+    ('+252', 'SO +252'),
+    ('+253', 'DJ +253'),
+    ('+254', 'KE +254'),
+    ('+255', 'TZ +255'),
+    ('+256', 'UG +256'),
+    ('+260', 'ZM +260'),
+    ('+263', 'ZW +263'),
+    ('+353', 'IE +353'),
+    ('+354', 'IS +354'),
+    ('+358', 'FI +358'),
+    ('+370', 'LT +370'),
+    ('+371', 'LV +371'),
+    ('+372', 'EE +372'),
+    ('+380', 'UA +380'),
+    ('+381', 'RS +381'),
+    ('+385', 'HR +385'),
+    ('+386', 'SI +386'),
+    ('+420', 'CZ +420'),
+    ('+421', 'SK +421'),
+    ('+880', 'BD +880'),
+    ('+960', 'MV +960'),
+    ('+961', 'LB +961'),
+    ('+962', 'JO +962'),
+    ('+963', 'SY +963'),
+    ('+964', 'IQ +964'),
+    ('+965', 'KW +965'),
+    ('+966', 'SA +966'),
+    ('+967', 'YE +967'),
+    ('+968', 'OM +968'),
+    ('+970', 'PS +970'),
+    ('+971', 'AE +971'),
+    ('+972', 'IL +972'),
+    ('+973', 'BH +973'),
+    ('+974', 'QA +974'),
+    ('+975', 'BT +975'),
+    ('+976', 'MN +976'),
+    ('+977', 'NP +977'),
+    ('+992', 'TJ +992'),
+    ('+993', 'TM +993'),
+    ('+994', 'AZ +994'),
+    ('+995', 'GE +995'),
+    ('+996', 'KG +996'),
+    ('+998', 'UZ +998'),
+  ];
 
   // ─── Third-party dial ─────────────────────────────────────────
   final AgoraDialerService _agoraDialerService = AgoraDialerService();
@@ -471,6 +577,10 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       });
     }
 
+    if (_patientCallSid != null) {
+      unawaited(_hangupPatientCall(silent: true));
+    }
+
     _notifyRemoteCallEnded();
     context.read<CallBloc>().add(EndCall());
   }
@@ -499,74 +609,250 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
   }
 
   // ─── Third-party Dial ────────────────────────────────────────
+  Future<String?> _pickCountryCode(BuildContext context) async {
+    final searchController = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              final query = searchController.text.toLowerCase();
+              final filtered =
+                  _countryCodes.where((c) {
+                    return c.$2.toLowerCase().contains(query) ||
+                        c.$1.contains(query);
+                  }).toList();
+
+              return Dialog(
+                backgroundColor: _kSurfaceColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Container(
+                  width: 380,
+                  height: 520,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Select Country Code',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: _kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: searchController,
+                        onChanged: (_) => setDialogState(() {}),
+                        style: const TextStyle(color: _kTextPrimary),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: _kTextSecondary,
+                          ),
+                          hintText: 'Search country or code...',
+                          hintStyle: const TextStyle(color: _kTextSecondary),
+                          filled: true,
+                          fillColor: _kSurfaceLight,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder:
+                              (_, __) => const Divider(
+                                height: 1,
+                                color: _kSurfaceLight,
+                              ),
+                          itemBuilder: (context, index) {
+                            final c = filtered[index];
+                            return InkWell(
+                              onTap: () => Navigator.of(context).pop(c.$1),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 14,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      c.$2,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        color: _kTextPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      c.$1,
+                                      style: const TextStyle(
+                                        color: _kTextSecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      searchController.dispose();
+    }
+  }
+
   void _showCallPatientDialog() {
     final phoneController = TextEditingController();
     showDialog(
       context: context,
       builder:
-          (ctx) => AlertDialog(
-            backgroundColor: _kSurfaceColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            title: const Text(
-              'Add Third Party',
-              style: TextStyle(color: _kTextPrimary),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  style: const TextStyle(color:Colors. black),
-                  decoration: InputDecoration(
-                    labelText: 'Phone Number',
-                    labelStyle: const TextStyle(color: Colors.black),
-                    hintText: '+1 (555) 123-4567',
-                    hintStyle: TextStyle(color: Colors.black.withAlpha(100)),
-                    prefixIcon: const Icon(Icons.phone, color: _kAccentBlue),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: _kSurfaceLight),
+          (ctx) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              final selectedCode = _selectedCountryCode ?? '+1';
+              return AlertDialog(
+                backgroundColor: _kSurfaceColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                title: const Text(
+                  'Add Third Party',
+                  style: TextStyle(color: _kTextPrimary),
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () async {
+                            final result = await _pickCountryCode(context);
+                            if (result != null && mounted) {
+                              setState(() => _selectedCountryCode = result);
+                              setDialogState(() {});
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: _kSurfaceLight,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _kSurfaceLight),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  selectedCode,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: _kTextPrimary,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.keyboard_arrow_down,
+                                  color: _kTextSecondary,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: phoneController,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(15),
+                            ],
+                            style: const TextStyle(color: Colors.black),
+                            decoration: InputDecoration(
+                              labelText: 'Phone number',
+                              labelStyle: const TextStyle(color: _kTextSecondary),
+                              hintText: '5551234567',
+                              hintStyle: const TextStyle(color: _kTextSecondary),
+                              prefixIcon:
+                                  const Icon(Icons.phone, color: _kAccentBlue),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide:
+                                    const BorderSide(color: _kSurfaceLight),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide:
+                                    const BorderSide(color: _kAccentBlue),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: _kAccentBlue),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Enter the phone number without the country code.',
+                      style: TextStyle(color: _kTextSecondary, fontSize: 12),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: _kTextSecondary),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Enter the interpreter\'s phone number to add them to the call.',
-                  style: TextStyle(color: _kTextSecondary, fontSize: 12),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: _kTextSecondary),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _initiatePatientCall(phoneController.text.trim());
-                },
-                icon: const Icon(Icons.call, size: 18),
-                label: const Text('Call'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _kGreen,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      final digits = phoneController.text.trim();
+                      if (digits.isEmpty) {
+                        _showSnackBar(
+                          'Please enter a phone number',
+                          isError: true,
+                        );
+                        return;
+                      }
+                      Navigator.pop(ctx);
+                      final fullNumber = '$selectedCode$digits';
+                      _initiatePatientCall(fullNumber);
+                    },
+                    icon: const Icon(Icons.call, size: 18),
+                    label: const Text('Call'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
     );
   }
@@ -601,7 +887,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
       log('2. Token fetched successfully! Token: $botToken'); 
       
       log('3. Calling dialer edge function...'); 
-      await _agoraDialerService.callInterpreter(
+      final callId = await _agoraDialerService.callInterpreter(
         phoneNumber,
         widget.channelId,
         fromNumber,
@@ -612,7 +898,7 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
 
       if (!mounted) return;
       setState(() {
-        _patientCallSid = 'agora';
+        _patientCallSid = callId;
         _patientCallStatus = 'Dialing $phoneNumber...';
         _isPatientCallLoading = false;
       });
@@ -630,15 +916,44 @@ class _EnhancedCallScreenWebBodyState extends State<_EnhancedCallScreenWebBody>
     }
   }
   Future<void> _endPatientCall() async {
-    if (_patientCallSid == null) return;
-    setState(() => _isPatientCallLoading = true);
-    if (!mounted) return;
+    await _hangupPatientCall();
+  }
+
+  Future<void> _hangupPatientCall({bool silent = false}) async {
+    final callId = _patientCallSid;
+    if (callId == null) {
+      if (!silent) {
+        _showSnackBar('No call id found to hang up', isError: true);
+      }
+      return;
+    }
+
     setState(() {
-      _isPatientCallLoading = false;
-      _patientCallSid = null;
-      _patientCallStatus = '';
+      _isPatientCallLoading = true;
+      _patientCallStatus = 'Ending third-party call...';
     });
-    _showSnackBar('Third-party call state cleared');
+
+    try {
+      await _agoraDialerService.hangupCall(
+        callId: callId,
+        channelName: widget.channelId,
+      );
+      if (!silent) {
+        _showSnackBar('Third-party call ended');
+      }
+    } catch (e) {
+      if (!silent) {
+        _showSnackBar('Failed to end third-party call', isError: true);
+      }
+      log('Failed to hang up third party: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isPatientCallLoading = false;
+        _patientCallSid = null;
+        _patientCallStatus = '';
+      });
+    }
   }
 
   // ─── Duration formatter ──────────────────────────────────────

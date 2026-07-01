@@ -16,12 +16,12 @@ class InterpreterRegistrationState extends Equatable {
   });
 
   factory InterpreterRegistrationState.initial() {
-    final defaultLevel = InterpreterLevel.volunteer;
+    final defaultLevel = InterpreterLevel.paid;
     return InterpreterRegistrationState(
       application: InterpreterApplication(
         experienceYears: 0,
         level: defaultLevel,
-        track: InterpreterTrack.volunteer,
+        track: InterpreterTrack.paid,
         generalCertificatePath: null,
         voiceSamplePath: null,
         shifts: {},

@@ -34,6 +34,8 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _recordingPlayer;
   late final AudioPlayer _listeningPlayer;
+  StreamSubscription? _recordingComplSub;
+  StreamSubscription? _listeningComplSub;
   inline_audio.InlineAudioHandle? _webListeningHandle;
 
   bool _hasPermission = false;
@@ -42,6 +44,9 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   bool _isPlayingListeningAudio = false;
   bool _isSubmitting = false;
   bool _isLoadingQuestions = true;
+  
+  // ADDED: Flag to track if the user has clicked "Start Assessment"
+  bool _quizStarted = false; 
 
   int _currentQuestionIndex = 0;
   int _recordingSeconds = 0;
@@ -58,11 +63,11 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
       id: 's1_q1',
       sectionTitle: 'Section 1 - Listening & Comprehension Check',
       questionTitle: 'Question 1',
-      prompt: 'Describe the picture in detail.',
+      prompt: 'Relay this scene as an objective observer reporting to an emergency dispatcher.',
       guidePrompts: [
-        'Describe the overall scene and what is happening',
-        'What is the condition of the car and where is the driver?',
-        'How are the medical personnel interacting with the injured driver?',
+        'Describe the mechanics of the collision, the specific vehicle damage, and the road conditions.',
+        'Detail the exact actions, uniforms, and equipment of the emergency medical personnel.',
+        'Describe the interaction and the emotional state of the individuals standing behind the blue car.',
       ],
       suggestedSeconds: 90,
       imageAsset: ImageAssets.picture2,
@@ -169,13 +174,13 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     _recordingPlayer = AudioPlayer();
     _listeningPlayer = AudioPlayer();
 
-    _recordingPlayer.onPlayerComplete.listen((_) {
+    _recordingComplSub = _recordingPlayer.onPlayerComplete.listen((_) {
       if (mounted) {
         setState(() => _isPlayingRecording = false);
       }
     });
 
-    _listeningPlayer.onPlayerComplete.listen((_) {
+    _listeningComplSub = _listeningPlayer.onPlayerComplete.listen((_) {
       if (mounted) {
         setState(() {
           _isPlayingListeningAudio = false;
@@ -314,6 +319,8 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
   @override
   void dispose() {
     _recordingTimer?.cancel();
+    _recordingComplSub?.cancel();
+    _listeningComplSub?.cancel();
     _audioRecorder.dispose();
     _recordingPlayer.dispose();
     _listeningPlayer.dispose();
@@ -373,6 +380,13 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
         setState(() => _hasPermission = false);
       }
     }
+  }
+
+  // ADDED: Function to begin the assessment and hide the intro screen
+  void _startQuiz() {
+    setState(() {
+      _quizStarted = true;
+    });
   }
 
   Future<void> _startRecording() async {
@@ -631,6 +645,8 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
         }
 
         final extension = kIsWeb ? 'webm' : 'm4a';
+        final contentType =
+            extension == 'webm' ? 'audio/webm' : 'audio/mp4';
         final storagePath =
             '$userId/advanced_fluency/${question.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
@@ -639,16 +655,15 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
             .uploadBinary(
               storagePath,
               bytes,
-              fileOptions: const FileOptions(upsert: true),
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: contentType,
+              ),
             );
-
-        final publicUrl = client.storage
-            .from('voice_samples')
-            .getPublicUrl(storagePath);
 
         await client.from('voice_samples').insert({
           'user_id': userId,
-          'url': publicUrl,
+          'storage_path': storagePath,
           'prompt':
               '${question.sectionTitle} - ${question.questionTitle}\n${question.prompt}',
           'sentence_type': advancedFluencySentenceType,
@@ -690,6 +705,156 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
     final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
     final remainingSeconds = (seconds % 60).toString().padLeft(2, '0');
     return '$minutes:$remainingSeconds';
+  }
+
+  // ADDED: The Intro screen logic matching QuizWebScreen structure
+  Widget _buildIntro() {
+    final isWideWeb = kIsWeb && MediaQuery.sizeOf(context).width >= 1024;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          advancedFluencyQuizTitle,
+          style: TextStyle(
+            fontSize: isWideWeb ? 18 : 15,
+            color: const Color(0xFF0F172A),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.mic_none_outlined,
+                    size: 56,
+                    color: Color(0xFF3B82F6),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  'Fluency Assessment',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_questions.length} tasks',
+                  style: const TextStyle(fontSize: 15, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 24),
+
+                // Anti-cheat info box (adapted rules for the fluency context)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.security, size: 18, color: Color(0xFF3B82F6)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Assessment guidelines',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      ...[
+                        'Please make sure you are in a quiet place in a private room',
+                        'Make sure you have a notebook to take notes, and a stable internet connection',
+                        'Microphone access is required to record your verbal answers',
+                        'Speak clearly, loudly, and at a normal pace',
+                        'Listening attempts for audio prompts are strictly limited',
+                      ].map(
+                        (rule) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  Icons.check_circle_outline,
+                                  size: 15,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  rule,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF475569),
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: 280,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _startQuiz,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Start Assessment',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildProgressHeader({
@@ -1108,6 +1273,12 @@ class _AdvancedFluencyQuizScreenState extends State<AdvancedFluencyQuizScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+    
+    // ADDED: Check if quiz has started, if not, show the new Intro Screen
+    if (!_quizStarted) {
+      return _buildIntro();
+    }
+
     final progress = (_currentQuestionIndex + 1) / _questions.length;
     final question = _currentQuestion;
     final hasRecording = _currentAnswer != null;

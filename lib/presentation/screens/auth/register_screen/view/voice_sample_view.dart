@@ -22,6 +22,8 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
   late final AudioRecorder _audioRecorder;
   late final AudioPlayer _playerEnglish;
   late final AudioPlayer _playerNative;
+  StreamSubscription? _playerEnComplSub;
+  StreamSubscription? _playerNatComplSub;
 
   bool _isSaving = false;
 
@@ -49,10 +51,10 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
     _playerEnglish = AudioPlayer();
     _playerNative = AudioPlayer();
 
-    _playerEnglish.onPlayerComplete.listen((_) {
+    _playerEnComplSub = _playerEnglish.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlayingEn = false);
     });
-    _playerNative.onPlayerComplete.listen((_) {
+    _playerNatComplSub = _playerNative.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlayingNat = false);
     });
   }
@@ -61,6 +63,8 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
   void dispose() {
     _timerEn?.cancel();
     _timerNat?.cancel();
+    _playerEnComplSub?.cancel();
+    _playerNatComplSub?.cancel();
     _audioRecorder.dispose();
     _playerEnglish.dispose();
     _playerNative.dispose();
@@ -199,13 +203,17 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
         final file = File(_audioPathEn!);
         await Supabase.instance.client.storage
             .from('voice_samples')
-            .upload(englishPath, file);
-        final url = Supabase.instance.client.storage
-            .from('voice_samples')
-            .getPublicUrl(englishPath);
+            .upload(
+              englishPath,
+              file,
+              fileOptions: const FileOptions(
+                upsert: true,
+                contentType: 'audio/mp4',
+              ),
+            );
         await Supabase.instance.client.from('voice_samples').insert({
           'user_id': userId,
-          'url': url,
+          'storage_path': englishPath,
           'prompt': 'English introduction',
           'sentence_type': 'english',
         });
@@ -218,13 +226,17 @@ class _VoiceSampleScreenState extends State<VoiceSampleScreen> {
         final file = File(_audioPathNat!);
         await Supabase.instance.client.storage
             .from('voice_samples')
-            .upload(nativePath, file);
-        final url = Supabase.instance.client.storage
-            .from('voice_samples')
-            .getPublicUrl(nativePath);
+            .upload(
+              nativePath,
+              file,
+              fileOptions: const FileOptions(
+                upsert: true,
+                contentType: 'audio/mp4',
+              ),
+            );
         await Supabase.instance.client.from('voice_samples').insert({
           'user_id': userId,
-          'url': url,
+          'storage_path': nativePath,
           'prompt': 'Native language introduction',
           'sentence_type': 'native',
         });

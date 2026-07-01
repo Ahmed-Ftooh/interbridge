@@ -78,20 +78,6 @@ class _SettingViewState extends State<SettingView> {
           const Divider(height: 1),
 
           // Show "Join Organization" only for requesters not in an organization
-          if (_userRole == 'requester' && !_isInOrganization) ...[
-            _buildSimpleTile(
-              icon: Icons.business,
-              title: 'Join Organization',
-              subtitle: 'Join a healthcare organization',
-              onTap:
-                  () => Navigator.pushNamed(
-                    context,
-                    Routes.joinOrganizationRoute,
-                  ),
-            ),
-            const Divider(height: 1),
-          ],
-
           _buildSimpleTile(
             icon: Icons.delete_forever,
             title: 'Delete Account',

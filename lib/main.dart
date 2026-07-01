@@ -5,13 +5,20 @@ import 'package:interbridge/app/app.dart';
 import 'package:interbridge/app/app_initializer.dart';
 import 'package:interbridge/app/app_prf.dart';
 import 'package:interbridge/app/di.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  
 
   if (kIsWeb) {
- 
     try {
+        usePathUrlStrategy(); 
+
+
       await AppInitializer.initialize().timeout(
         const Duration(seconds: 10),
         onTimeout: () {
@@ -30,6 +37,6 @@ void main() async {
   } else {
     await AppInitializer.initialize();
   }
-
+  
   runApp(const MyApp());
 }
