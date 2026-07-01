@@ -48,3 +48,4 @@ assets/.env
 supabase/functions/service_account.json
 .vscode/mcp.json
 assets/config.env
+assets/config.env
